@@ -141,7 +141,7 @@
                 <div class="ai-trust-col">
                     <h3>✅ What the AI Does</h3>
                     <ul>
-                        <li>Weather generation by region & season</li>
+                        <li>Downtime simulation — events, arrivals, departures, and social changes</li>
                         <li>Downtime events and complications</li>
                         <li>Faction & settlement state changes during time skips</li>
                         <li>Rumors and hooks derived from world changes</li>
@@ -407,28 +407,28 @@
                     approval.</p>
                 <div class="guardrails-grid">
                     <div class="guardrail-card">
-                        <div class="guardrail-icon">📌</div>
-                        <h4>Canon Lock</h4>
-                        <p>Pin any entry as immutable. The AI will never change pinned facts — your established lore is
-                            sacred.</p>
+                        <div class="guardrail-icon">📖</div>
+                        <h4>Campaign Lore & Rules</h4>
+                        <p>Define your world's lore, house rules, and setting constants. The AI reads your canon on every
+                            generation — your world, your authority.</p>
                     </div>
                     <div class="guardrail-card">
                         <div class="guardrail-icon">📋</div>
-                        <h4>Review Queue</h4>
-                        <p>Time passage generates a "proposed changes" list. Accept, reject, or modify every single item
-                            before it applies.</p>
+                        <h4>Simulation Review</h4>
+                        <p>Time passage generates a tabbed results panel — arrivals, departures, deaths, social changes,
+                            and events. Review everything before moving forward.</p>
                     </div>
                     <div class="guardrail-card">
                         <div class="guardrail-icon">📜</div>
-                        <h4>Change Log</h4>
-                        <p>Every applied change gets a dated diff you can review and roll back at any time. Full
-                            history, always.</p>
+                        <h4>Town History Log</h4>
+                        <p>Every simulation writes a persistent, dated history log for each town. Scroll back through
+                            months of events, arrivals, and milestones at any time.</p>
                     </div>
                     <div class="guardrail-card">
                         <div class="guardrail-icon">🎛️</div>
-                        <h4>Intensity Knobs</h4>
-                        <p>Calm ↔ chaotic sliders control event frequency, severity, and faction aggression. Your world,
-                            your pace.</p>
+                        <h4>World Tuning</h4>
+                        <p>28+ homebrew parameters — conflict frequency, death thresholds, birth rates, relationship
+                            speed, magic level, and more — all fed directly into the AI's behavior.</p>
                     </div>
                 </div>
             </div>
@@ -481,7 +481,7 @@
                             <li>Everything in Adventurer</li>
                             <li><strong>2-Year Full GM Access</strong> (locked founding rate)</li>
                             <li>Pre-built example world to explore features</li>
-                            <li>Export your data (JSON/Markdown) — you own it</li>
+                            <li>Founding DM badge displayed in-app</li>
                         </ul>
                     </div>
                     <div class="reward-backers">189 backers</div>
@@ -576,7 +576,7 @@
                             <li>Homebrew World Rules Engine (28+ tools) — modify planar rules, resource frequency, magic levels, survival odds.</li>
                             <li>Admin Dashboard — direct management of AI token limits, API keys, backing structures, permissions.</li>
                             <li>Prestige Class Engine (3.5e) — full feat, skill rank, selection prerequisite checking and application.</li>
-                            <li>Metamagic Automation Engine — adjust slots, prepare upcast modifiers, handle standard DC shifts automatically.</li>
+                            <li>Metamagic Automation Engine (calculation engine) — slot adjustment, damage multipliers, and action-economy for metamagic feats.</li>
                             <li>XP Growth Score System — track resident downtime achievements on an automatic passive grading basis.</li>
                             <li>Multi-Edition Support — integrated modes for 5e 2014 and 5e 2024 play testing.</li>
                         </ul>
@@ -595,27 +595,28 @@
 
             <div class="stretch-timeline">
                 <!-- Phase 1 -->
-                <div class="stretch-goal achieved">
+                <div class="stretch-goal current">
                     <div class="stretch-amount">Phase 1</div>
                     <div class="stretch-content">
-                        <h4>✅ Character Mechanics Engine</h4>
+                        <h4>🟢 Character Mechanics Engine</h4>
                         <p>Full 1:1 automated parity with D&D 3.5e character sheets — the definitive digital character engine.</p>
                         <ul class="roadmap-features">
                             <li>✅ Automated Leveling Wizard</li>
-                            <li>✅ Spellcasting Manager</li>
+                            <li>✅ Spellcasting Manager (slots, known, prepared, spellbook)</li>
                             <li>✅ Conditions & Active Effects</li>
                             <li>✅ Encumbrance & Deep Inventory</li>
                             <li>✅ Multiclassing & Prestige Classes</li>
-                            <li>✅ Metamagic Automation</li>
                             <li>✅ PDF Character Sheet Export</li>
                             <li>✅ AI-Powered Level Up</li>
+                            <li>Metamagic UI — engine built, character sheet integration in progress</li>
+                            <li>Domain Spell Slots — Cleric domain casting support</li>
                         </ul>
                     </div>
                     <div class="stretch-progress">
                         <div class="stretch-bar">
-                            <div class="stretch-fill" style="width: 100%"></div>
+                            <div class="stretch-fill" style="width: 78%"></div>
                         </div>
-                        <span class="stretch-progress-label">✅ Complete — 8 of 8</span>
+                        <span class="stretch-progress-label">In Progress — 7 of 9 complete</span>
                     </div>
                 </div>
 
@@ -627,10 +628,11 @@
                         <p>Run actual game sessions from Eon Weaver. "Between sessions" becomes "at the table."</p>
                         <ul class="roadmap-features">
                             <li>✅ Dynamic Initiative Tracker</li>
-                            <li>✅ Encounter Builder & CR Calculator</li>
+                            <li>✅ Encounter Builder</li>
                             <li>✅ HP & Damage Manager</li>
+                            <li>✅ SRD Monster Intake & Statblocks</li>
+                            <li>Encounter CR Calculator</li>
                             <li>Inline Dice Roller</li>
-                            <li>✅ NPC / Monster Statblock Generator</li>
                             <li>AI Random Encounter Generator</li>
                             <li>AI Loot & Treasure Generator</li>
                             <li>AI Magic Shop Generator</li>
@@ -638,9 +640,9 @@
                     </div>
                     <div class="stretch-progress">
                         <div class="stretch-bar">
-                            <div class="stretch-fill" style="width: 62.5%"></div>
+                            <div class="stretch-fill" style="width: 44%"></div>
                         </div>
-                        <span class="stretch-progress-label">In Progress — 5 of 8 complete</span>
+                        <span class="stretch-progress-label">In Progress — 4 of 9 complete</span>
                     </div>
                 </div>
 
@@ -677,9 +679,10 @@
                     <div class="stretch-amount">Phase 4</div>
                     <div class="stretch-content">
                         <h4>🟣 Macro Simulation & World Dynamics</h4>
-                        <p>Scale the simulation from a single town to an entire interconnected region — Eon Weaver's endgame differentiator.</p>
+                        <p>Expand the already-working multi-town simulation with deep economic and environmental systems.</p>
                         <ul class="roadmap-features">
-                            <li>Multi-Town Connective Tissue — trade routes, migration</li>
+                            <li>✅ World Simulation Engine — already built: sequential month-by-month world progression</li>
+                            <li>✅ Inter-Town Migration — already built: characters relocate based on residency duration</li>
                             <li>Dynamic Economy & Trade — supply/demand per town</li>
                             <li>Weather & Seasonal System</li>
                             <li>Medieval Demographics Engine</li>
@@ -724,20 +727,20 @@
             <!-- Feature count callout -->
             <div class="roadmap-stats">
                 <div class="roadmap-stat">
-                    <span class="roadmap-stat-number">39</span>
+                    <span class="roadmap-stat-number">31</span>
                     <span class="roadmap-stat-label">Features Built</span>
                 </div>
                 <div class="roadmap-stat">
-                    <span class="roadmap-stat-number">83</span>
+                    <span class="roadmap-stat-number">50+</span>
                     <span class="roadmap-stat-label">Total Features Planned</span>
                 </div>
                 <div class="roadmap-stat">
-                    <span class="roadmap-stat-number">19</span>
-                    <span class="roadmap-stat-label">Competitors Analyzed</span>
+                    <span class="roadmap-stat-number">6</span>
+                    <span class="roadmap-stat-label">Development Phases</span>
                 </div>
                 <div class="roadmap-stat">
-                    <span class="roadmap-stat-number">7</span>
-                    <span class="roadmap-stat-label">Development Phases</span>
+                    <span class="roadmap-stat-number">28+</span>
+                    <span class="roadmap-stat-label">World Parameters</span>
                 </div>
             </div>
         </div>
@@ -785,10 +788,12 @@
                         <span class="faq-chevron">▼</span>
                     </button>
                     <div class="faq-answer">
-                        <p>This is our #1 design priority. Every simulation generates a <strong>proposed changes
-                                list</strong> — you accept, reject, or modify each item. You can <strong>Canon
-                                Lock</strong>
-                            any entry as immutable, review full change logs, and roll back anything. The AI is a tool you direct, not an author that
+                        <p>This is our #1 design priority. Every simulation generates a <strong>tabbed results
+                                panel</strong> — arrivals, departures, deaths, social changes, and events — that you
+                            review before proceeding. Your campaign's <strong>lore, house rules, and 28+ world
+                                parameters</strong> are injected into every AI call, keeping generation consistent with
+                            your canon. Everything is logged in a persistent <strong>town history</strong> you can scroll
+                            back through at any time. The AI is a tool you direct, not an author that
                             replaces you.</p>
                     </div>
                 </div>
