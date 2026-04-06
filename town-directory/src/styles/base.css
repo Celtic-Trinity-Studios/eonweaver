@@ -1,0 +1,55 @@
+﻿/* Eon Weaver — Base / Reset
+   Shared typography, element resets, scrollbar styling */
+
+*, *::before, *::after {
+    margin: 0; padding: 0;
+    box-sizing: border-box;
+}
+
+html {
+    font-size: 14px;
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow: hidden; /* app is single-page, no body scroll */
+    height: 100vh;
+}
+
+h1, h2, h3, h4, h5, h6 {
+    font-family: 'Cinzel', 'Georgia', serif;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+a {
+    color: var(--accent);
+    text-decoration: none;
+    transition: color .2s;
+}
+a:hover {
+    color: var(--accent-hover);
+    text-decoration: underline;
+}
+
+button {
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    outline: none;
+}
+
+input, select, textarea { font-family: inherit; font-size: inherit; }
+
+/* scrollbar — thin to stay out of the way */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg-secondary); }
+::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }

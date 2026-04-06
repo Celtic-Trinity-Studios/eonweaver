@@ -1,0 +1,1145 @@
+﻿/* ═══════════════════════════════════════════════════════════
+   Eon Weaver — Phase 1 Feature Styles
+   Level-Up Wizard, Spellcasting, Conditions, Encumbrance
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Level-Up Wizard ─────────────────────────────────────── */
+
+.levelup-wizard {
+    min-height: 350px;
+    display: flex;
+    flex-direction: column;
+}
+
+.levelup-step {
+    flex: 1;
+    padding: .25rem 0;
+}
+
+.levelup-step h3 {
+    font-size: 1rem;
+    color: var(--accent, #B87333);
+    margin: 0 0 .75rem 0;
+    border-bottom: 1px solid rgba(184, 115, 51, .15);
+    padding-bottom: .4rem;
+}
+
+.levelup-sublabel {
+    font-size: .75rem;
+    color: var(--text-secondary, #aaa);
+    font-weight: 400;
+}
+
+.levelup-current-classes {
+    font-size: .8rem;
+    color: var(--text-secondary);
+    margin-bottom: 1rem;
+    padding: .5rem .75rem;
+    background: rgba(255, 255, 255, .03);
+    border-radius: 6px;
+    border-left: 3px solid var(--accent);
+}
+
+/* Class Selection Grid */
+.levelup-class-section {
+    margin-bottom: 1rem;
+}
+
+.levelup-section-title {
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: .4rem;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+}
+
+.levelup-class-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: .5rem;
+}
+
+.levelup-class-card {
+    padding: .6rem .8rem;
+    background: rgba(255, 255, 255, .04);
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all .2s ease;
+}
+
+.levelup-class-card:hover {
+    border-color: rgba(184, 115, 51, .3);
+    background: rgba(184, 115, 51, .05);
+    transform: translateY(-1px);
+}
+
+.levelup-class-card.selected {
+    border-color: var(--accent);
+    background: rgba(184, 115, 51, .1);
+    box-shadow: 0 0 12px rgba(184, 115, 51, .15);
+}
+
+.levelup-class-card.new {
+    border-style: dashed;
+}
+
+.levelup-class-card.prestige {
+    border-color: rgba(147, 112, 219, .2);
+}
+
+.levelup-class-card.prestige.selected {
+    border-color: #9370db;
+    background: rgba(147, 112, 219, .1);
+}
+
+.levelup-class-card.ineligible {
+    opacity: .4;
+    cursor: not-allowed;
+}
+
+.class-card-name {
+    font-weight: 600;
+    font-size: .85rem;
+    color: var(--text-primary);
+}
+
+.class-card-info {
+    font-size: .68rem;
+    color: var(--text-secondary);
+    margin-top: .15rem;
+}
+
+.class-card-missing {
+    font-size: .62rem;
+    color: #ff5252;
+    margin-top: .2rem;
+}
+
+/* HP Step */
+.levelup-hp-display {
+    display: flex;
+    gap: 1.5rem;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    background: rgba(255, 255, 255, .03);
+    border-radius: 12px;
+    margin-bottom: 1rem;
+}
+
+.hp-roll-result {
+    text-align: center;
+}
+
+.hp-roll-result.total .hp-die {
+    color: var(--accent);
+    font-size: 2rem;
+}
+
+.hp-label {
+    font-size: .7rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    margin-bottom: .3rem;
+}
+
+.hp-die {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    min-width: 40px;
+}
+
+.levelup-hp-actions {
+    text-align: center;
+    margin-bottom: 1rem;
+}
+
+.levelup-hp-result {
+    text-align: center;
+    font-size: .9rem;
+    color: var(--text-secondary);
+    padding: .75rem;
+    background: rgba(184, 115, 51, .05);
+    border-radius: 8px;
+    border: 1px solid rgba(184, 115, 51, .15);
+}
+
+.levelup-hp-result strong {
+    color: var(--accent);
+    font-size: 1.2rem;
+    margin-left: .5rem;
+}
+
+/* Skill Step */
+.levelup-skill-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: .75rem;
+    padding: .5rem .75rem;
+    background: rgba(255, 255, 255, .03);
+    border-radius: 8px;
+}
+
+.skill-points-remaining {
+    font-weight: 600;
+    color: #ff9800;
+}
+
+.skill-points-remaining.done {
+    color: #66bb6a;
+}
+
+.levelup-skill-list {
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid rgba(255, 255, 255, .06);
+    border-radius: 8px;
+}
+
+.levelup-skill-row {
+    display: flex;
+    align-items: center;
+    padding: .35rem .6rem;
+    font-size: .78rem;
+    border-bottom: 1px solid rgba(255, 255, 255, .04);
+    transition: background .15s;
+}
+
+.levelup-skill-row:hover {
+    background: rgba(255, 255, 255, .03);
+}
+
+.levelup-skill-row.class-skill {
+    background: rgba(184, 115, 51, .03);
+}
+
+.skill-name {
+    flex: 1;
+    color: var(--text-primary);
+}
+
+.levelup-skill-row.class-skill .skill-name {
+    color: var(--accent);
+}
+
+.skill-ranks {
+    width: 60px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-family: monospace;
+}
+
+.skill-buttons {
+    display: flex;
+    gap: .25rem;
+}
+
+.skill-btn {
+    width: 24px;
+    height: 24px;
+    border-radius: 4px;
+    border: 1px solid rgba(255, 255, 255, .15);
+    background: rgba(255, 255, 255, .05);
+    color: var(--text-primary);
+    cursor: pointer;
+    font-size: .85rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all .15s;
+}
+
+.skill-btn:hover:not(:disabled) {
+    background: rgba(184, 115, 51, .15);
+    border-color: var(--accent);
+}
+
+.skill-btn:disabled {
+    opacity: .25;
+    cursor: not-allowed;
+}
+
+/* Feat Step */
+.levelup-feat-section {
+    margin-bottom: 1rem;
+    padding: .75rem;
+    background: rgba(255, 255, 255, .03);
+    border-radius: 8px;
+}
+
+.levelup-ability-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: .5rem;
+    margin-top: .5rem;
+}
+
+.levelup-ability-card {
+    padding: .5rem;
+    text-align: center;
+    background: rgba(255, 255, 255, .04);
+    border: 1px solid rgba(255, 255, 255, .08);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all .2s;
+}
+
+.levelup-ability-card:hover {
+    border-color: rgba(184, 115, 51, .3);
+}
+
+.levelup-ability-card.selected {
+    border-color: var(--accent);
+    background: rgba(184, 115, 51, .1);
+}
+
+.ability-name {
+    font-size: .7rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+.ability-val {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-top: .2rem;
+}
+
+.levelup-ability-card.selected .ability-val {
+    color: var(--accent);
+}
+
+.feat-benefit {
+    font-size: .72rem;
+    color: var(--text-secondary);
+    margin-top: .5rem;
+    padding: .4rem .6rem;
+    background: rgba(255, 255, 255, .03);
+    border-radius: 4px;
+    border-left: 2px solid var(--accent);
+}
+
+.levelup-features-list {
+    display: flex;
+    flex-direction: column;
+    gap: .3rem;
+    margin-top: .4rem;
+}
+
+.feature-item {
+    font-size: .78rem;
+    color: var(--text-primary);
+    padding: .3rem .5rem;
+    background: rgba(102, 187, 106, .06);
+    border-radius: 4px;
+    border-left: 2px solid #66bb6a;
+}
+
+/* Spell Step */
+.levelup-spell-info {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: .3rem 1rem;
+    padding: .6rem .8rem;
+    background: rgba(255, 255, 255, .03);
+    border-radius: 8px;
+    font-size: .8rem;
+}
+
+.spell-info-label {
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.spell-info-value {
+    color: var(--text-primary);
+}
+
+.levelup-spell-slots {
+    display: flex;
+    gap: .5rem;
+    flex-wrap: wrap;
+    margin-top: .4rem;
+}
+
+.spell-slot-box {
+    text-align: center;
+    padding: .5rem .75rem;
+    background: rgba(147, 112, 219, .08);
+    border: 1px solid rgba(147, 112, 219, .2);
+    border-radius: 8px;
+    min-width: 55px;
+}
+
+.spell-slot-box.new {
+    border-color: var(--accent);
+    background: rgba(184, 115, 51, .08);
+    animation: pulse-gold 1.5s ease-in-out infinite;
+}
+
+.slot-level {
+    font-size: .65rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+}
+
+.slot-count {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.spell-slot-box.new .slot-count {
+    color: var(--accent);
+    font-size: .75rem;
+}
+
+/* Summary Step */
+.levelup-summary {
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+}
+
+.summary-section {
+    display: flex;
+    align-items: center;
+    padding: .5rem .75rem;
+    background: rgba(255, 255, 255, .03);
+    border-radius: 6px;
+    border-left: 3px solid rgba(184, 115, 51, .3);
+}
+
+.summary-title {
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    min-width: 100px;
+}
+
+.summary-value {
+    font-size: .85rem;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+/* Navigation */
+.levelup-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 1rem;
+    padding-top: .75rem;
+    border-top: 1px solid rgba(255, 255, 255, .06);
+}
+
+.levelup-progress {
+    display: flex;
+    gap: .4rem;
+}
+
+.levelup-step-dot {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .7rem;
+    font-weight: 600;
+    background: rgba(255, 255, 255, .06);
+    color: var(--text-secondary);
+    border: 1px solid rgba(255, 255, 255, .1);
+    transition: all .2s;
+}
+
+.levelup-step-dot.active {
+    background: rgba(184, 115, 51, .2);
+    color: var(--accent);
+    border-color: var(--accent);
+    box-shadow: 0 0 8px rgba(184, 115, 51, .2);
+}
+
+.levelup-step-dot.done {
+    background: rgba(102, 187, 106, .15);
+    color: #66bb6a;
+    border-color: #66bb6a;
+}
+
+.levelup-nav-buttons {
+    display: flex;
+    gap: .5rem;
+}
+
+/* ── Spellcasting Panel ──────────────────────────────────── */
+
+.spell-panel {
+    padding: .5rem;
+}
+
+.spell-level-group {
+    margin-bottom: .75rem;
+}
+
+.spell-level-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .4rem .6rem;
+    background: rgba(147, 112, 219, .08);
+    border-radius: 6px;
+    margin-bottom: .4rem;
+}
+
+.spell-level-label {
+    font-size: .78rem;
+    font-weight: 600;
+    color: #b39ddb;
+}
+
+.spell-slot-tracker {
+    display: flex;
+    gap: .25rem;
+}
+
+.spell-slot-pip {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 2px solid #9370db;
+    background: transparent;
+    cursor: pointer;
+    transition: all .15s;
+}
+
+.spell-slot-pip.filled {
+    background: #9370db;
+}
+
+.spell-slot-pip.used {
+    background: rgba(255, 82, 82, .6);
+    border-color: #ff5252;
+}
+
+.spell-card {
+    display: flex;
+    align-items: center;
+    padding: .35rem .6rem;
+    border-radius: 4px;
+    font-size: .78rem;
+    background: rgba(255, 255, 255, .03);
+    margin-bottom: .2rem;
+    transition: background .15s;
+}
+
+.spell-card:hover {
+    background: rgba(255, 255, 255, .06);
+}
+
+.spell-card.used {
+    opacity: .5;
+    text-decoration: line-through;
+}
+
+.spell-card.domain {
+    border-left: 2px solid #B87333;
+}
+
+.spell-card.metamagic {
+    border-left: 2px solid #9370db;
+}
+
+.spell-name {
+    flex: 1;
+    color: var(--text-primary);
+}
+
+.spell-school {
+    font-size: .65rem;
+    color: var(--text-secondary);
+    margin-left: .5rem;
+}
+
+.spell-actions {
+    display: flex;
+    gap: .25rem;
+}
+
+/* ── Conditions Panel ────────────────────────────────────── */
+
+.conditions-panel {
+    padding: .5rem;
+}
+
+.effect-card {
+    display: flex;
+    align-items: center;
+    padding: .5rem .7rem;
+    background: rgba(255, 255, 255, .03);
+    border-radius: 6px;
+    margin-bottom: .35rem;
+    border-left: 3px solid rgba(255, 255, 255, .1);
+    transition: all .2s;
+}
+
+.effect-card.buff {
+    border-left-color: #66bb6a;
+    background: rgba(102, 187, 106, .04);
+}
+
+.effect-card.debuff,
+.effect-card.condition {
+    border-left-color: #ff5252;
+    background: rgba(255, 82, 82, .04);
+}
+
+.effect-name {
+    flex: 1;
+    font-size: .8rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.effect-duration {
+    font-size: .7rem;
+    color: var(--text-secondary);
+    margin: 0 .5rem;
+}
+
+.effect-mods {
+    font-size: .65rem;
+    color: var(--accent);
+    font-family: monospace;
+}
+
+.effect-remove {
+    cursor: pointer;
+    color: var(--text-secondary);
+    font-size: .8rem;
+    margin-left: .5rem;
+    opacity: .6;
+    transition: opacity .15s;
+}
+
+.effect-remove:hover {
+    opacity: 1;
+    color: #ff5252;
+}
+
+/* ── Encumbrance Bar ─────────────────────────────────────── */
+
+.encumbrance-widget {
+    padding: .5rem .75rem;
+    background: rgba(255, 255, 255, .03);
+    border-radius: 8px;
+    margin-top: .5rem;
+}
+
+.encumbrance-label {
+    font-size: .72rem;
+    color: var(--text-secondary);
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: .3rem;
+}
+
+.encumbrance-bar {
+    height: 8px;
+    background: rgba(255, 255, 255, .06);
+    border-radius: 4px;
+    overflow: hidden;
+    position: relative;
+}
+
+.encumbrance-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width .3s ease, background .3s ease;
+}
+
+.encumbrance-fill.light {
+    background: #66bb6a;
+}
+
+.encumbrance-fill.medium {
+    background: #ff9800;
+}
+
+.encumbrance-fill.heavy {
+    background: #ff5252;
+}
+
+.encumbrance-fill.overloaded {
+    background: #b71c1c;
+}
+
+.encumbrance-tiers {
+    display: flex;
+    justify-content: space-between;
+    font-size: .6rem;
+    color: var(--text-secondary);
+    margin-top: .2rem;
+}
+
+.encumbrance-effects {
+    font-size: .68rem;
+    color: var(--text-secondary);
+    margin-top: .3rem;
+    padding: .3rem .5rem;
+    background: rgba(255, 255, 255, .03);
+    border-radius: 4px;
+}
+
+/* ── Animations ──────────────────────────────────────────── */
+
+@keyframes pulse-gold {
+
+    0%,
+    100% {
+        box-shadow: 0 0 4px rgba(184, 115, 51, .1);
+    }
+
+    50% {
+        box-shadow: 0 0 12px rgba(184, 115, 51, .3);
+    }
+}
+
+/* ── XP Penalty Warning ──────────────────────────────────── */
+
+.levelup-xp-penalty {
+    margin-top: .75rem;
+    padding: .6rem .8rem;
+    background: rgba(255, 152, 0, .08);
+    border: 1px solid rgba(255, 152, 0, .3);
+    border-left: 3px solid #ff9800;
+    border-radius: 6px;
+    font-size: .78rem;
+    color: #ffcc80;
+    animation: fadeSlideIn .3s ease;
+}
+
+/* ── Metamagic Integration ───────────────────────────────── */
+
+.metamagic-btn {
+    background: rgba(147, 112, 219, .12);
+    border: 1px solid rgba(147, 112, 219, .3);
+    color: #b39ddb;
+    font-size: .68rem;
+    padding: .15rem .4rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all .2s;
+    white-space: nowrap;
+}
+
+.metamagic-btn:hover {
+    background: rgba(147, 112, 219, .25);
+    border-color: #9370db;
+    transform: scale(1.05);
+}
+
+.metamagic-tag {
+    font-size: .6rem;
+    padding: .1rem .35rem;
+    border-radius: 3px;
+    background: rgba(147, 112, 219, .15);
+    color: #b39ddb;
+    font-style: italic;
+    margin-left: .3rem;
+    white-space: nowrap;
+}
+
+.metamagic-modal-content {
+    padding: .5rem 0;
+}
+
+.metamagic-combo-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .6rem .8rem;
+    margin-bottom: .4rem;
+    background: rgba(255, 255, 255, .03);
+    border: 1px solid rgba(255, 255, 255, .06);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all .2s;
+}
+
+.metamagic-combo-card:hover {
+    border-color: rgba(147, 112, 219, .4);
+    background: rgba(147, 112, 219, .06);
+    transform: translateX(2px);
+}
+
+.metamagic-combo-card.selected {
+    border-color: #9370db;
+    background: rgba(147, 112, 219, .12);
+    box-shadow: 0 0 10px rgba(147, 112, 219, .15);
+}
+
+.metamagic-combo-feats {
+    font-weight: 600;
+    font-size: .82rem;
+    color: var(--text-primary);
+}
+
+.metamagic-combo-detail {
+    font-size: .7rem;
+    color: var(--text-secondary);
+    margin-top: .15rem;
+}
+
+.metamagic-combo-slot {
+    font-size: .85rem;
+    font-weight: 700;
+    color: #b39ddb;
+    min-width: 50px;
+    text-align: right;
+}
+
+.metamagic-effects-preview {
+    margin-top: .75rem;
+    padding: .6rem;
+    background: rgba(147, 112, 219, .06);
+    border: 1px solid rgba(147, 112, 219, .15);
+    border-radius: 6px;
+    font-size: .75rem;
+    color: var(--text-secondary);
+}
+
+.metamagic-effects-preview strong {
+    color: #b39ddb;
+}
+
+.metamagic-known-section {
+    margin-top: 1rem;
+    padding: .6rem .8rem;
+    background: rgba(147, 112, 219, .04);
+    border: 1px solid rgba(147, 112, 219, .1);
+    border-radius: 8px;
+}
+
+.metamagic-known-title {
+    font-size: .72rem;
+    font-weight: 600;
+    color: #b39ddb;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    margin-bottom: .4rem;
+}
+
+.metamagic-feat-badge {
+    display: inline-block;
+    padding: .2rem .5rem;
+    margin: .15rem;
+    border-radius: 12px;
+    font-size: .7rem;
+    background: rgba(147, 112, 219, .12);
+    border: 1px solid rgba(147, 112, 219, .25);
+    color: var(--text-primary);
+}
+
+.metamagic-feat-badge .meta-slot {
+    font-size: .6rem;
+    color: var(--text-secondary);
+    margin-left: .3rem;
+}
+
+/* ── AI Level Up ─────────────────────────────────────────── */
+
+.ai-levelup-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 3rem 1rem;
+    gap: 1rem;
+}
+
+.ai-levelup-spinner {
+    width: 48px;
+    height: 48px;
+    border: 3px solid rgba(184, 115, 51, .15);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin .8s linear infinite;
+}
+
+.ai-levelup-text {
+    font-size: .85rem;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.ai-levelup-diff {
+    display: flex;
+    flex-direction: column;
+    gap: .4rem;
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.ai-diff-row {
+    display: flex;
+    align-items: center;
+    padding: .45rem .7rem;
+    background: rgba(255, 255, 255, .03);
+    border-radius: 6px;
+    font-size: .8rem;
+}
+
+.ai-diff-label {
+    min-width: 100px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    font-size: .75rem;
+    text-transform: uppercase;
+}
+
+.ai-diff-old {
+    color: var(--text-secondary);
+    text-decoration: line-through;
+    opacity: .6;
+    margin-right: .5rem;
+}
+
+.ai-diff-arrow {
+    color: var(--accent);
+    margin: 0 .4rem;
+    font-weight: 600;
+}
+
+.ai-diff-new {
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.ai-diff-row.changed {
+    border-left: 3px solid var(--accent);
+    background: rgba(184, 115, 51, .04);
+}
+
+.ai-levelup-summary {
+    margin-top: 1rem;
+    padding: .75rem;
+    background: rgba(102, 187, 106, .06);
+    border: 1px solid rgba(102, 187, 106, .2);
+    border-radius: 8px;
+    font-size: .78rem;
+    color: var(--text-primary);
+    white-space: pre-line;
+}
+
+.ai-levelup-summary strong {
+    color: #66bb6a;
+}
+
+.ai-levelup-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: .5rem;
+    margin-top: 1rem;
+    padding-top: .75rem;
+    border-top: 1px solid rgba(255, 255, 255, .06);
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes fadeSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* ── Level History ───────────────────────────────────────── */
+
+.level-history-list {
+    display: flex;
+    flex-direction: column;
+    gap: .3rem;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.level-history-item {
+    display: flex;
+    align-items: center;
+    padding: .35rem .6rem;
+    background: rgba(255, 255, 255, .03);
+    border-radius: 4px;
+    font-size: .75rem;
+    border-left: 2px solid rgba(184, 115, 51, .2);
+}
+
+.level-history-num {
+    min-width: 28px;
+    font-weight: 700;
+    color: var(--accent);
+    font-size: .8rem;
+}
+
+.level-history-class {
+    flex: 1;
+    color: var(--text-primary);
+}
+
+.level-history-detail {
+    color: var(--text-secondary);
+    font-size: .68rem;
+}
+
+/* ── Castable Spell Items ────────────────────────────────── */
+
+.cs-spell-castable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.cs-spell-castable:hover {
+    background: rgba(147, 112, 219, .06);
+}
+
+.cs-spell-castable.cs-spell-used {
+    opacity: .55;
+}
+
+.cs-spell-castable.cs-spell-used:hover {
+    opacity: .8;
+    background: rgba(102, 187, 106, .06);
+}
+
+/* ── Spell Slot Pip Tracker ──────────────────────────────── */
+
+.cs-spell-header {
+    display: grid;
+    grid-template-columns: 32px 1fr 40px;
+    gap: .3rem;
+    padding: .3rem .5rem;
+    font-size: .65rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    border-bottom: 1px solid rgba(255, 255, 255, .06);
+    margin-bottom: .25rem;
+}
+
+.cs-spell-level-row {
+    display: grid;
+    grid-template-columns: 32px 1fr 40px;
+    gap: .3rem;
+    padding: .3rem .5rem;
+    align-items: center;
+    border-radius: 4px;
+    transition: background .15s;
+}
+
+.cs-spell-level-row:hover {
+    background: rgba(255, 255, 255, .03);
+}
+
+.cs-spell-level-row.cs-spell-depleted {
+    background: rgba(255, 82, 82, .04);
+}
+
+.cs-spell-level-row.cs-spell-unavail {
+    opacity: .35;
+}
+
+.cs-spell-lvl {
+    font-weight: 700;
+    color: #b39ddb;
+    font-size: .85rem;
+    text-align: center;
+}
+
+.cs-spell-pips {
+    display: flex;
+    align-items: center;
+    gap: .25rem;
+    flex-wrap: wrap;
+}
+
+.cs-spell-dc {
+    font-size: .75rem;
+    color: var(--text-secondary);
+    text-align: center;
+    font-family: monospace;
+}
+
+.spell-pip-row {
+    display: flex;
+    gap: 3px;
+    flex-wrap: wrap;
+}
+
+.spell-pip {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    display: inline-block;
+    transition: all .2s ease;
+    cursor: default;
+}
+
+.spell-pip-filled {
+    background: #9370db;
+    border: 2px solid #b39ddb;
+    box-shadow: 0 0 4px rgba(147, 112, 219, .3);
+}
+
+.spell-pip-used {
+    background: rgba(255, 82, 82, .25);
+    border: 2px solid rgba(255, 82, 82, .5);
+}
+
+.spell-pip-count {
+    font-size: .65rem;
+    color: var(--text-secondary);
+    font-family: monospace;
+    margin-left: .25rem;
+    white-space: nowrap;
+}
+
+.cs-spell-depleted .spell-pip-count {
+    color: #ff5252;
+}
+
+.spell-pip-none {
+    font-size: .7rem;
+    color: var(--text-secondary);
+    opacity: .5;
+}
+
+/* ── Responsive ──────────────────────────────────────────── */
+
+@media (max-width: 600px) {
+    .levelup-ability-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+
+    .levelup-class-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .levelup-hp-display {
+        flex-wrap: wrap;
+    }
+}

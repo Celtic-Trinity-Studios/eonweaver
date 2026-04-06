@@ -1,0 +1,78 @@
+﻿/*
+ * Eon Weaver — Theme (Alchemist's Study)
+ * Purple & Copper color system — Faldoran design language.
+ *
+ * Design tokens go here. Everything else references these.
+ * Updated 2026-03 to match the new branding palette.
+ */
+
+:root {
+    /* backgrounds - darkest to lightest */
+    --bg-primary: #0D0815;
+    --bg-secondary: #1A0E2E;
+    --bg-tertiary: #2D1B4E;
+    --bg-card: #1A0E2E;      /* same as secondary, may diverge later */
+    --bg-hover: #3D2A63;
+    --bg-input: #0D0815;
+
+    /* text */
+    --text-primary: #F0E6D3;
+    --text-secondary: #D4C5F9;
+    --text-muted: #6B5D7A;
+    --text-heading: #F0E6D3;  /* keeping same as primary for now */
+
+    /* main accent — copper family */
+    --accent: #B87333;
+    --accent-hover: #D4956A;
+    --accent-dim: rgba(184,115,51, .15);
+    --accent-glow: rgba(184,115,51, .3);
+
+    /* status */
+    --success: #7A9E7E;
+    --error: #C75B3A;
+    --warning: #D4A843;
+    --info: #8B7EB8;
+
+    /* borders */
+    --border: #2D1B4E;
+    --border-light: #4E3A78;
+    --border-accent: var(--accent);
+
+    /* sidebar */
+    --sidebar-bg: #0D0815;
+    --sidebar-width: 240px;
+    --sidebar-collapsed: 64px;
+
+    /* elevation */
+    --shadow-sm: 0 1px 3px rgba(0,0,0,.4);
+    --shadow-md: 0 4px 12px rgba(0,0,0,.5);
+    --shadow-lg: 0 8px 24px rgba(0,0,0,.6);
+    --shadow-glow: 0 0 20px var(--accent-glow);
+
+    /* rounding */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 16px;
+    --radius-pill: 50px;
+
+    /* motion */
+    --ease: cubic-bezier(.4, 0, .2, 1);
+    --duration-fast: 150ms;
+    --duration: 250ms;
+    --duration-slow: 400ms;
+
+    /*
+     * Race badge colours — loosely mapped to the metal palette
+     * so they feel cohesive with the rest of the UI.
+     */
+    --race-human: #C9A84C;
+    --race-dwarf: #8A5A2B;
+    --race-elf: #5B8A72;
+    --race-halfling: #D4956A;
+    --race-gnome: #8B7EB8;
+    --race-half-elf: #5B8A72;
+    --race-half-orc: #8A5A2B;
+    --race-tiefling: #C75B3A;
+    --race-orc: #5B8A72;
+    --race-drow: #4E3A78;
+}

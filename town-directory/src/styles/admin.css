@@ -1,0 +1,221 @@
+/* ── Admin Dashboard ─────────────────────────── */
+
+.admin-dashboard {
+    padding: 1.5rem;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.admin-header {
+    margin-bottom: 1.5rem;
+}
+
+.admin-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: var(--gold-primary);
+    margin: 0 0 .25rem;
+}
+
+.admin-subtitle {
+    color: var(--text-muted);
+    font-size: .9rem;
+    margin: 0;
+}
+
+/* Tabs */
+.admin-tabs {
+    display: flex;
+    gap: .5rem;
+    margin-bottom: 1.5rem;
+    border-bottom: 1px solid var(--border-subtle);
+    padding-bottom: .5rem;
+}
+
+.admin-tab {
+    background: transparent;
+    border: 1px solid transparent;
+    color: var(--text-muted);
+    padding: .5rem 1rem;
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    font-size: .85rem;
+    transition: all .2s;
+}
+
+.admin-tab:hover {
+    color: var(--text-primary);
+    background: rgba(255,255,255,.03);
+}
+
+.admin-tab.active {
+    color: var(--gold-primary);
+    border-color: var(--border-subtle);
+    border-bottom-color: var(--bg-primary);
+    background: var(--bg-secondary);
+}
+
+/* Stats grid */
+.admin-stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+}
+
+.admin-stat-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    padding: 1.25rem;
+    text-align: center;
+    transition: border-color .2s;
+}
+
+.admin-stat-card:hover {
+    border-color: var(--gold-primary);
+}
+
+.stat-icon {
+    font-size: 1.75rem;
+    margin-bottom: .5rem;
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: .25rem;
+}
+
+.stat-label {
+    font-size: .8rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .5px;
+}
+
+/* Tables */
+.admin-table-wrap {
+    overflow-x: auto;
+}
+
+.admin-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: .85rem;
+}
+
+.admin-table th {
+    text-align: left;
+    padding: .6rem .75rem;
+    border-bottom: 2px solid var(--border-subtle);
+    color: var(--gold-primary);
+    font-weight: 600;
+    font-size: .75rem;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    white-space: nowrap;
+}
+
+.admin-table td {
+    padding: .55rem .75rem;
+    border-bottom: 1px solid rgba(255,255,255,.05);
+    color: var(--text-primary);
+}
+
+.admin-table tr:hover td {
+    background: rgba(255,255,255,.02);
+}
+
+.admin-table.compact th,
+.admin-table.compact td {
+    padding: .4rem .6rem;
+    font-size: .8rem;
+}
+
+.member-name {
+    font-weight: 600;
+    color: var(--gold-primary);
+}
+
+.member-email {
+    color: var(--text-muted);
+    font-size: .8rem;
+}
+
+.tier-badge {
+    display: inline-block;
+    padding: .15rem .5rem;
+    border-radius: 4px;
+    font-size: .7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+}
+
+.tier-free {
+    background: rgba(100,100,100,.3);
+    color: #aaa;
+}
+
+.tier-subscriber {
+    background: rgba(245,197,24,.15);
+    color: var(--gold-primary);
+}
+
+/* Usage blocks */
+.usage-month-block {
+    margin-bottom: 1.5rem;
+}
+
+.usage-month-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: .5rem;
+}
+
+.usage-month-header h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: var(--text-primary);
+}
+
+.usage-month-total {
+    font-size: .8rem;
+    color: var(--text-muted);
+}
+
+/* Loading / empty states */
+.admin-loading {
+    text-align: center;
+    padding: 3rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+.admin-empty {
+    text-align: center;
+    padding: 3rem;
+    color: var(--text-muted);
+}
+
+.admin-error {
+    text-align: center;
+    padding: 2rem;
+    color: #e74c3c;
+    background: rgba(231,76,60,.1);
+    border-radius: 8px;
+}
+
+/* Admin sidebar overrides */
+.sidebar.admin-mode .sidebar-brand {
+    border-bottom-color: rgba(231, 76, 60, .3);
+}
+
+.sidebar.admin-mode .sidebar-title::after {
+    content: ' Admin';
+    font-size: .6em;
+    color: #e74c3c;
+    font-weight: 400;
+}

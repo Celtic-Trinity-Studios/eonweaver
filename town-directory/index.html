@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description"
+        content="Eon Weaver — AI-powered D&D campaign manager. Track towns, characters, and simulate your world.">
+    <title>Eon Weaver</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cinzel:wght@400;600;700;900&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="styles.css?v=20260224U0710">
+</head>
+
+<body>
+
+    <!-- ═══════════════════════════════════════════════════════
+         AUTH SCREEN (shown when not logged in)
+         ═══════════════════════════════════════════════════════ -->
+    <div id="auth-screen" class="auth-screen">
+        <div class="auth-card">
+            <h1 class="auth-title">Eon Weaver</h1>
+            <p class="auth-subtitle">AI-powered D&D campaign manager</p>
+
+            <div id="auth-error" class="auth-error" style="display:none;"></div>
+
+            <!-- Login Form -->
+            <form id="login-form" class="auth-form">
+                <div class="form-group">
+                    <label for="login-username">Username or Email</label>
+                    <input type="text" id="login-username" required autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="login-password">Password</label>
+                    <input type="password" id="login-password" required autocomplete="current-password">
+                </div>
+                <button type="submit" class="auth-btn">Sign In</button>
+                <p class="auth-switch">No account? <a href="#" id="show-register">Create one</a></p>
+            </form>
+
+            <!-- Register Form -->
+            <form id="register-form" class="auth-form" style="display:none;">
+                <div class="form-group">
+                    <label for="reg-username">Username</label>
+                    <input type="text" id="reg-username" required minlength="3" maxlength="50" autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="reg-email">Email</label>
+                    <input type="email" id="reg-email" required autocomplete="email">
+                </div>
+                <div class="form-group">
+                    <label for="reg-password">Password</label>
+                    <input type="password" id="reg-password" required minlength="6" autocomplete="new-password">
+                </div>
+                <button type="submit" class="auth-btn">Create Account</button>
+                <p class="auth-switch">Already have an account? <a href="#" id="show-login">Sign in</a></p>
+            </form>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         MAIN APP (shown when logged in)
+         ═══════════════════════════════════════════════════════ -->
+    <div id="main-app" style="display: none;">
+        <div class="top-bar">
+            <div class="top-bar-brand">
+                <h1>Eon Weaver</h1>
+            </div>
+            <div class="top-bar-controls">
+                <select id="town-select" class="town-select"></select>
+                <div class="search-box">
+                    <span class="search-icon">🔍</span>
+                    <input id="search-input" type="text" placeholder="Search..." spellcheck="false">
+                </div>
+                <div id="race-filters" class="filter-group"></div>
+                <div id="status-filters" class="filter-group"></div>
+            </div>
+            <button id="town-history-btn" class="history-toggle-btn" title="Town History">📜 History</button>
+            <button id="simulate-btn" class="simulate-btn" title="AI Town Simulation">⏩ Simulate</button>
+            <button id="simulate-world-btn" class="simulate-btn simulate-world-btn" title="Simulate all towns">🌍
+                World</button>
+            <button id="import-btn" class="import-btn" title="Import Character">➕ Import</button>
+            <button id="town-settings-btn" class="save-btn" title="Town Settings">⚙️ Town</button>
+            <button id="new-town-btn" class="save-btn" title="New Town">🏰 New Town</button>
+            <button id="delete-town-btn" class="delete-town-btn" title="Delete Town">🗑️</button>
+            <button id="calendar-btn" class="calendar-btn" title="In-game calendar">📅 <span
+                    id="calendar-display">Loading...</span></button>
+            <span id="user-info" class="user-info"></span>
+            <button id="bug-report-btn" class="settings-btn" title="Report a Bug">🐛</button>
+            <button id="settings-btn" class="settings-btn" title="Settings">⚙️</button>
+            <button id="logout-btn" class="logout-btn" title="Sign Out">🚪</button>
+        </div>
+
+        <!-- Split layout -->
+        <div class="split-layout">
+            <aside class="list-panel">
+                <div class="list-header" id="list-header"></div>
+                <div class="list-body" id="list-body"></div>
+                <div class="list-footer" id="stats-bar"></div>
+                <div class="char-mini-panel" id="char-mini-panel">
+                    <div class="mini-empty">Select a character</div>
+                </div>
+            </aside>
+            <section class="detail-panel-inline" id="detail-area"></section>
+        </div>
+
+
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
+         MODALS
+         ═══════════════════════════════════════════════════════ -->
+
+    <!-- Import Modal -->
+    <div id="import-modal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <h2 class="modal-title">Import Character from Statblock</h2>
+            <button class="modal-close" data-dismiss="import">&times;</button>
+            <label class="modal-label">Paste DM Genie Statblock:</label>
+            <textarea id="import-textarea" class="modal-textarea" rows="8"
+                placeholder="e.g. Rothgar Vale; Human Pal1; CR 1; hp 10; Init +1; ..."></textarea>
+            <div id="import-error" class="modal-error" style="display:none;"></div>
+            <div id="import-preview" class="import-preview" style="display:none;"></div>
+            <div class="modal-actions">
+                <button id="import-parse-btn" class="btn-secondary">Preview</button>
+                <button id="import-confirm-btn" class="btn-primary" disabled>Import</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Edit Modal -->
+    <div id="edit-modal" class="modal" style="display:none;">
+        <div class="modal-content modal-wide">
+            <h2 class="modal-title">Edit Character</h2>
+            <button class="modal-close" data-dismiss="edit">&times;</button>
+            <div id="edit-form-body"></div>
+            <div class="modal-actions">
+                <button id="edit-save-btn" class="btn-primary">Save Changes</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Town Modal -->
+    <div id="new-town-modal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <h2 class="modal-title">Create New Town</h2>
+            <button class="modal-close" data-dismiss="new-town">&times;</button>
+            <div class="form-group">
+                <label for="new-town-name">Town Name</label>
+                <input type="text" id="new-town-name" required placeholder="e.g. Firsthold">
+            </div>
+            <div class="form-group">
+                <label for="new-town-subtitle">Subtitle (optional)</label>
+                <input type="text" id="new-town-subtitle" placeholder="e.g. The Shattered Coast — Kingdom of Aldoria">
+            </div>
+            <div class="modal-actions">
+                <button id="create-town-btn" class="btn-primary">Create Town</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Town Settings Modal -->
+    <div id="town-settings-modal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <h2 class="modal-title">Town Settings</h2>
+            <button class="modal-close" data-dismiss="town-settings">&times;</button>
+            <div class="form-group">
+                <label>Target Demographics (Race %)</label>
+                <div id="demographics-grid"
+                    style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px;">
+                    <label
+                        style="display:flex; align-items:center; justify-content:space-between; font-size: 0.9em;">Human
+                        <input type="number" data-race="Human" min="0" max="100" style="width:60px"></label>
+                    <label
+                        style="display:flex; align-items:center; justify-content:space-between; font-size: 0.9em;">Elf
+                        <input type="number" data-race="Elf" min="0" max="100" style="width:60px"></label>
+                    <label
+                        style="display:flex; align-items:center; justify-content:space-between; font-size: 0.9em;">Dwarf
+                        <input type="number" data-race="Dwarf" min="0" max="100" style="width:60px"></label>
+                    <label
+                        style="display:flex; align-items:center; justify-content:space-between; font-size: 0.9em;">Halfling
+                        <input type="number" data-race="Halfling" min="0" max="100" style="width:60px"></label>
+                    <label
+                        style="display:flex; align-items:center; justify-content:space-between; font-size: 0.9em;">Gnome
+                        <input type="number" data-race="Gnome" min="0" max="100" style="width:60px"></label>
+                    <label
+                        style="display:flex; align-items:center; justify-content:space-between; font-size: 0.9em;">Half-Elf
+                        <input type="number" data-race="Half-Elf" min="0" max="100" style="width:60px"></label>
+                    <label
+                        style="display:flex; align-items:center; justify-content:space-between; font-size: 0.9em;">Half-Orc
+                        <input type="number" data-race="Half-Orc" min="0" max="100" style="width:60px"></label>
+                    <label
+                        style="display:flex; align-items:center; justify-content:space-between; font-size: 0.9em;">Tiefling
+                        <input type="number" data-race="Tiefling" min="0" max="100" style="width:60px"></label>
+                    <label
+                        style="display:flex; align-items:center; justify-content:space-between; font-size: 0.9em;">Orc
+                        <input type="number" data-race="Orc" min="0" max="100" style="width:60px"></label>
+                    <label
+                        style="display:flex; align-items:center; justify-content:space-between; font-size: 0.9em;">Goblin
+                        <input type="number" data-race="Goblin" min="0" max="100" style="width:60px"></label>
+                    <label
+                        style="display:flex; align-items:center; justify-content:space-between; font-size: 0.9em;">Drow
+                        <input type="number" data-race="Drow" min="0" max="100" style="width:60px"></label>
+                    <label
+                        style="display:flex; align-items:center; justify-content:space-between; font-size: 0.9em;">Other
+                        <input type="number" data-race="Other" min="0" max="100" style="width:60px"></label>
+                </div>
+                <small style="color:#888; display:block; margin-top:4px;">
+                    Set your target percentage box for each race. Blank boxes are ignored. The AI will push new arrivals
+                    towards this balance.
+                </small>
+            </div>
+            <div class="modal-actions">
+                <button id="town-settings-save-btn" class="btn-primary">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Simulation Modal -->
+    <div id="sim-modal" class="modal" style="display:none;">
+        <div class="modal-content modal-wide">
+            <h2 class="modal-title">⚙️ AI Town Simulation</h2>
+            <button class="modal-close" data-dismiss="sim">&times;</button>
+
+            <!-- Config phase -->
+            <div id="sim-config">
+                <div class="sim-row">
+                    <div class="form-group">
+                        <label for="sim-months">Months to Simulate</label>
+                        <div class="sim-months-row">
+                            <input type="range" id="sim-months" min="0" max="24" value="3">
+                            <span id="sim-months-val" class="sim-months-val">3</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Arrivals count picker — only shown in 0-month mode -->
+                <div id="sim-arrivals-row" class="sim-row" style="display:none;">
+                    <div class="form-group">
+                        <label for="sim-arrivals-count">👥 How many people arrive? <small>(0-month mode)</small></label>
+                        <div class="sim-months-row">
+                            <input type="number" id="sim-arrivals-count" min="1" max="20" value="3"
+                                style="width:80px;padding:6px 10px;background:var(--input-bg,#1a1a2e);color:var(--text);border:1px solid var(--border);border-radius:6px;font-size:1em;">
+                            <small style="margin-left:8px;color:var(--muted)">Each person gets their own AI
+                                prompt</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="sim-rules">Campaign Rules <small>(saved automatically)</small></label>
+                    <textarea id="sim-rules" class="modal-textarea" rows="8"
+                        placeholder="Paste your campaign rules here. These will be saved and reused for future simulations."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="sim-instructions">Additional Instructions <small>(one-time)</small></label>
+                    <textarea id="sim-instructions" class="modal-textarea" rows="3"
+                        placeholder="e.g. A dragon attacks in month 2, keep mortality low, focus on relationships..."></textarea>
+                </div>
+
+                <div class="modal-actions">
+                    <button id="sim-run-btn" class="btn-primary">🎲 Run Simulation</button>
+                </div>
+            </div>
+
+            <!-- Loading phase -->
+            <div id="sim-loading" style="display:none;">
+                <div class="sim-loading-box">
+                    <div class="sim-spinner"></div>
+                    <p>The gods are weaving fate...</p>
+                    <small>Processing month by month, category by category...</small>
+                </div>
+                <textarea id="sim-log" readonly
+                    style="width:100%;height:120px;margin-top:12px;background:#0a0a0a;color:#7fff7f;font-family:monospace;font-size:0.78em;border:1px solid #333;border-radius:6px;padding:8px;resize:none;"
+                    placeholder="Log output will appear here..."></textarea>
+            </div>
+
+            <!-- Preview phase -->
+            <div id="sim-preview" style="display:none;">
+                <div id="sim-summary" class="sim-summary"></div>
+                <div id="sim-changes"></div>
+                <div class="modal-actions">
+                    <button id="sim-back-btn" class="btn-secondary">← Back</button>
+                    <button id="sim-apply-btn" class="btn-primary">✅ Apply Changes</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Simulate World Modal -->
+    <div id="sim-world-modal" class="modal" style="display:none;">
+        <div class="modal-content modal-wide">
+            <h2 class="modal-title">🌍 AI World Simulation — All Towns</h2>
+            <button class="modal-close" data-dismiss="sim-world">&times;</button>
+
+            <!-- Config phase -->
+            <div id="sim-world-config">
+                <div class="sim-row">
+                    <div class="form-group">
+                        <label for="sim-world-months">Months to Simulate</label>
+                        <div class="sim-months-row">
+                            <input type="range" id="sim-world-months" min="1" max="24" value="1">
+                            <span id="sim-world-months-val" class="sim-months-val">1</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="sim-world-rules">Campaign Rules <small>(saved automatically)</small></label>
+                    <textarea id="sim-world-rules" class="modal-textarea" rows="8"
+                        placeholder="Paste your campaign rules here. These will be saved and reused for future simulations."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label for="sim-world-instructions">Additional Instructions <small>(one-time, applies to all
+                            towns)</small></label>
+                    <textarea id="sim-world-instructions" class="modal-textarea" rows="3"
+                        placeholder="e.g. A plague spreads in month 2, keep mortality low, focus on trade routes..."></textarea>
+                </div>
+
+                <div class="modal-actions">
+                    <button id="sim-world-run-btn" class="btn-primary">🌍 Run World Simulation</button>
+                    <button id="sim-world-test-btn" class="btn-secondary" style="margin-left:8px;font-size:0.85em;">🔌
+                        Test LLM Connection</button>
+                </div>
+            </div>
+
+            <!-- Loading phase -->
+            <div id="sim-world-loading" style="display:none;">
+                <div class="sim-loading-box">
+                    <div class="sim-spinner"></div>
+                    <p>The gods are weaving fate across all towns...</p>
+                    <small>This may take 30-120 seconds depending on AI source</small>
+                </div>
+                <textarea id="sim-world-log" readonly
+                    style="width:100%;height:120px;margin-top:12px;background:#0a0a0a;color:#7fff7f;font-family:monospace;font-size:0.78em;border:1px solid #333;border-radius:6px;padding:8px;resize:none;"
+                    placeholder="Log output will appear here..."></textarea>
+            </div>
+        </div>
+    </div>
+
+
+    <div id="settings-modal" class="modal" style="display:none;">
+        <div class="modal-content" style="max-height:85vh;overflow-y:auto;">
+            <h2 class="modal-title">⚙️ Settings</h2>
+            <button class="modal-close" data-dismiss="settings">&times;</button>
+
+            <h3 class="settings-section">🎲 Game System</h3>
+
+            <div class="form-group">
+                <label for="settings-dnd-edition">D&D Edition</label>
+                <select id="settings-dnd-edition" class="town-select">
+                    <option value="OD&D">OD&D (Original)</option>
+                    <option value="1e">1st Edition (AD&D)</option>
+                    <option value="2e">2nd Edition (AD&D 2e)</option>
+                    <option value="3e">3rd Edition</option>
+                    <option value="3.5e" selected>3.5 Edition</option>
+                    <option value="PF1e">Pathfinder 1e</option>
+                    <option value="4e">4th Edition</option>
+                    <option value="5e">5th Edition</option>
+                    <option value="PF2e">Pathfinder 2e</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="settings-xp-speed">XP Gain Speed</label>
+                <select id="settings-xp-speed" class="town-select">
+                    <option value="very slow">Very Slow (max ~25 XP/month)</option>
+                    <option value="slow">Slow (max ~50 XP/month)</option>
+                    <option value="normal" selected>Normal (max ~100 XP/month)</option>
+                    <option value="fast">Fast (max ~200 XP/month)</option>
+                    <option value="very fast">Very Fast (max ~500 XP/month)</option>
+                </select>
+            </div>
+
+            <h3 class="settings-section">🌍 World Simulation</h3>
+
+            <div class="form-group">
+                <label for="settings-relationship-speed">Relationship Formation</label>
+                <select id="settings-relationship-speed" class="town-select">
+                    <option value="very slow">Very Slow (rarely form)</option>
+                    <option value="slow">Slow</option>
+                    <option value="normal" selected>Normal</option>
+                    <option value="fast">Fast (quick bonds)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="settings-birth-rate">Birth Rate</label>
+                <select id="settings-birth-rate" class="town-select">
+                    <option value="rare">Rare (almost never)</option>
+                    <option value="low">Low</option>
+                    <option value="normal" selected>Normal</option>
+                    <option value="high">High (baby boom)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="settings-death-threshold">Population Death Threshold</label>
+                <small class="settings-hint">Death rate increases once population exceeds this — overpopulation draws
+                    predators and plague</small>
+                <select id="settings-death-threshold" class="town-select">
+                    <option value="25">25 residents</option>
+                    <option value="50" selected>50 residents</option>
+                    <option value="75">75 residents</option>
+                    <option value="100">100 residents</option>
+                    <option value="150">150 residents</option>
+                    <option value="unlimited">Unlimited (no cap)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="settings-child-growth">Child Growth Speed</label>
+                <small class="settings-hint">How fast children mature — ambient magic can accelerate growth</small>
+                <select id="settings-child-growth" class="town-select">
+                    <option value="realistic" selected>Realistic (18 years)</option>
+                    <option value="accelerated">Accelerated (rapid magical growth)</option>
+                    <option value="instant">Instant (born as young adults)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label for="settings-conflict-frequency">Conflict &amp; Events</label>
+                <select id="settings-conflict-frequency" class="town-select">
+                    <option value="peaceful">Peaceful (very few threats)</option>
+                    <option value="occasional" selected>Occasional</option>
+                    <option value="frequent">Frequent (dangerous world)</option>
+                    <option value="brutal">Brutal (constant danger)</option>
+                </select>
+            </div>
+
+            <h3 class="settings-section">🔑 API Configuration</h3>
+
+            <div class="form-group">
+                <label for="settings-gemini-key">OpenRouter API Key</label>
+                <small class="settings-hint">Get a key at <a href="https://openrouter.ai/settings/keys" target="_blank"
+                        style="color:var(--accent-gold)">openrouter.ai/settings/keys</a></small>
+                <input type="text" id="settings-gemini-key" placeholder="sk-or-..." autocomplete="off">
+            </div>
+
+            <div class="modal-actions">
+                <button id="settings-save-btn" class="btn-primary">💾 Save Settings</button>
+            </div>
+            <p id="settings-status" class="settings-status"></p>
+        </div>
+    </div>
+
+    <!-- Bug Report Modal -->
+    <div id="bug-report-modal" class="modal" style="display:none;">
+        <div class="modal-content">
+            <h2 class="modal-title">🐛 Report a Bug</h2>
+            <button class="modal-close" data-dismiss="bug-report">&times;</button>
+            <div class="form-group">
+                <label for="bug-title">Title <span style="color:#e74c3c">*</span></label>
+                <input type="text" id="bug-title" required maxlength="200" placeholder="Brief summary of the issue"
+                    style="width:100%;padding:6px 10px;background:var(--input-bg,#1a1a2e);color:var(--text);border:1px solid var(--border);border-radius:6px;">
+            </div>
+            <div class="form-group">
+                <label>Severity</label>
+                <div id="bug-severity-picker" style="display:flex;gap:6px;flex-wrap:wrap;">
+                    <button type="button" class="bug-sev-btn" data-severity="low"
+                        style="padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:var(--card-bg,#1a1a2e);color:var(--text);font-size:0.8em;cursor:pointer;">🔵
+                        Low</button>
+                    <button type="button" class="bug-sev-btn active" data-severity="medium"
+                        style="padding:4px 12px;border-radius:4px;border:1px solid #c8a415;background:rgba(234,179,8,0.12);color:var(--text);font-size:0.8em;cursor:pointer;font-weight:600;">🟡
+                        Medium</button>
+                    <button type="button" class="bug-sev-btn" data-severity="high"
+                        style="padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:var(--card-bg,#1a1a2e);color:var(--text);font-size:0.8em;cursor:pointer;">🟠
+                        High</button>
+                    <button type="button" class="bug-sev-btn" data-severity="critical"
+                        style="padding:4px 12px;border-radius:4px;border:1px solid var(--border);background:var(--card-bg,#1a1a2e);color:var(--text);font-size:0.8em;cursor:pointer;">🔴
+                        Critical</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label for="bug-description">What happened?</label>
+                <textarea id="bug-description" class="modal-textarea" rows="3"
+                    placeholder="Describe what went wrong..."></textarea>
+            </div>
+            <div class="form-group">
+                <label for="bug-steps">Steps to reproduce <small style="color:#888">(optional)</small></label>
+                <textarea id="bug-steps" class="modal-textarea" rows="3"
+                    placeholder="1. Go to...&#10;2. Click on...&#10;3. See error..."></textarea>
+            </div>
+            <div class="form-group">
+                <label for="bug-page">Page/Feature <small style="color:#888">(optional)</small></label>
+                <input type="text" id="bug-page" placeholder="e.g. Town Roster, Simulation, Character Sheet"
+                    style="width:100%;padding:6px 10px;background:var(--input-bg,#1a1a2e);color:var(--text);border:1px solid var(--border);border-radius:6px;">
+            </div>
+            <div class="modal-actions">
+                <button id="bug-submit-btn" class="btn-primary">📨 Send Report</button>
+            </div>
+            <p style="font-size:0.75em;color:#888;text-align:center;margin-top:8px;font-style:italic;">
+                Reports are sent directly to our Discord server. Thank you for helping improve Eon Weaver!
+            </p>
+        </div>
+    </div>
+
+    <script src="data.js?v=20260225Z1245"></script>
+    <script src="app.js?v=20260225Z1245"></script>
+</body>
+
+</html>

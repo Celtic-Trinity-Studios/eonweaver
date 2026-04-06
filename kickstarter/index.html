@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eon Weaver — AI-Powered D&D Town Simulator | Kickstarter</title>
+    <meta name="description"
+        content="Eon Weaver is an AI-powered living world simulator for D&D 3.5 campaigns. Generate populations, simulate months of activity, track relationships, and watch your fantasy town evolve.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700;900&family=Inter:wght@300;400;500;600;700&family=Crimson+Text:ital,wght@0,400;0,600;0,700;1,400&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- NAVIGATION -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <nav id="main-nav">
+        <div class="nav-inner">
+            <a href="#hero" class="nav-logo">
+                <span class="logo-icon">📜</span>
+                <span class="logo-text">Eon Weaver</span>
+            </a>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#lore">The World</a>
+                <a href="#rewards">Rewards</a>
+                <a href="#roadmap">Roadmap</a>
+                <a href="#faq">FAQ</a>
+            </div>
+            <a href="#pledge" class="nav-cta">Back This Project</a>
+        </div>
+    </nav>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- HERO SECTION -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <section id="hero">
+        <div class="hero-bg">
+            <img src="assets/app_dashboard.png" alt="Eon Weaver Campaign Dashboard" id="hero-bg-img">
+            <div class="hero-overlay"></div>
+        </div>
+        <div class="hero-content">
+            <div class="hero-badge">⚔️ D&D 3.5 Edition</div>
+            <h1 class="hero-title">
+                <span class="title-line-1">Eon</span><span class="title-line-2">Weaver</span>
+            </h1>
+            <p class="hero-subtitle">Run downtime in 5 minutes. Make your world react between sessions.</p>
+            <p class="hero-desc">A <strong>living world engine</strong> for D&D 3.5 campaigns. Skip 2 weeks of
+                in-game time and get a reviewed change-set: weather shifts, faction moves, NPC activity, rumors,
+                and adventure hooks — all under your control. No AI art. No AI storytelling.
+                Just <strong>systems that save you prep.</strong></p>
+            <div class="hero-stats">
+                <div class="hero-stat">
+                    <span class="stat-number" data-target="5307">$0</span>
+                    <span class="stat-label">Pledged of $6,200 goal</span>
+                </div>
+                <div class="hero-stat">
+                    <span class="stat-number" data-target="72">0</span>
+                    <span class="stat-label">Backers</span>
+                </div>
+                <div class="hero-stat">
+                    <span class="stat-number">28</span>
+                    <span class="stat-label">Days to go</span>
+                </div>
+            </div>
+            <div class="hero-actions">
+                <a href="#pledge" class="btn btn-primary btn-glow" id="hero-pledge-btn">
+                    <span>🗡️</span> Back This Project
+                </a>
+                <a href="#features" class="btn btn-ghost">
+                    <span>👁️</span> See Features
+                </a>
+            </div>
+            <div class="hero-progress">
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 85.6%"></div>
+                </div>
+                <span class="progress-label">85.6% funded</span>
+            </div>
+        </div>
+        <div class="hero-scroll-indicator">
+            <span>Scroll to Explore</span>
+            <div class="scroll-arrow"></div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- VIDEO / PITCH SECTION -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <section id="pitch" class="section">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">The Vision</span>
+                <h2>What if your <em>world played itself?</em></h2>
+                <p class="section-desc">No more scrambling for NPC names mid-session. No more forgetting who the
+                    blacksmith married. Eon Weaver advances your world between sessions and gives you
+                    a <strong>reviewed change-set</strong> — not random lore. You approve every change.</p>
+            </div>
+            <div class="pitch-grid">
+                <div class="pitch-card pitch-card-main">
+                    <img src="assets/app_roster.png" alt="Eon Weaver Town Roster and Character Sheet"
+                        class="pitch-img">
+                    <div class="pitch-card-glow"></div>
+                </div>
+                <div class="pitch-sidebar">
+                    <div class="pitch-point">
+                        <div class="pitch-icon">⏩</div>
+                        <div>
+                            <h3>Advance Time → Get a Reviewed Change-Set</h3>
+                            <p>Skip 10 days of downtime. Get a list: weather summary, market shifts, faction moves,
+                                rumors, and 2–3 adventure hooks. Accept, reject, or modify every change.</p>
+                        </div>
+                    </div>
+                    <div class="pitch-point">
+                        <div class="pitch-icon">🏰</div>
+                        <div>
+                            <h3>Keep NPCs & Factions Consistent Automatically</h3>
+                            <p>Party ignores the thieves' guild for 3 weeks? Their influence grows, guards tighten,
+                                a rival faction reacts. All tracked, all logged, all reversible.</p>
+                        </div>
+                    </div>
+                    <div class="pitch-point">
+                        <div class="pitch-icon">📊</div>
+                        <div>
+                            <h3>D&D 3.5 Native — Not Another Wiki</h3>
+                            <p>Most worldbuilding tools only help you <em>organize</em>. Eon Weaver also
+                                <strong>simulates</strong>. Full stat blocks, SRD integration, and rules-compliant
+                                generation. Built for an underserved edition with a passionate community.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <!-- ── AI Trust Statement ──────────────────────── -->
+            <div class="ai-trust-block">
+                <div class="ai-trust-col">
+                    <h3>✅ What the AI Does</h3>
+                    <ul>
+                        <li>Weather generation by region & season</li>
+                        <li>Downtime events and complications</li>
+                        <li>Faction & settlement state changes during time skips</li>
+                        <li>Rumors and hooks derived from world changes</li>
+                        <li>NPC population generation with full 3.5e stat blocks</li>
+                        <li>Relationship and family tree simulation</li>
+                    </ul>
+                </div>
+                <div class="ai-trust-col">
+                    <h3>🚫 What It Does NOT Do</h3>
+                    <ul>
+                        <li>No AI-generated art or graphics — ever</li>
+                        <li>No AI-generated maps</li>
+                        <li>No replacing the DM or writing full adventures</li>
+                        <li>No hidden changes — you review everything first</li>
+                        <li>No rewriting established facts without DM approval</li>
+                        <li>No setting-shattering events unless you enable them</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- FEATURES SECTION -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <section id="features" class="section section-dark">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">Core Features</span>
+                <h2>Everything a DM needs, <em>and more</em></h2>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card" data-delay="0">
+                    <div class="feature-icon-wrap"><span class="feature-icon">🎲</span></div>
+                    <h3>AI Population Generator</h3>
+                    <p>Generate entire town populations with unique names, races, classes, stats, and backstories. The
+                        AI cross-references existing rosters to guarantee no duplicates.</p>
+                    <div class="feature-tag">Core</div>
+                </div>
+                <div class="feature-card" data-delay="100">
+                    <div class="feature-icon-wrap"><span class="feature-icon">⏩</span></div>
+                    <h3>Time Simulation</h3>
+                    <p>Simulate weeks, months, or years of in-game time. Watch relationships form, buildings rise,
+                        factions emerge, and threats materialize — all while you're away from the table.</p>
+                    <div class="feature-tag">Core</div>
+                </div>
+                <div class="feature-card" data-delay="200">
+                    <div class="feature-icon-wrap"><span class="feature-icon">💍</span></div>
+                    <h3>Relationships & Family Trees</h3>
+                    <p>NPCs forge romantic relationships, marry, and have children over time. Track lineages and see how
+                        families shape town politics across generations.</p>
+                    <div class="feature-tag">Core</div>
+                </div>
+                <div class="feature-card" data-delay="300">
+                    <div class="feature-icon-wrap"><span class="feature-icon">📖</span></div>
+                    <h3>SRD Browser & Magic Server</h3>
+                    <p>An integrated D&D 3.5 System Reference Document browser with full spells, feats, skills, classes,
+                        and items — all searchable and cross-referenced.</p>
+                    <div class="feature-tag">Included</div>
+                </div>
+                <div class="feature-card" data-delay="400">
+                    <div class="feature-icon-wrap"><span class="feature-icon">🧬</span></div>
+                    <h3>Dual-Tier AI Routing</h3>
+                    <p>Smart AI routing sends simple tasks (stat generation) to fast models and complex narrative tasks
+                        (story events, dialogue) to powerful creative models — maximizing speed and quality.</p>
+                    <div class="feature-tag">Smart</div>
+                </div>
+                <div class="feature-card" data-delay="500">
+                    <div class="feature-icon-wrap"><span class="feature-icon">🗓️</span></div>
+                    <h3>Custom Calendar System</h3>
+                    <p>Define your own in-game calendar with custom month names, day counts, eras, and epoch names. The
+                        simulation respects and advances your timeline perfectly.</p>
+                    <div class="feature-tag">Core</div>
+                </div>
+                <div class="feature-card" data-delay="600">
+                    <div class="feature-icon-wrap"><span class="feature-icon">📝</span></div>
+                    <h3>Campaign Tracking</h3>
+                    <p>Keep continuous records of your campaign. Track overall world progression, historical events, and
+                        lore developments as the simulation generates them.</p>
+                    <div class="feature-tag">Core</div>
+                </div>
+                <div class="feature-card" data-delay="700">
+                    <div class="feature-icon-wrap"><span class="feature-icon">⚙️</span></div>
+                    <h3>Campaign Rules Engine</h3>
+                    <p>Configure XP scaling, death thresholds, relationship speeds, conflict frequency, and demographic
+                        targets. These rules are injected directly into the AI's decision-making.</p>
+                    <div class="feature-tag">Advanced</div>
+                </div>
+                <div class="feature-card" data-delay="800">
+                    <div class="feature-icon-wrap"><span class="feature-icon">🏗️</span></div>
+                    <h3>Buildings & Infrastructure</h3>
+                    <p>Manage constructed buildings, assigning NPCs to rooms and structures. Track construction status and watch your village grow into a kingdom.</p>
+                    <div class="feature-tag">Core</div>
+                </div>
+                <div class="feature-card" data-delay="900">
+                    <div class="feature-icon-wrap"><span class="feature-icon">📊</span></div>
+                    <h3>Town Statistics Dashboard</h3>
+                    <p>Visualize town demographics with auto-updating distributions of races, classes, age groups, and roles. Keep a clear overview of your world's makeup.</p>
+                    <div class="feature-tag">Included</div>
+                </div>
+                <div class="feature-card" data-delay="1000">
+                    <div class="feature-icon-wrap"><span class="feature-icon">📐</span></div>
+                    <h3>Homebrew Strategy Parameters</h3>
+                    <p>Customize setting constants with over 28 variables: magic level, political layout, religious dominance, planar shifts and crafting limits to perfectly model your canon.</p>
+                    <div class="feature-tag">Advanced</div>
+                </div>
+                <div class="feature-card" data-delay="1100">
+                    <div class="feature-icon-wrap"><span class="feature-icon">✨</span></div>
+                    <h3>Metamagic Automation Engine</h3>
+                    <p>Automatically calculates slot adjustment, damage multipliers, and action-economy constraints for applying metamagics like Empower and Heighten to prepared spells.</p>
+                    <div class="feature-tag">Smart</div>
+                </div>
+                <div class="feature-card" data-delay="1200">
+                    <div class="feature-icon-wrap"><span class="feature-icon">📈</span></div>
+                    <h3>XP Growth & Rating System</h3>
+                    <p>The AI grades resident downtime achievements month to month on a multi-axis scale to award passive XP to NPCs, accounting for combat, leadership, and class specific actions.</p>
+                    <div class="feature-tag">Smart</div>
+                </div>
+                <div class="feature-card" data-delay="1300">
+                    <div class="feature-icon-wrap"><span class="feature-icon">🎲</span></div>
+                    <h3>Multi-Edition Support</h3>
+                    <p>While tailored for 3.5e, Eon Weaver includes support settings for 5e 2014 and 5e 2024 out of the box, with built-in mechanics frameworks for each edition.</p>
+                    <div class="feature-tag">Advanced</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- THE WORLD / LORE SECTION -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <section id="lore" class="section">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">Your World</span>
+                <h2>Born from <em>real campaigns</em></h2>
+                <p class="section-desc">Eon Weaver was built by a DM who needed to simulate an entire living
+                    settlement between sessions. Every feature exists because a real table needed it.
+                    Here's what the tool makes possible.</p>
+            </div>
+            <div class="lore-showcase">
+                <div class="lore-card lore-card-feature">
+                    <img src="assets/app_dashboard.png" alt="Eon Weaver Campaign Dashboard" class="lore-img">
+                </div>
+                <div class="lore-narrative">
+                    <div class="lore-block">
+                        <div class="lore-block-icon">📖</div>
+                        <h3>Your Setting, Your Rules</h3>
+                        <p class="lore-text">Whether your campaign is high fantasy, dark horror, or political intrigue —
+                            Eon Weaver adapts. Define your world's lore, calendar, and rules. The AI respects
+                            <strong>your canon</strong> and generates content that fits.
+                        </p>
+                    </div>
+                    <div class="lore-block">
+                        <div class="lore-block-icon">🏰</div>
+                        <h3>Towns That Breathe</h3>
+                        <p class="lore-text">Generate a frontier camp, a bustling trade city, or a besieged fortress.
+                            Each town gets a full population of NPCs with unique names, stats, professions, and
+                            backstories — <strong>all interconnected and evolving.</strong></p>
+                    </div>
+                    <div class="lore-block">
+                        <div class="lore-block-icon">⏳</div>
+                        <h3>Time Moves Forward</h3>
+                        <p class="lore-text">Skip days, weeks, or months. Relationships form, factions shift, buildings
+                            rise, and threats emerge. Every change is presented for your approval —
+                            <strong>nothing happens without the DM's say.</strong>
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="lore-roster">
+                <h3 class="lore-roster-title">🛡️ Example: A Generated Town Roster</h3>
+                <p class="lore-roster-desc">Every NPC gets a full D&D stat block, profession,
+                    relationships, and backstory — all generated and simulated by Eon Weaver.</p>
+                <div class="roster-scroll">
+                    <div class="roster-item"><span class="roster-race dwarf">D</span><span>Durgan Ironhelm</span><span
+                            class="roster-role">Mayor / Fighter</span></div>
+                    <div class="roster-item"><span class="roster-race human">H</span><span>Elara Whitmore</span><span
+                            class="roster-role">Cleric</span></div>
+                    <div class="roster-item"><span class="roster-race elf">E</span><span>Thandril Greyleaf</span><span
+                            class="roster-role">Wizard</span></div>
+                    <div class="roster-item"><span class="roster-race human">H</span><span>Gareth Cole</span><span
+                            class="roster-role">Fighter</span></div>
+                    <div class="roster-item"><span class="roster-race human">H</span><span>Sister Miriel</span><span
+                            class="roster-role">Cleric</span></div>
+                    <div class="roster-item"><span class="roster-race halfling">Hf</span><span>Wren
+                            Thistlefoot</span><span class="roster-role">Rogue</span></div>
+                    <div class="roster-item"><span class="roster-race gnome">G</span><span>Nix Coppergear</span><span
+                            class="roster-role">Wizard</span></div>
+                    <div class="roster-item"><span class="roster-race elf">E</span><span>Kael Nightwhisper</span><span
+                            class="roster-role">Rogue</span></div>
+                    <div class="roster-item"><span class="roster-race human">H</span><span>Torvin Marsh</span><span
+                            class="roster-role">Weaponsmith</span></div>
+                    <div class="roster-item"><span class="roster-race human">H</span><span>Brenna Ashford</span><span
+                            class="roster-role">Ranger</span></div>
+                    <div class="roster-item"><span class="roster-race dwarf">D</span><span>Kolgrim Stonewall</span><span
+                            class="roster-role">Fighter</span></div>
+                    <div class="roster-item"><span class="roster-race human">H</span><span>Voss Redblade</span><span
+                            class="roster-role">Barbarian</span></div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- SIMULATION SHOWCASE -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <section id="simulation" class="section section-dark">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">Time Skip Report</span>
+                <h2>Watch your town <em>come alive</em></h2>
+                <p class="section-desc">Every time skip generates a reviewed change-set. Here's an example
+                    of what a 5-month simulation produces — every entry is DM-approved before applying.</p>
+            </div>
+            <div class="sim-showcase">
+                <img src="assets/app_simulation.png" alt="Eon Weaver Town History" class="sim-img">
+                <div class="sim-events">
+                    <div class="sim-event">
+                        <div class="sim-month">Month 1-2</div>
+                        <div class="sim-event-content">
+                            <h4>🏗️ Defenses Erected</h4>
+                            <p>Led by builders and dwarven stoneworkers, a sturdy wooden palisade and earthen berm are
+                                erected around the settlement's perimeter.</p>
+                            <span class="sim-tag sim-tag-major">Infrastructure</span>
+                        </div>
+                    </div>
+                    <div class="sim-event">
+                        <div class="sim-month">Month 2-3</div>
+                        <div class="sim-event-content">
+                            <h4>⚒️ Crafting District Forms</h4>
+                            <p>The town's weaponsmith and leatherworker established a centralized crafting district to
+                                equip
+                                the settlement's defenders.</p>
+                            <span class="sim-tag sim-tag-minor">Economy</span>
+                        </div>
+                    </div>
+                    <div class="sim-event">
+                        <div class="sim-month">Month 3-5</div>
+                        <div class="sim-event-content">
+                            <h4>🌾 Farming Secured</h4>
+                            <p>Farmers secured fertile land outside the gates, protected by continuous guard
+                                rotations. Stable food production begins.</p>
+                            <span class="sim-tag sim-tag-minor">Agriculture</span>
+                        </div>
+                    </div>
+                    <div class="sim-event">
+                        <div class="sim-month">Month 5</div>
+                        <div class="sim-event-content">
+                            <h4>💍 First Families Emerge</h4>
+                            <p>Four couples established romantic bonds — the mayor and the cleric, the smiths, and
+                                more — laying foundations for the town's future generations.</p>
+                            <span class="sim-tag sim-tag-major">Social</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── DM Control & Safety ────────────────────────── -->
+            <div class="dm-guardrails">
+                <h3 class="guardrails-title">🛡️ DM Control & Safety</h3>
+                <p class="guardrails-desc">Every simulation is under your complete control. Nothing changes without your
+                    approval.</p>
+                <div class="guardrails-grid">
+                    <div class="guardrail-card">
+                        <div class="guardrail-icon">📌</div>
+                        <h4>Canon Lock</h4>
+                        <p>Pin any entry as immutable. The AI will never change pinned facts — your established lore is
+                            sacred.</p>
+                    </div>
+                    <div class="guardrail-card">
+                        <div class="guardrail-icon">📋</div>
+                        <h4>Review Queue</h4>
+                        <p>Time passage generates a "proposed changes" list. Accept, reject, or modify every single item
+                            before it applies.</p>
+                    </div>
+                    <div class="guardrail-card">
+                        <div class="guardrail-icon">📜</div>
+                        <h4>Change Log</h4>
+                        <p>Every applied change gets a dated diff you can review and roll back at any time. Full
+                            history, always.</p>
+                    </div>
+                    <div class="guardrail-card">
+                        <div class="guardrail-icon">🎛️</div>
+                        <h4>Intensity Knobs</h4>
+                        <p>Calm ↔ chaotic sliders control event frequency, severity, and faction aggression. Your world,
+                            your pace.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- REWARD TIERS -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <section id="rewards" class="section" style="overflow: visible;">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">Pledge Tiers</span>
+                <h2>Choose your <em>reward</em></h2>
+            </div>
+            <div class="rewards-grid" id="pledge">
+                <div class="reward-card">
+                    <div class="reward-tier">Tavern Patron</div>
+                    <div class="reward-price">$5</div>
+                    <div class="reward-desc">
+                        <ul>
+                            <li>Digital thank-you & backer updates</li>
+                            <li>Name in the credits</li>
+                            <li>Access to backer-only Discord</li>
+                            <li>Community role & feature voting</li>
+                        </ul>
+                    </div>
+                    <div class="reward-backers">47 backers</div>
+                    <button class="btn btn-reward">Select This Reward</button>
+                </div>
+                <div class="reward-card">
+                    <div class="reward-tier">Adventurer</div>
+                    <div class="reward-price">$25</div>
+                    <div class="reward-desc">
+                        <ul>
+                            <li>Everything in Tavern Patron</li>
+                            <li><strong>6-Month Full GM Access</strong> (early adopter pricing)</li>
+                            <li>Early access to beta builds</li>
+                        </ul>
+                    </div>
+                    <div class="reward-backers">89 backers</div>
+                    <button class="btn btn-reward">Select This Reward</button>
+                </div>
+                <div class="reward-card reward-popular">
+                    <div class="reward-badge">⭐ Most Popular</div>
+                    <div class="reward-tier">Dungeon Master</div>
+                    <div class="reward-price">$60</div>
+                    <div class="reward-desc">
+                        <ul>
+                            <li>Everything in Adventurer</li>
+                            <li><strong>2-Year Full GM Access</strong> (locked founding rate)</li>
+                            <li>Pre-built example world to explore features</li>
+                            <li>Export your data (JSON/Markdown) — you own it</li>
+                        </ul>
+                    </div>
+                    <div class="reward-backers">189 backers</div>
+                    <button class="btn btn-primary btn-reward">Select This Reward</button>
+                </div>
+                <div class="reward-card">
+                    <div class="reward-tier">World Builder</div>
+                    <div class="reward-price">$120</div>
+                    <div class="reward-desc">
+                        <ul>
+                            <li>Everything in Dungeon Master</li>
+                            <li><strong>5-Year GM Access</strong> (locked founding rate)</li>
+                            <li>Priority feature requests & voting</li>
+                            <li>Exclusive "Founder" badge in-app</li>
+                            <li><strong>Your own NPC immortalized</strong> in the default roster</li>
+                        </ul>
+                    </div>
+                    <div class="reward-backers">72 backers</div>
+                    <button class="btn btn-reward">Select This Reward</button>
+                </div>
+                <div class="reward-card reward-legendary">
+                    <div class="reward-tier">Legend</div>
+                    <div class="reward-price">$250</div>
+                    <div class="reward-desc">
+                        <ul>
+                            <li>Everything in World Builder</li>
+                            <li><strong>Lifetime GM Access</strong> (limited to 50)</li>
+                            <li>1-hour session with the dev to discuss features</li>
+                            <li>Physical "Eon Weaver DM Notebook" (limited edition)</li>
+                            <li>Table Bundle: share access with up to 5 players</li>
+                        </ul>
+                    </div>
+                    <div class="reward-backers">34 backers</div>
+                    <button class="btn btn-reward btn-legendary">Select This Reward</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- ROADMAP -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <section id="roadmap" class="section section-dark">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">Development Roadmap</span>
+                <h2>Where we're going, <em>and how we get there</em></h2>
+                <p class="section-desc">Eon Weaver combines deep mechanical automation, rich worldbuilding tools,
+                    and AI-powered generation — into one living tool built specifically for D&D 3.5.
+                    Here's the plan.
+                </p>
+            </div>
+
+            <!-- ── What's Already Built ──────────────────────── -->
+            <div class="roadmap-section-label roadmap-built">
+                <span class="roadmap-label-icon">✅</span>
+                <div>
+                    <h3>Already Built & Functional</h3>
+                    <p>These features are live and in active use right now — the foundation everything else builds on.
+                    </p>
+                </div>
+            </div>
+
+            <div class="stretch-timeline">
+                <div class="stretch-goal achieved">
+                    <div class="stretch-amount">Live</div>
+                    <div class="stretch-content">
+                        <h4>✅ Core Application</h4>
+                        <p>A working AI-powered living world simulator for D&D 3.5 campaigns — with deep character
+                            mechanics and world-scale simulation already built.</p>
+                        <ul class="roadmap-features">
+                            <li>AI Population Generator — generate full town rosters with unique D&D 3.5 stat blocks, gear, and backstories</li>
+                            <li>Time Simulation — simulate months of in-game time; relationships form, buildings rise, events unfold</li>
+                            <li>World Simulate — run AI simulation across ALL towns in your campaign sequentially, with inter-town character migration based on residency</li>
+                            <li>NPC Backstories & Relationships — AI generates rich personal histories; NPCs form relationships, marry, and have children</li>
+                            <li>SRD Browser — integrated spells, feats, skills, classes, items, and equipment — all searchable and cross-referenced</li>
+                            <li>Character Creator Wizard — 6-tab guided character creation with point buy, standard array, and race modifiers</li>
+                            <li>Level-Up Wizard — multi-step leveling with multiclass and prestige class support</li>
+                            <li>Spellcasting Engine — spell slots by class/level with bonus spells, save DCs, prepared vs spontaneous casting</li>
+                            <li>Equipment & Inventory System — per-item tracking with equip/unequip slots, automatic AC calculation</li>
+                            <li>Conditions & Active Effects Engine — all 3.5e conditions plus spell buffs with duration tracking</li>
+                            <li>Combat Math Engine — auto-calculated attack arrays and AC breakdowns</li>
+                            <li>Encounter & Initiative Tracker — drag-and-drop SRD monsters, roll initiative, track HP/damage in combat</li>
+                            <li>Town Social Panel — factions with members & inter-faction diplomacy, incidents with participants & clues</li>
+                            <li>Campaign Dashboard — world overview with calendar, town list, and aggregate stats</li>
+                            <li>In-App Bug Reporting — direct Discord webhook integration</li>
+                            <li>Dual-Tier AI Routing — smart cost optimization routes simple tasks to fast models, complex narrative to powerful ones</li>
+                            <li>Campaign Rules Engine — XP scaling, death thresholds, relationship speeds, conflict frequency</li>
+                            <li>Target Demographics — define exact race percentages per town</li>
+                            <li>Buildings & Infrastructure System — manage and construct new buildings, handle population slots.</li>
+                            <li>Town Statistics Dashboard — rich visual breakdowns of races, classes, ages, and building counts.</li>
+                            <li>Homebrew World Rules Engine (28+ tools) — modify planar rules, resource frequency, magic levels, survival odds.</li>
+                            <li>Admin Dashboard — direct management of AI token limits, API keys, backing structures, permissions.</li>
+                            <li>Prestige Class Engine (3.5e) — full feat, skill rank, selection prerequisite checking and application.</li>
+                            <li>Metamagic Automation Engine — adjust slots, prepare upcast modifiers, handle standard DC shifts automatically.</li>
+                            <li>XP Growth Score System — track resident downtime achievements on an automatic passive grading basis.</li>
+                            <li>Multi-Edition Support — integrated modes for 5e 2014 and 5e 2024 play testing.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Funded Deliverable ─────────────────────────── -->
+            <div class="roadmap-section-label">
+                <span class="roadmap-label-icon">🎯</span>
+                <div>
+                    <h3>Funded Deliverable</h3>
+                    <p>Guaranteed with successful funding — these ship to backers.</p>
+                </div>
+            </div>
+
+            <div class="stretch-timeline">
+                <!-- Phase 1 -->
+                <div class="stretch-goal achieved">
+                    <div class="stretch-amount">Phase 1</div>
+                    <div class="stretch-content">
+                        <h4>✅ Character Mechanics Engine</h4>
+                        <p>Full 1:1 automated parity with D&D 3.5e character sheets — the definitive digital character engine.</p>
+                        <ul class="roadmap-features">
+                            <li>✅ Automated Leveling Wizard</li>
+                            <li>✅ Spellcasting Manager</li>
+                            <li>✅ Conditions & Active Effects</li>
+                            <li>✅ Encumbrance & Deep Inventory</li>
+                            <li>✅ Multiclassing & Prestige Classes</li>
+                            <li>✅ Metamagic Automation</li>
+                            <li>✅ PDF Character Sheet Export</li>
+                            <li>✅ AI-Powered Level Up</li>
+                        </ul>
+                    </div>
+                    <div class="stretch-progress">
+                        <div class="stretch-bar">
+                            <div class="stretch-fill" style="width: 100%"></div>
+                        </div>
+                        <span class="stretch-progress-label">✅ Complete — 8 of 8</span>
+                    </div>
+                </div>
+
+                <!-- Phase 2 -->
+                <div class="stretch-goal current">
+                    <div class="stretch-amount">Phase 2</div>
+                    <div class="stretch-content">
+                        <h4>🟢 Combat & Encounter Toolkit</h4>
+                        <p>Run actual game sessions from Eon Weaver. "Between sessions" becomes "at the table."</p>
+                        <ul class="roadmap-features">
+                            <li>✅ Dynamic Initiative Tracker</li>
+                            <li>✅ Encounter Builder & CR Calculator</li>
+                            <li>✅ HP & Damage Manager</li>
+                            <li>Inline Dice Roller</li>
+                            <li>✅ NPC / Monster Statblock Generator</li>
+                            <li>AI Random Encounter Generator</li>
+                            <li>AI Loot & Treasure Generator</li>
+                            <li>AI Magic Shop Generator</li>
+                        </ul>
+                    </div>
+                    <div class="stretch-progress">
+                        <div class="stretch-bar">
+                            <div class="stretch-fill" style="width: 62.5%"></div>
+                        </div>
+                        <span class="stretch-progress-label">In Progress — 5 of 8 complete</span>
+                    </div>
+                </div>
+
+                <!-- Phase 3 -->
+                <div class="stretch-goal">
+                    <div class="stretch-amount">Phase 3</div>
+                    <div class="stretch-content">
+                        <h4>🟠 Context-Aware AI Scribe & Content Generators</h4>
+                        <p>An AI that "knows" your entire world — every NPC, faction, and event — and generates content that fits seamlessly into your campaign.</p>
+                        <ul class="roadmap-features">
+                            <li>Context-Aware AI Scribe — ask it questions about your world</li>
+                            <li>AI Quest / Adventure Generator — multi-part quest outlines</li>
+                            <li>AI Magic Item Generator — unique items with lore and stats</li>
+                            <li>AI Dungeon / Location Generator — room-by-room layouts</li>
+                            <li>AI Spell Creator — custom spells balanced for 3.5e</li>
+                            <li>AI Trap & Puzzle Generator</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ── Stretch Goals ──────────────────────────────── -->
+            <div class="roadmap-section-label roadmap-stretch">
+                <span class="roadmap-label-icon">🚀</span>
+                <div>
+                    <h3>Stretch Goals</h3>
+                    <p>Unlocked as funding milestones are reached — scaling the universe.</p>
+                </div>
+            </div>
+
+            <div class="stretch-timeline stretch-timeline-future">
+                <!-- Phase 4 -->
+                <div class="stretch-goal stretch-locked">
+                    <div class="stretch-amount">Phase 4</div>
+                    <div class="stretch-content">
+                        <h4>🟣 Macro Simulation & World Dynamics</h4>
+                        <p>Scale the simulation from a single town to an entire interconnected region — Eon Weaver's endgame differentiator.</p>
+                        <ul class="roadmap-features">
+                            <li>Multi-Town Connective Tissue — trade routes, migration</li>
+                            <li>Dynamic Economy & Trade — supply/demand per town</li>
+                            <li>Weather & Seasonal System</li>
+                            <li>Medieval Demographics Engine</li>
+                        </ul>
+                        <div class="stretch-unlock">Unlocks at $10,000</div>
+                    </div>
+                </div>
+
+                <!-- Phase 5 -->
+                <div class="stretch-goal stretch-locked">
+                    <div class="stretch-amount">Phase 5</div>
+                    <div class="stretch-content">
+                        <h4>🔶 Usability, Players & Integration</h4>
+                        <p>Get Eon Weaver into the hands of players, VTTs, and the broader TTRPG ecosystem.</p>
+                        <ul class="roadmap-features">
+                            <li>Player Portal — read-only view for players</li>
+                            <li>Mobile-Responsive Redesign</li>
+                            <li>VTT Export — JSON exports compatible with popular VTTs</li>
+                            <li>Discord Bot Integration</li>
+                        </ul>
+                        <div class="stretch-unlock">Unlocks at $15,000</div>
+                    </div>
+                </div>
+
+                <!-- Phase 6 -->
+                <div class="stretch-goal stretch-locked">
+                    <div class="stretch-amount">Phase 6</div>
+                    <div class="stretch-content">
+                        <h4>🔵 Worldbuilding Wiki & Lore System</h4>
+                        <p>Transform the town directory into a living, interconnected codex.</p>
+                        <ul class="roadmap-features">
+                            <li>Wiki-Style Article System</li>
+                            <li>AI Auto Cross-Linking</li>
+                            <li>Interactive Maps with Pins</li>
+                            <li>Relationship Web Visualization (D3.js)</li>
+                        </ul>
+                        <div class="stretch-unlock">Unlocks at $25,000</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Feature count callout -->
+            <div class="roadmap-stats">
+                <div class="roadmap-stat">
+                    <span class="roadmap-stat-number">39</span>
+                    <span class="roadmap-stat-label">Features Built</span>
+                </div>
+                <div class="roadmap-stat">
+                    <span class="roadmap-stat-number">83</span>
+                    <span class="roadmap-stat-label">Total Features Planned</span>
+                </div>
+                <div class="roadmap-stat">
+                    <span class="roadmap-stat-number">19</span>
+                    <span class="roadmap-stat-label">Competitors Analyzed</span>
+                </div>
+                <div class="roadmap-stat">
+                    <span class="roadmap-stat-number">7</span>
+                    <span class="roadmap-stat-label">Development Phases</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- FAQ -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <section id="faq" class="section">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">FAQ</span>
+                <h2>Common <em>questions</em></h2>
+            </div>
+            <div class="faq-list">
+                <div class="faq-item">
+                    <button class="faq-question" id="faq-btn-1">
+                        <span>What D&D edition does this support?</span>
+                        <span class="faq-chevron">▼</span>
+                    </button>
+                    <div class="faq-answer">
+                        <p>Eon Weaver is built natively for <strong>D&D 3.5 Edition</strong> — a massively underserved
+                            edition with almost zero modern tooling. All character generation, stat blocks,
+                            CR calculations, and SRD data follow 3.5e rules. However, we've recently added Multi-Edition 
+                            support hooks for 5e 2014 and 5e 2024 built right into the framework.</p>
+                    </div>
+                </div>
+                <div class="faq-item">
+                    <button class="faq-question" id="faq-btn-2">
+                        <span>How does the AI work? Do I need to pay for AI separately?</span>
+                        <span class="faq-chevron">▼</span>
+                    </button>
+                    <div class="faq-answer">
+                        <p>Eon Weaver uses a <strong>budgeted dual-tier AI routing system</strong>. Simple tasks
+                            (stat generation) go to fast, cheap models. Complex narrative tasks (events, simulation)
+                            go to smarter models. You bring your own API key from popular AI providers
+                            (many offer free tiers). Most operations cost fractions of a cent — a full month
+                            simulation typically costs under $0.10.
+                        </p>
+                    </div>
+                </div>
+                <div class="faq-item">
+                    <button class="faq-question" id="faq-btn-3">
+                        <span>Will the AI mess up my canon? How do I control it?</span>
+                        <span class="faq-chevron">▼</span>
+                    </button>
+                    <div class="faq-answer">
+                        <p>This is our #1 design priority. Every simulation generates a <strong>proposed changes
+                                list</strong> — you accept, reject, or modify each item. You can <strong>Canon
+                                Lock</strong>
+                            any entry as immutable, review full change logs, and roll back anything. The AI is a tool you direct, not an author that
+                            replaces you.</p>
+                    </div>
+                </div>
+                <div class="faq-item">
+                    <button class="faq-question" id="faq-btn-4">
+                        <span>Does this use AI-generated art?</span>
+                        <span class="faq-chevron">▼</span>
+                    </button>
+                    <div class="faq-answer">
+                        <p><strong>No.</strong> Eon Weaver does not generate, use, or display AI art. The AI is used
+                            exclusively for <strong>systems</strong>.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- FINAL CTA -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <section id="final-cta" class="section section-cta">
+        <div class="container">
+            <div class="cta-content">
+                <h2>Ready to bring your world to life?</h2>
+                <p>Join hundreds of DMs who are already using AI to make their campaigns unforgettable.</p>
+                <a href="#pledge" class="btn btn-primary btn-glow btn-large" id="final-pledge-btn">
+                    <span>🗡️</span> Back This Project
+                </a>
+            </div>
+        </div>
+    </section>
+
+    <footer id="site-footer">
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-brand">
+                    <span class="logo-icon">📜</span>
+                    <span class="logo-text">Eon Weaver</span>
+                    <p>AI-powered campaign management for tabletop RPGs.</p>
+                </div>
+                <div class="footer-links">
+                    <h4>Project</h4>
+                    <a href="#features">Features</a>
+                    <a href="#lore">The World</a>
+                    <a href="#rewards">Rewards</a>
+                    <a href="#roadmap">Roadmap</a>
+                    <a href="#faq">FAQ</a>
+                </div>
+                <div class="footer-links">
+                    <h4>Legal</h4>
+                    <a href="#">Terms of Service</a>
+                    <a href="#">Privacy Policy</a>
+                    <a href="#">OGL License</a>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 Eon Weaver. Built with ❤️ for the tabletop community.</p>
+                <p class="footer-legal">D&D 3.5 SRD content used under the Open Game License v1.0a.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>

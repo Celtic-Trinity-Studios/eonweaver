@@ -1,0 +1,53 @@
+# ── Dependencies ──────────────────────────────────────────
+node_modules/
+
+# ── Build output ──────────────────────────────────────────
+town-directory/dist/
+town-directory/dev_build/
+town-directory/live_build/
+town-directory/dev/
+town-directory/live/
+town-directory/prod/
+town-directory/src/dev/
+town-directory/src/dev_build/
+town-directory/src/live/
+town-directory/src/live_build/
+
+# ── Secrets & credentials (NEVER commit) ─────────────────
+town-directory/config.php
+town-directory/discord.php
+town-directory/llm_local.php
+
+# ── Deploy manifests ─────────────────────────────────────
+town-directory/.deploy_manifest.json
+
+# ── IDE / OS ─────────────────────────────────────────────
+.vscode/
+*.suo
+*.user
+*.swp
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Nested build artifacts ───────────────────────────────
+town-directory/town-directory/
+
+# ── Gemini Agent data ────────────────────────────────────
+.gemini/
+.agent/
+_agent/
+**/.agent/
+
+# ── Deploy scripts (may contain FTP creds) ───────────────
+town-directory/deploy_ftp.ps1
+town-directory/deploy_live.ps1
+kickstarter/deploy.ps1
+
+# ── User uploads ─────────────────────────────────────────
+town-directory/portraits/
+
+# ── Misc temp files ──────────────────────────────────────
+*.log
+migration_out.txt
