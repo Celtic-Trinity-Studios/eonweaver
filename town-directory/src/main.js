@@ -18,6 +18,8 @@ import TownStatsView from './views/TownStatsView.js';
 import EncounterView from './views/EncounterView.js';
 import PartyView from './views/PartyView.js';
 import HelpView from './views/HelpView.js';
+import HomebrewView from './views/HomebrewView.js';
+import ContentLibraryView from './views/ContentLibraryView.js';
 import AdminDashboardView from './views/AdminDashboardView.js';
 
 // Styles
@@ -31,6 +33,7 @@ import './styles/buildings.css';
 import './styles/phase1.css';
 import './styles/theme.css';
 import './styles/admin.css';
+import './styles/homebrew.css';
 
 let routesRegistered = false;
 
@@ -151,6 +154,8 @@ function showApp() {
         registerRoute('townstats', TownStatsView);
         registerRoute('encounters', EncounterView);
         registerRoute('party', PartyView);
+        registerRoute('homebrew', HomebrewView);
+        registerRoute('content-library', ContentLibraryView);
         registerRoute('help', HelpView);
         routesRegistered = true;
     }

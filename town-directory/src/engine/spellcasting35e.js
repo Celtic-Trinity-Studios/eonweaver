@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Eon Weaver — D&D 3.5e Spellcasting Engine
  * Pure calculation logic for spell slots, bonus spells, DCs, and caster types.
  */
@@ -86,19 +86,20 @@ export function maxCastableLevel(abilityScore) {
  * @param {object} progressionRow - Row from class_progression table for this class/level
  * @param {number} abilityScore - The caster's key ability score (e.g., INT for Wizard)
  * @param {object} casterInfo - From getCasterInfo()
- * @returns {Array<{level, base, bonus, total, dc, available}>} spell slot info per level
+ * @returns {Array<{level, base, bonus, total, dc, available, domainSlot}>} spell slot info per level
  */
 export function calculateSpellSlots(progressionRow, abilityScore, casterInfo) {
     const baseSlots = parseProgressionSlots(progressionRow);
     const abilMod = Math.floor(((abilityScore || 10) - 10) / 2);
     const maxLevel = maxCastableLevel(abilityScore);
     const results = [];
+    const hasDomains = casterInfo?.hasDomains || false;
 
     for (let lvl = 0; lvl <= (casterInfo?.maxSpellLevel || 9); lvl++) {
         const base = baseSlots[lvl];
         if (base === null) {
             // Can't cast this level at all at current class level
-            results.push({ level: lvl, base: null, bonus: 0, total: 0, dc: 0, available: false });
+            results.push({ level: lvl, base: null, bonus: 0, total: 0, dc: 0, available: false, domainSlot: false });
             continue;
         }
 
@@ -106,6 +107,8 @@ export function calculateSpellSlots(progressionRow, abilityScore, casterInfo) {
         const bonus = canCast ? bonusSpells(abilMod, lvl) : 0;
         const total = canCast ? base + bonus : 0;
         const dc = canCast ? 10 + lvl + abilMod : 0;
+        // Domain slot: Clerics get +1 domain slot per spell level 1-9 they can cast
+        const domainSlot = hasDomains && canCast && lvl >= 1 && base !== null;
 
         results.push({
             level: lvl,
@@ -114,6 +117,7 @@ export function calculateSpellSlots(progressionRow, abilityScore, casterInfo) {
             total,
             dc,
             available: canCast && total > 0,
+            domainSlot,
         });
     }
 

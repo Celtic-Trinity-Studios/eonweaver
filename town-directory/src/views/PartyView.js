@@ -1,26 +1,19 @@
-﻿/**
+/**
  * Eon Weaver — Party View
  * Dedicated party management page (SRD-browser style).
- * Uses new CharacterCreator component for character creation.
+ * "Create Character" uses quick-name popup → blank char → edit wizard.
  */
 import { getState } from '../stores/appState.js';
 import { apiFetch } from '../api/client.js';
 import { apiGetParty, apiAddPartyMember, apiRemovePartyMember } from '../api/encounters.js';
-import { loadSrdRaces, loadSrdClasses, loadSrdFeats, loadSrdEquipment } from '../api/srd.js';
-import { abilityMod } from '../engine/rulesAdapter.js';
-import { formatMod } from '../engine/dice.js';
+import { apiGetCharacters, normalizeCharacter } from '../api/characters.js';
 import { renderCharacterSheet } from '../components/CharacterSheet.js';
-import { initCreator, renderCreator, resetCreatorState, getCharacterData, getCreatorState } from '../components/CharacterCreator.js';
 
 let partyMembers = [];
 let allTowns = [];
 let selectedMember = null;
 let partyBaseId = 0;
 let partyBaseName = 'Party Camp';
-
-/* DB-driven SRD data (loaded for recruit display) */
-const ABILITIES = ['str', 'dex', 'con', 'int_', 'wis', 'cha'];
-const AB_LABELS = { str: 'STR', dex: 'DEX', con: 'CON', int_: 'INT', wis: 'WIS', cha: 'CHA' };
 
 export default function PartyView(container) {
     container.innerHTML = `
@@ -58,10 +51,7 @@ export default function PartyView(container) {
 }
 
 async function initView(container) {
-    // Init Creator (loads SRD data)
-    await initCreator();
-
-    // Fetch party base separately (don't block if it fails)
+    // Fetch party base
     try {
         const baseRes = await apiFetch('get_party_base');
         if (baseRes.party_base) { partyBaseId = baseRes.party_base.id; partyBaseName = baseRes.party_base.name; }
@@ -163,33 +153,128 @@ async function loadRecruitList(container, townId, search = '') {
 }
 
 /* ═══════════════════════════════════════════════════════════
-   CHARACTER CREATOR — INTEGRATION
-   Uses new CharacterCreator component
+   QUICK CREATE — Name PopUp → Create → Add to Party → Edit
    ═══════════════════════════════════════════════════════════ */
-function showCharacterCreator(container) {
-    const panel = container.querySelector('#party-detail-panel');
-    // Hide list panel when creating — creator takes full width
-    container.querySelector('#party-list-panel').style.display = 'none';
-    panel.style.flex = '1';
-    renderCreator(panel);
+async function quickCreateCharacter(container) {
+    const { showModal } = await import('../components/Modal.js');
+    const { el: modal, close } = showModal({
+        title: '✨ Create New Character',
+        width: 'narrow',
+        content: `
+            <div style="padding: 0.5rem 0;">
+                <label style="font-size:0.8rem;font-weight:600;display:block;margin-bottom:0.4rem;">Character Name</label>
+                <input type="text" id="qc-name" class="form-input" placeholder="Enter character name..." autofocus style="font-size:1rem;padding:0.6rem;">
+                <div style="margin-top:1rem;display:flex;gap:0.5rem;justify-content:flex-end;">
+                    <button class="btn-secondary btn-sm" id="qc-cancel">Cancel</button>
+                    <button class="btn-primary btn-sm" id="qc-create" disabled>Create & Edit →</button>
+                </div>
+            </div>`
+    });
 
-    // Bind create button (delegated, since review tab re-renders)
-    panel.addEventListener('click', async (e) => {
-        if (e.target.id !== 'cc-create-btn') return;
-        const character = getCharacterData();
-        if (!character.name) { alert('Please enter a character name.'); return; }
+    const nameInput = modal.querySelector('#qc-name');
+    const createBtn = modal.querySelector('#qc-create');
+
+    nameInput?.addEventListener('input', () => {
+        createBtn.disabled = !nameInput.value.trim();
+    });
+    nameInput?.focus();
+
+    // Enter key submits
+    nameInput?.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && nameInput.value.trim()) createBtn.click();
+    });
+
+    modal.querySelector('#qc-cancel')?.addEventListener('click', close);
+
+    createBtn?.addEventListener('click', async () => {
+        const name = nameInput.value.trim();
+        if (!name) return;
+        createBtn.disabled = true;
+        createBtn.textContent = '⏳ Creating...';
+
         try {
-            const saveRes = await apiFetch('save_character', { method: 'POST', body: { town_id: partyBaseId, character } });
-            if (!saveRes.ok) throw new Error(saveRes.error || 'Failed to save');
-            await apiAddPartyMember(saveRes.id);
-            resetCreatorState();
+            // 1. Create blank character in party camp
+            const blankChar = {
+                name,
+                race: 'Human',
+                class: 'Fighter 1',
+                status: 'Alive',
+                gender: '',
+                alignment: 'True Neutral',
+                hp: 10, hd: '1d10',
+                ac: '10, touch 10, flat-footed 10',
+                init: '+0', spd: '30 ft',
+                str: 10, dex: 10, con: 10, int_: 10, wis: 10, cha: 10,
+                saves: 'Fort +2, Ref +0, Will +0',
+                atk: '', feats: '', skills_feats: '',
+                gear: '', languages: 'Common', history: '',
+                role: 'Player Character', xp: 0, cr: '1',
+            };
+
+            const saveRes = await apiFetch('save_character', {
+                method: 'POST',
+                body: { town_id: partyBaseId, character: blankChar }
+            });
+            if (!saveRes.ok) throw new Error(saveRes.error || 'Failed to create character');
+
+            const charId = saveRes.id;
+
+            // 2. Add to party
+            await apiAddPartyMember(charId);
+
+            // 3. Reload party data
             await loadPartyData(container);
-            // Switch back to roster
+
+            // 4. Close popup
+            close();
+
+            // 5. Switch to roster tab
             switchToTab(container, 'roster');
-            selectedMember = partyMembers.find(m => parseInt(m.character_id) === saveRes.id) || null;
-            renderPartyList(container); renderMemberDetail(container, selectedMember);
-            if (!selectedMember) panel.innerHTML = `<div class="srd-detail-empty"><div class="srd-empty-icon">🎉</div><p><strong>${character.name}</strong> created and added to your party!</p></div>`;
-        } catch (err) { alert('Error creating character: ' + err.message); }
+
+            // 6. Fetch the full character and open in edit mode
+            const charResult = await apiGetCharacters(partyBaseId);
+            const fullChar = (charResult.characters || []).find(c => c.id == charId);
+            if (fullChar) {
+                const norm = normalizeCharacter(fullChar);
+                selectedMember = partyMembers.find(m => parseInt(m.character_id) === charId) || null;
+                renderPartyList(container);
+
+                // Render sheet area then immediately trigger edit
+                renderMemberDetail(container, selectedMember || { ...norm, character_id: charId, town_name: partyBaseName });
+
+                // Open Creator in edit mode on the sheet area
+                const sheetArea = container.querySelector('#party-charsheet-area');
+                if (sheetArea) {
+                    const { initCreatorFromCharacter, renderCreator } = await import('../components/CharacterCreator.js');
+                    const townId = partyBaseId;
+
+                    const restoreSheet = async () => {
+                        try {
+                            const result = await apiGetCharacters(townId);
+                            const updated = (result.characters || []).find(ch => ch.id == charId);
+                            if (updated) {
+                                const updNorm = normalizeCharacter(updated);
+                                await loadPartyData(container);
+                                selectedMember = partyMembers.find(m => parseInt(m.character_id) === charId) || null;
+                                renderPartyList(container);
+                                renderMemberDetail(container, selectedMember);
+                            }
+                        } catch { renderMemberDetail(container, selectedMember); }
+                    };
+
+                    await initCreatorFromCharacter(norm, {
+                        townId,
+                        onComplete: restoreSheet,
+                        onCancel: () => renderMemberDetail(container, selectedMember),
+                    });
+                    renderCreator(sheetArea);
+                }
+            }
+        } catch (err) {
+            alert('Error creating character: ' + err.message);
+            createBtn.disabled = false;
+            createBtn.textContent = 'Create & Edit →';
+        }
     });
 }
 
@@ -200,13 +285,8 @@ function switchToTab(container, tab) {
     container.querySelector('#party-tab-recruit').style.display = tab === 'recruit' ? '' : 'none';
     const listPanel = container.querySelector('#party-list-panel');
     const detailPanel = container.querySelector('#party-detail-panel');
-    if (tab === 'create') {
-        listPanel.style.display = 'none';
-        detailPanel.style.flex = '1';
-    } else {
-        listPanel.style.display = '';
-        detailPanel.style.flex = '';
-    }
+    listPanel.style.display = '';
+    detailPanel.style.flex = '';
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -215,9 +295,9 @@ function switchToTab(container, tab) {
 function bindPartyEvents(container) {
     container.querySelectorAll('.party-tab').forEach(btn => btn.addEventListener('click', () => {
         const tab = btn.dataset.tab;
+        if (tab === 'create') { quickCreateCharacter(container); return; }
         switchToTab(container, tab);
-        if (tab === 'create') { resetCreatorState(); showCharacterCreator(container); }
-        else if (tab === 'roster') renderMemberDetail(container, selectedMember);
+        if (tab === 'roster') renderMemberDetail(container, selectedMember);
         else container.querySelector('#party-detail-panel').innerHTML = `<div class="srd-detail-empty"><div class="srd-empty-icon">🏰</div><p>Select a town and add characters to your party</p></div>`;
     }));
     container.querySelector('#party-member-list').addEventListener('click', e => {

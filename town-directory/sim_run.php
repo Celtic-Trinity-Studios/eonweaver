@@ -76,6 +76,46 @@
             $srdFeats = srdQuery($dndEdition, 'SELECT name, type, prerequisites FROM feats ORDER BY name');
             $srdEquipment = srdQuery($dndEdition, 'SELECT name, category, cost, weight FROM equipment ORDER BY category, name');
 
+            // ── Load Custom (Homebrew) Content ──────────
+            require_once $baseDir . '/user_db.php';
+            $customRaces = [];
+            $customClasses = [];
+            $customFeats = [];
+            try {
+                $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$userId], 0);
+                $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+                if ($campId) {
+                    $customRaces = userQuery($userId, "SELECT * FROM custom_races WHERE campaign_id = ? OR campaign_id IS NULL ORDER BY name", [$campId]);
+                    $customClasses = userQuery($userId, "SELECT * FROM custom_classes WHERE campaign_id = ? OR campaign_id IS NULL ORDER BY name", [$campId]);
+                    $customFeats = userQuery($userId, "SELECT * FROM custom_feats WHERE campaign_id = ? OR campaign_id IS NULL ORDER BY name", [$campId]);
+                } else {
+                    $customRaces = userQuery($userId, "SELECT * FROM custom_races ORDER BY name");
+                    $customClasses = userQuery($userId, "SELECT * FROM custom_classes ORDER BY name");
+                    $customFeats = userQuery($userId, "SELECT * FROM custom_feats ORDER BY name");
+                }
+            } catch (Exception $e) {
+                // No user DB yet — that's fine, just use SRD only
+            }
+
+            // Build custom races reference for AI prompt
+            $customRaceRef = '';
+            if (!empty($customRaces)) {
+                $raceNames = array_map(function($r) {
+                    $mods = $r['ability_mods'] ? " ({$r['ability_mods']})" : '';
+                    return $r['name'] . $mods;
+                }, $customRaces);
+                $customRaceRef = "\n  HOMEBREW RACES AVAILABLE: " . implode(', ', $raceNames);
+            }
+
+            // Build custom classes reference for AI prompt
+            $customClassRef = '';
+            if (!empty($customClasses)) {
+                $classNames = array_map(function($c) {
+                    return "{$c['name']} ({$c['hit_die']}";
+                }, $customClasses);
+                $customClassRef = "\n  HOMEBREW CLASSES AVAILABLE: " . implode(', ', $classNames);
+            }
+
             // Build curated feat list grouped by type
             $featsByType = [];
             foreach ($srdFeats as $f) {
@@ -84,6 +124,14 @@
                     $featsByType[$type] = [];
                 $prereq = $f['prerequisites'] ? " (Prereq: {$f['prerequisites']})" : '';
                 $featsByType[$type][] = $f['name'] . $prereq;
+            }
+            // Add custom feats to the feat reference
+            foreach ($customFeats as $cf) {
+                $type = $cf['type'] ?: 'General';
+                if (!isset($featsByType[$type]))
+                    $featsByType[$type] = [];
+                $prereq = $cf['prerequisites'] ? " (Prereq: {$cf['prerequisites']})" : '';
+                $featsByType[$type][] = $cf['name'] . $prereq . ' [HOMEBREW]';
             }
             $featRef = '';
             // Prioritize relevant categories
@@ -281,8 +329,8 @@ This is character #{$charNum} of {$numArrivals} being added.
 - If the DM set demographic targets above, try to match them.
 - MOST townspeople: NPC classes (Commoner, Expert, Warrior, Adept, Aristocrat). Player classes RARE (1 in 10 max).
 - New characters default to Level 1, UNLESS the DM explicitly states a higher level in the instructions below.
-- VARY the race! Do NOT make every character the same race. Mix Humans, Elves, Dwarves, Halflings, Gnomes, Half-Elves, Half-Orcs.
-- VARY the class! A town needs farmers, merchants, blacksmiths, bakers, tavern keepers, priests — not just fighters.{$namePatternWarning}
+- VARY the race! Do NOT make every character the same race. Mix Humans, Elves, Dwarves, Halflings, Gnomes, Half-Elves, Half-Orcs.{$customRaceRef}
+- VARY the class! A town needs farmers, merchants, blacksmiths, bakers, tavern keepers, priests — not just fighters.{$customClassRef}{$namePatternWarning}
 
 ## NAME DIVERSITY (CRITICAL):
 - Every name MUST be unique and sound DIFFERENT from existing names.
@@ -608,7 +656,8 @@ DM Override: If the DM's instructions below specify exact XP for a character, ho
 
 ## BRIEF CHARACTER GENERATION RULES (for any new arrivals/births):
 - Do NOT generate ability scores (str/dex/con/int_/wis/cha), HP, AC, atk, or gear — the system auto-generates these.
-- Most NPCs: NPC classes (Commoner, Expert, Warrior, Adept). Player classes RARE. Default Level 1 unless DM instructions specify otherwise.
+- Most NPCs: NPC classes (Commoner, Expert, Warrior, Adept). Player classes RARE. Default Level 1 unless DM instructions specify otherwise.{$customClassRef}
+- Available races: Human, Elf, Dwarf, Halfling, Gnome, Half-Elf, Half-Orc.{$customRaceRef}
 - Feats: 1 at L1 (Humans 2). Use common SRD feats (Alertness, Toughness, Skill Focus, Dodge, Weapon Focus, Power Attack, etc).
 - Skills: pick appropriate class skills. The system will calculate bonuses.
 - NAMING: Use WILDLY diverse naming styles. Mix Anglo, Celtic, Norse, Mediterranean, Slavic, Arabic, East Asian, invented fantasy, and archaic names. NO two new characters should share the same first syllable.

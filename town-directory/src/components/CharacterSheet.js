@@ -473,10 +473,40 @@ export function renderCharacterSheet(el, c, { onListRefresh, onDelete, container
   });
 
   // ── Wire Edit/Delete/LevelUp ───────────────────────
-  el.querySelector('#cs-edit-btn')?.addEventListener('click', () => {
-    import('../components/CharacterEdit.js').then(({ openCharacterEditModal }) => {
-      openCharacterEditModal(c, containerRef);
-    }).catch(() => alert('Edit modal not available'));
+  el.querySelector('#cs-edit-btn')?.addEventListener('click', async () => {
+    try {
+      const { initCreatorFromCharacter, renderCreator } = await import('../components/CharacterCreator.js');
+      const townId = getState().currentTownId || c.town_id;
+
+      // Callback: restore sheet after save or cancel
+      const restoreSheet = async () => {
+        try {
+          const result = await apiGetCharacters(townId);
+          const updated = (result.characters || []).find(ch => ch.id == c.id);
+          if (updated) {
+            const norm = normalizeCharacter(updated);
+            // Update state
+            const stateChars = getState().currentTown?.characters || [];
+            const idx = stateChars.findIndex(ch => ch.id == c.id);
+            if (idx >= 0) stateChars[idx] = norm;
+            if (onListRefresh) onListRefresh();
+            renderCharacterSheet(el, norm, { onListRefresh, onDelete, containerRef });
+          } else {
+            renderCharacterSheet(el, c, { onListRefresh, onDelete, containerRef });
+          }
+        } catch { renderCharacterSheet(el, c, { onListRefresh, onDelete, containerRef }); }
+      };
+
+      await initCreatorFromCharacter(c, {
+        townId,
+        onComplete: restoreSheet,
+        onCancel: () => renderCharacterSheet(el, c, { onListRefresh, onDelete, containerRef }),
+      });
+      renderCreator(el);
+    } catch (err) {
+      console.error('Failed to open editor:', err);
+      alert('Edit failed: ' + err.message);
+    }
   });
 
   el.querySelector('#cs-pdf-btn')?.addEventListener('click', async () => {
@@ -944,11 +974,27 @@ function renderBackpackItems(equipment) {
     }
     // Strip enhancement bonuses and prefixes for SRD lookup
     const srdName = (item.item_name || '').replace(/\s*\(.*\)/, '').replace(/\+\d+/, '').replace(/masterwork\s*/i, '').trim();
+    // Parse cost from properties to determine if item is sellable
+    let sellable = false;
+    let sellLabel = '';
+    try {
+      const p = typeof item.properties === 'string' ? JSON.parse(item.properties || '{}') : (item.properties || {});
+      if (p.cost) {
+        const parsed = parseSrdCostToCopper(p.cost);
+        if (parsed && parsed.cp > 0) {
+          sellable = true;
+          sellLabel = p.cost;
+        }
+      }
+    } catch (_) {}
     return `<div class="cs-backpack-item" data-item-id="${item.id}" data-srd-type="equipment" data-srd-name="${srdName}">
       <span class="cs-bp-icon">${typeIcon}</span>
       <span class="cs-bp-name">${item.item_name}${item.quantity > 1 ? ` ×${item.quantity}` : ''}</span>
-      ${suggestedSlot ? `<button class="cs-bp-equip-btn" data-item-id="${item.id}" data-slot="${suggestedSlot}" title="Equip to ${SLOT_NICE[suggestedSlot] || suggestedSlot}">⬆ Equip</button>` : ''}
-      <button class="cs-bp-del-btn" data-item-id="${item.id}" title="Delete">🗑️</button>
+      <span class="cs-bp-actions">
+        ${suggestedSlot ? `<button class="cs-bp-equip-btn" data-item-id="${item.id}" data-slot="${suggestedSlot}" title="Equip to ${SLOT_NICE[suggestedSlot] || suggestedSlot}">⬆ Equip</button>` : ''}
+        ${sellable ? `<button class="cs-bp-sell-btn" data-item-id="${item.id}" data-cost="${sellLabel}" title="Sell for ${sellLabel}">💰 Sell</button>` : ''}
+        <button class="cs-bp-del-btn" data-item-id="${item.id}" title="Delete">🗑️</button>
+      </span>
     </div>`;
   }).join('');
 }
@@ -1142,6 +1188,77 @@ async function loadAndRenderSocial(el, charId, character, options) {
   await Promise.all([renderRelationships(), renderMemories()]);
 }
 
+/**
+ * Parse SRD cost string (e.g. "250 gp", "1,500 gp", "5 sp", "+50 gp") into copper pieces.
+ * Returns { cp: number, display: string } or null if unparseable.
+ */
+function parseSrdCostToCopper(costStr) {
+  if (!costStr || costStr === '—' || costStr === '-') return null;
+  const clean = costStr.replace(/[+,]/g, '').trim();
+  const m = clean.match(/^(\d+(?:\.\d+)?)\s*(pp|gp|ep|sp|cp)$/i);
+  if (!m) return null;
+  const amount = parseFloat(m[1]);
+  const denom = m[2].toLowerCase();
+  const rates = { pp: 1000, gp: 100, ep: 50, sp: 10, cp: 1 };
+  return { cp: Math.round(amount * (rates[denom] || 0)), display: costStr.replace(/[+]/g, '').trim() };
+}
+
+/**
+ * Convert a total copper amount into a coin breakdown,
+ * returning largest denominations first.
+ */
+function copperToCoins(totalCp) {
+  const pp = Math.floor(totalCp / 1000); totalCp -= pp * 1000;
+  const gp = Math.floor(totalCp / 100); totalCp -= gp * 100;
+  const ep = Math.floor(totalCp / 50); totalCp -= ep * 50;
+  const sp = Math.floor(totalCp / 10); totalCp -= sp * 10;
+  return { pp, gp, ep, sp, cp: totalCp };
+}
+
+/**
+ * Read the current purse values from the DOM spinners.
+ */
+function readPurseFromDom(sheetEl) {
+  const purse = { pp: 0, gp: 0, ep: 0, sp: 0, cp: 0 };
+  sheetEl.querySelectorAll('.purse-val').forEach(v => {
+    purse[v.dataset.coin] = parseInt(v.textContent) || 0;
+  });
+  return purse;
+}
+
+/**
+ * Convert a purse object to total copper pieces.
+ */
+function purseToCp(purse) {
+  return (purse.pp || 0) * 1000 + (purse.gp || 0) * 100 + (purse.ep || 0) * 50 + (purse.sp || 0) * 10 + (purse.cp || 0);
+}
+
+/**
+ * Write updated purse values back to the DOM and save to the character's gear string.
+ */
+async function writePurseToDom(sheetEl, newPurse, character) {
+  // Update DOM spinners
+  for (const [coin, val] of Object.entries(newPurse)) {
+    const valEl = sheetEl.querySelector(`.purse-val[data-coin="${coin}"]`);
+    if (valEl) valEl.textContent = val;
+  }
+  // Rebuild gear string (non-money items + money)
+  const gearItems = [];
+  sheetEl.querySelectorAll('.cs-gear-item span:last-child').forEach(s => {
+    const t = s.textContent.trim();
+    if (t && !t.endsWith('XP')) gearItems.push(t);
+  });
+  const mp = [];
+  if (newPurse.pp > 0) mp.push(newPurse.pp + ' pp');
+  if (newPurse.gp > 0) mp.push(newPurse.gp + ' gp');
+  if (newPurse.ep > 0) mp.push(newPurse.ep + ' ep');
+  if (newPurse.sp > 0) mp.push(newPurse.sp + ' sp');
+  if (newPurse.cp > 0) mp.push(newPurse.cp + ' cp');
+  await apiSaveCharacter(getState().currentTownId || character.town_id, {
+    id: character.id, gear: [...gearItems, ...mp].join(', ')
+  }).catch(() => {});
+}
+
 async function loadAndRenderEquipment(el, charId, character, options) {
   const { apiGetEquipment, apiEquipItem, apiUnequipItem, apiDeleteEquipment, apiSaveEquipment } = await import('../api/equipment.js');
   let equipment = [];
@@ -1249,6 +1366,51 @@ async function loadAndRenderEquipment(el, charId, character, options) {
         await refresh();
       });
     });
+    // Sell button handler
+    el.querySelectorAll('.cs-bp-sell-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const itemId = parseInt(btn.dataset.itemId);
+        const costStr = btn.dataset.cost;
+        const item = equipment.find(e => e.id == itemId);
+        if (!item) return;
+
+        const parsed = parseSrdCostToCopper(costStr);
+        if (!parsed || parsed.cp <= 0) {
+          const { showToast } = await import('../components/Toast.js');
+          showToast(`Cannot determine sell value for "${item.item_name}"`, 'warning');
+          return;
+        }
+
+        // Get sell rate from settings (default 50%)
+        let sellRate = 50;
+        try {
+          const { apiGetSettings } = await import('../api/settings.js');
+          const settingsRes = await apiGetSettings();
+          if (settingsRes.settings?.sell_rate) sellRate = parseInt(settingsRes.settings.sell_rate) || 50;
+        } catch (_) {}
+
+        const sellCp = Math.max(1, Math.floor(parsed.cp * sellRate / 100));
+        const sellCoins = copperToCoins(sellCp);
+        const sellStr = [sellCoins.pp && `${sellCoins.pp} pp`, sellCoins.gp && `${sellCoins.gp} gp`, sellCoins.sp && `${sellCoins.sp} sp`, sellCoins.cp && `${sellCoins.cp} cp`].filter(Boolean).join(', ');
+
+        if (!confirm(`Sell ${item.item_name} for ${sellStr} (${sellRate}% of ${costStr})?`)) return;
+
+        // Add coins to purse
+        const purse = readPurseFromDom(el);
+        const currentTotal = purseToCp(purse);
+        const newTotal = currentTotal + sellCp;
+        const newPurse = copperToCoins(newTotal);
+        await writePurseToDom(el, newPurse, character);
+
+        // Remove item
+        await apiDeleteEquipment(charId, itemId);
+        equipment = equipment.filter(e => e.id != itemId);
+
+        const { showToast } = await import('../components/Toast.js');
+        showToast(`Sold ${item.item_name} for ${sellStr}`, 'success');
+        await refresh();
+      });
+    });
   }
 
   refresh();
@@ -1302,16 +1464,37 @@ async function loadAndRenderEquipment(el, charId, character, options) {
         resultsEl.innerHTML = '<div class="cs-empty">No items found</div>';
         return;
       }
+      // Pre-compute affordability
+      const currentPurse = readPurseFromDom(el);
+      const totalCp = purseToCp(currentPurse);
+
       resultsEl.innerHTML = `<div class="srd-eq-header"><span>Name</span><span>Category</span><span>Cost</span><span>Wt</span><span>Damage</span><span></span></div>` +
-        filtered.slice(0, 100).map(item => `<div class="srd-eq-row" data-id="${item.id}">
+        filtered.slice(0, 100).map(item => {
+          const parsed = parseSrdCostToCopper(item.cost);
+          const canAfford = parsed ? totalCp >= parsed.cp : false;
+          const hasCost = item.cost && item.cost !== '—';
+          let buyBtn = '';
+          if (hasCost) {
+            if (canAfford) {
+              buyBtn = `<button class="btn-sm srd-eq-buy" data-id="${item.id}" title="Buy — subtract ${item.cost} from coin purse">🪙 Buy</button>`;
+            } else {
+              const shortfall = parsed ? parsed.cp - totalCp : 0;
+              const shortCoins = copperToCoins(shortfall);
+              const shortStr = [shortCoins.gp && `${shortCoins.gp} gp`, shortCoins.sp && `${shortCoins.sp} sp`, shortCoins.cp && `${shortCoins.cp} cp`].filter(Boolean).join(', ') || '—';
+              buyBtn = `<button class="btn-sm srd-eq-buy srd-eq-cant-afford" data-id="${item.id}" disabled title="Can't afford — need ${shortStr} more">🪙 Buy</button>`;
+            }
+          }
+          return `<div class="srd-eq-row" data-id="${item.id}">
           <span class="srd-eq-name">${item.name}</span>
           <span class="srd-eq-cat">${item.category || '—'}</span>
           <span class="srd-eq-cost">${item.cost || '—'}</span>
           <span class="srd-eq-wt">${item.weight || '—'}</span>
           <span class="srd-eq-dmg">${item.damage || '—'}</span>
-          <span><button class="btn-primary btn-sm srd-eq-add" data-id="${item.id}">+ Add</button></span>
-        </div>`).join('') + (filtered.length > 100 ? '<div class="cs-muted" style="text-align:center;padding:0.5rem">Showing first 100 results...</div>' : '');
+          <span class="srd-eq-actions"><button class="btn-primary btn-sm srd-eq-add" data-id="${item.id}">+ Add</button>${buyBtn}</span>
+        </div>`;
+        }).join('') + (filtered.length > 100 ? '<div class="cs-muted" style="text-align:center;padding:0.5rem">Showing first 100 results...</div>' : '');
       wireAddButtons();
+      wireBuyButtons();
     }
 
     function wireAddButtons() {
@@ -1357,6 +1540,80 @@ async function loadAndRenderEquipment(el, charId, character, options) {
             btn.disabled = true;
             btn.classList.remove('btn-primary');
             refresh();
+          }
+        });
+      });
+    }
+
+    function wireBuyButtons() {
+      m.querySelectorAll('.srd-eq-buy').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const id = parseInt(btn.dataset.id);
+          const srdItem = allItems.find(i => i.id === id);
+          if (!srdItem) return;
+
+          // Parse cost
+          const parsed = parseSrdCostToCopper(srdItem.cost);
+          if (!parsed || parsed.cp <= 0) {
+            const { showToast } = await import('../components/Toast.js');
+            showToast(`Cannot parse cost: "${srdItem.cost}"`, 'warning');
+            return;
+          }
+
+          // Read current purse from the sheet behind the modal
+          const purse = readPurseFromDom(el);
+          const totalCp = purseToCp(purse);
+
+          if (totalCp < parsed.cp) {
+            const { showToast } = await import('../components/Toast.js');
+            const have = copperToCoins(totalCp);
+            const haveStr = [have.pp && `${have.pp} pp`, have.gp && `${have.gp} gp`, have.sp && `${have.sp} sp`, have.cp && `${have.cp} cp`].filter(Boolean).join(', ') || '0 cp';
+            showToast(`Can't afford ${srdItem.name} (${parsed.display}) — you have ${haveStr}`, 'error');
+            return;
+          }
+
+          // Subtract cost and update purse
+          const remainingCp = totalCp - parsed.cp;
+          const newPurse = copperToCoins(remainingCp);
+          await writePurseToDom(el, newPurse, character);
+
+          // Determine item_type (same logic as +Add)
+          const cat = (srdItem.category || '').toLowerCase();
+          const itemName = (srdItem.name || '').toLowerCase();
+          let itemType = 'gear';
+          if (cat.includes('weapon')) itemType = 'weapon';
+          else if (cat.includes('armor') || cat.includes('shield')) {
+            const isShield = itemName.startsWith('shield') || itemName.includes('buckler');
+            itemType = isShield ? 'shield' : 'armor';
+          }
+          else if (cat.includes('potion')) itemType = 'potion';
+          else if (cat.includes('ring')) itemType = 'ring';
+          else if (cat.includes('wand') || cat.includes('rod') || cat.includes('staff')) itemType = 'wand';
+          else if (cat.includes('scroll')) itemType = 'scroll';
+
+          const props = {};
+          if (srdItem.damage) props.damage = srdItem.damage;
+          if (srdItem.critical) props.critical = srdItem.critical;
+          if (srdItem.cost) props.cost = srdItem.cost;
+          if (srdItem.properties) props.srd_properties = srdItem.properties;
+          const wt = parseFloat((srdItem.weight || '0').replace(/[^\d.]/g, '')) || 0;
+
+          const res = await apiSaveEquipment(charId, {
+            item_name: srdItem.name,
+            item_type: itemType,
+            quantity: 1,
+            weight: wt,
+            properties: JSON.stringify(props),
+            srd_ref: 'srd_equipment:' + srdItem.id
+          });
+          if (res.ok) {
+            equipment.push({ id: res.id, character_id: charId, item_name: srdItem.name, item_type: itemType, quantity: 1, weight: wt, properties: JSON.stringify(props), srd_ref: 'srd_equipment:' + srdItem.id, equipped: false, slot: null });
+            const { showToast } = await import('../components/Toast.js');
+            showToast(`Bought ${srdItem.name} for ${parsed.display}`, 'success');
+            refresh();
+            // Re-render results so affordability updates for all items
+            renderResults();
           }
         });
       });
@@ -1476,6 +1733,8 @@ function buildSpellsTab(c, className, level, abilities) {
     return `<div class="cs-spell-empty"><div class="cs-spell-empty-icon">✨</div><p>This character does not have spellcasting abilities.</p><p class="cs-muted">Only spellcasting classes (Wizard, Sorcerer, Cleric, Druid, Bard, Paladin, Ranger) have access to spells.</p></div>`;
   }
 
+  const isCleric = className.toLowerCase().includes('cleric');
+
   return `
   <div class="cs-spell-grid">
     <div class="cs-block">
@@ -1486,6 +1745,16 @@ function buildSpellsTab(c, className, level, abilities) {
         <button class="btn-secondary btn-sm" id="cs-spell-clear-btn" title="Clear all prepared spells" style="color:#ff5252;border-color:rgba(255,82,82,0.3);">🗑️ Clear All</button>
       </div>
       <div id="cs-metamagic-known"></div>
+      ${isCleric ? `
+      <div id="cs-domain-section" class="domain-section">
+        <div class="domain-section-title">⛪ Cleric Domains <span class="cs-block-count" id="cs-domain-names"></span></div>
+        <div id="cs-domain-content"><div class="cs-loading">Loading domains...</div></div>
+        <div id="cs-domain-spells-list" class="domain-spells-list"></div>
+      </div>
+      <div id="cs-spontaneous-section" class="spontaneous-section">
+        <div class="spontaneous-title" id="cs-spontaneous-title">🔄 Spontaneous Casting</div>
+        <div id="cs-spontaneous-content"></div>
+      </div>` : ''}
     </div>
     <div class="cs-block" style="flex:2;">
       <div class="cs-block-title" id="cs-spell-list-title">📜 Spell List</div>
@@ -1852,88 +2121,162 @@ async function loadAndRenderSpells(el, charId, character) {
           btn.style.display = '';
         });
 
-        // Wire metamagic prepare buttons
+        // Wire all metamagic prepare buttons (spellbook and injected)
         el.querySelectorAll('.metamagic-prepare-btn').forEach(btn => {
-          btn.addEventListener('click', async () => {
-            const spellName = btn.dataset.spellName;
-            const baseLevel = parseInt(btn.dataset.spellLevel) || 0;
-            const maxSlot = slots.length - 1;
-            const combos = getValidMetamagicCombinations(baseLevel, maxSlot, knownMeta);
-
-            if (!combos.length) {
-              const { showToast } = await import('../components/Toast.js');
-              showToast('No valid metamagic combinations for this spell (slot too high)', 'warning');
-              return;
-            }
-
-            const { showModal } = await import('../components/Modal.js');
-            const { el: modal, close: closeModal } = showModal({
-              title: `⚗️ Metamagic: ${spellName}`,
-              width: 'narrow',
-              content: `
-                <div class="metamagic-modal-content">
-                  <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:0.75rem;">
-                    Base spell level: <strong>${baseLevel}</strong> — Choose a metamagic combination:
-                  </div>
-                  <div id="meta-combos">
-                    ${combos.map((c, i) => `
-                      <div class="metamagic-combo-card" data-idx="${i}">
-                        <div>
-                          <div class="metamagic-combo-feats">${c.feats.join(' + ')}</div>
-                          <div class="metamagic-combo-detail">${c.breakdown.join('; ')}</div>
-                        </div>
-                        <div class="metamagic-combo-slot">Slot ${c.effectiveLevel}</div>
-                      </div>
-                    `).join('')}
-                  </div>
-                  <div id="meta-effects-preview" class="metamagic-effects-preview" style="display:none;"></div>
-                  <div style="margin-top:0.75rem;display:flex;justify-content:flex-end;gap:0.4rem;">
-                    <button class="btn-secondary btn-sm" id="meta-cancel">Cancel</button>
-                    <button class="btn-primary btn-sm" id="meta-apply" disabled>Prepare with Metamagic</button>
-                  </div>
-                </div>
-              `,
-            });
-
-            let selectedCombo = null;
-            modal.querySelectorAll('.metamagic-combo-card').forEach(card => {
-              card.addEventListener('click', () => {
-                modal.querySelectorAll('.metamagic-combo-card').forEach(c => c.classList.remove('selected'));
-                card.classList.add('selected');
-                selectedCombo = combos[parseInt(card.dataset.idx)];
-                modal.querySelector('#meta-apply').disabled = false;
-
-                // Show effects preview
-                const preview = modal.querySelector('#meta-effects-preview');
-                const effects = applyMetamagicEffects('1d6', selectedCombo.feats);
-                if (effects.notes.length) {
-                  preview.style.display = '';
-                  preview.innerHTML = `<strong>Effects:</strong> ${effects.notes.join(' | ')}`;
-                }
-              });
-            });
-
-            modal.querySelector('#meta-cancel')?.addEventListener('click', closeModal);
-            modal.querySelector('#meta-apply')?.addEventListener('click', async () => {
-              if (!selectedCombo) return;
-              try {
-                await apiSaveSpellPrepared({
-                  character_id: charId,
-                  spell_name: spellName,
-                  spell_level: baseLevel,
-                  slot_level: selectedCombo.effectiveLevel,
-                  class_name: className,
-                  metamagic: selectedCombo.feats.join(' + '),
-                });
-                closeModal();
-                await loadAndRenderSpells(el, charId, character);
-              } catch (e) { console.error('Metamagic prepare failed:', e); }
-            });
+          btn.addEventListener('click', () => {
+            openMetamagicModal(btn.dataset.spellName, parseInt(btn.dataset.spellLevel) || 0, slots, knownMeta, charId, className, el, character);
           });
         });
       }
     }
+    // Store metamagic state on the element for search integration
+    el._metamagicState = knownMeta.length ? { knownMeta, slots } : null;
   } catch (e) { console.warn('Metamagic integration skipped:', e); }
+
+  // ── Domain Integration (Clerics) ──────────────────────────
+  const isCleric = className.toLowerCase().includes('cleric');
+  if (isCleric) {
+    try {
+      const { getAllDomainNames, parseCharacterDomains, getDomainSpells, getSpontaneousType, getSpontaneousSpell } = await import('../engine/domains35e.js');
+
+      const charDomains = character.domains || '';
+      const parsedDomains = parseCharacterDomains(charDomains);
+      const domainNamesEl = el.querySelector('#cs-domain-names');
+      const domainContentEl = el.querySelector('#cs-domain-content');
+      const domainSpellsEl = el.querySelector('#cs-domain-spells-list');
+
+      if (domainNamesEl) {
+        domainNamesEl.textContent = parsedDomains.length ? parsedDomains.map(d => d.name).join(', ') : 'None selected';
+      }
+
+      if (domainContentEl) {
+        if (parsedDomains.length) {
+          // Show domain powers
+          domainContentEl.innerHTML = parsedDomains.map(d => `
+            <div class="domain-power-card">
+              <div class="domain-power-name">${d.name}</div>
+              <div class="domain-power-desc">${d.grantedPower}</div>
+            </div>
+          `).join('');
+        } else {
+          // Show domain picker
+          const allDomains = getAllDomainNames();
+          domainContentEl.innerHTML = `
+            <div class="domain-picker">
+              <div class="domain-picker-help">Select 2 domains for this Cleric:</div>
+              <div class="domain-picker-grid">
+                ${allDomains.map(name => `<label class="domain-pick-option"><input type="checkbox" value="${name}" class="domain-checkbox"> ${name}</label>`).join('')}
+              </div>
+              <button class="btn-primary btn-sm" id="cs-domain-save-btn" disabled>Save Domains</button>
+            </div>
+          `;
+          // Wire checkboxes — max 2
+          const checkboxes = domainContentEl.querySelectorAll('.domain-checkbox');
+          const saveBtn = domainContentEl.querySelector('#cs-domain-save-btn');
+          checkboxes.forEach(cb => {
+            cb.addEventListener('change', () => {
+              const checked = domainContentEl.querySelectorAll('.domain-checkbox:checked');
+              if (checked.length > 2) { cb.checked = false; return; }
+              saveBtn.disabled = checked.length !== 2;
+            });
+          });
+          saveBtn?.addEventListener('click', async () => {
+            const checked = [...domainContentEl.querySelectorAll('.domain-checkbox:checked')].map(cb => cb.value);
+            if (checked.length !== 2) return;
+            try {
+              character.domains = checked.join(', ');
+              await apiSaveCharacter(getState().currentTownId || character.town_id, { id: character.id, domains: character.domains });
+              await loadAndRenderSpells(el, charId, character);
+            } catch (e) { console.error('Failed to save domains:', e); }
+          });
+        }
+      }
+
+      // Domain spell list
+      if (domainSpellsEl && parsedDomains.length) {
+        const domainSpells = getDomainSpells(charDomains);
+        let dsHtml = '';
+        for (let lvl = 1; lvl <= 9; lvl++) {
+          const spells = domainSpells[lvl];
+          if (!spells) continue;
+          const slotInfo = slots.find(s => s.level === lvl);
+          if (!slotInfo || !slotInfo.available) continue;
+          dsHtml += `<div class="domain-spell-level"><span class="domain-spell-lvl">${lvl}</span>`;
+          for (const { spell, domain } of spells) {
+            const alreadyPrepared = preparedSpells.some(p => p.spell_name === spell && p.is_domain == 1 && parseInt(p.spell_level) === lvl);
+            dsHtml += `<span class="domain-spell-entry${alreadyPrepared ? ' prepared' : ''}">
+              <span class="domain-spell-name">${spell}</span>
+              <span class="domain-spell-src">${domain}</span>
+              ${!alreadyPrepared ? `<button class="domain-prepare-btn btn-sm" data-spell="${spell}" data-level="${lvl}" data-domain="${domain}" title="Prepare as domain spell">📌</button>` : '<span class="cs-spell-badge">✓</span>'}
+            </span>`;
+          }
+          dsHtml += '</div>';
+        }
+        domainSpellsEl.innerHTML = dsHtml || '<div class="cs-muted" style="font-size:0.75rem;padding:0.3rem;">Domain spells shown at available spell levels.</div>';
+
+        // Wire domain prepare buttons
+        domainSpellsEl.querySelectorAll('.domain-prepare-btn').forEach(btn => {
+          btn.addEventListener('click', async () => {
+            try {
+              await apiSaveSpellPrepared({
+                character_id: charId,
+                spell_name: btn.dataset.spell,
+                spell_level: parseInt(btn.dataset.level),
+                slot_level: parseInt(btn.dataset.level),
+                class_name: className,
+                is_domain: 1,
+              });
+              await loadAndRenderSpells(el, charId, character);
+            } catch (e) { console.error('Domain prepare failed:', e); }
+          });
+        });
+      }
+
+      // Spontaneous casting section (Cure/Inflict)
+      const spontEl = el.querySelector('#cs-spontaneous-content');
+      const spontTitleEl = el.querySelector('#cs-spontaneous-title');
+      if (spontEl) {
+        const spontType = getSpontaneousType(character.alignment || '');
+        const typeLabel = spontType === 'inflict' ? 'Inflict' : 'Cure';
+        if (spontTitleEl) spontTitleEl.textContent = `🔄 Spontaneous ${typeLabel} Casting`;
+
+        let spontHtml = `<div class="spontaneous-help">Sacrifice any prepared spell to cast a ${typeLabel} spell of the same level.</div>`;
+        spontHtml += '<div class="spontaneous-list">';
+        for (let lvl = 0; lvl <= 9; lvl++) {
+          const slotInfo = slots.find(s => s.level === lvl);
+          if (!slotInfo || !slotInfo.available) continue;
+          const spellName = getSpontaneousSpell(lvl, spontType);
+          if (!spellName) continue;
+          spontHtml += `<div class="spontaneous-spell"><span class="spontaneous-lvl">${lvl}</span><span class="spontaneous-name">${spellName}</span></div>`;
+        }
+        spontHtml += '</div>';
+        spontEl.innerHTML = spontHtml;
+      }
+    } catch (e) { console.warn('Domain integration skipped:', e); }
+  }
+
+  // ── Metamagic for non-spellbook prepared casters (Cleric, Druid, etc.) ──
+  // Inject ⚗️ buttons next to prepare buttons in the prepared spells list
+  if (caster.type === 'prepared' && !caster.useSpellbook && el._metamagicState) {
+    const { knownMeta: knownMeta2, slots: metaSlots } = el._metamagicState;
+    const spellList = el.querySelector('#cs-spell-list');
+    if (spellList) {
+      spellList.querySelectorAll('.cs-spell-prepare-btn').forEach(btn => {
+        // Don't duplicate if already has one
+        if (btn.parentElement?.querySelector('.metamagic-prepare-btn')) return;
+        const metaBtn = document.createElement('button');
+        metaBtn.className = 'metamagic-prepare-btn metamagic-btn';
+        metaBtn.dataset.spellName = btn.dataset.spellName;
+        metaBtn.dataset.spellLevel = btn.dataset.spellLevel;
+        metaBtn.title = 'Prepare with Metamagic';
+        metaBtn.textContent = '⚗️';
+        metaBtn.addEventListener('click', () => {
+          openMetamagicModal(btn.dataset.spellName, parseInt(btn.dataset.spellLevel) || 0, metaSlots, knownMeta2, charId, className, el, character);
+        });
+        btn.parentElement?.appendChild(metaBtn);
+      });
+    }
+  }
 
   // Load SRD data for spell tooltips on the spell list
   try {
@@ -1970,19 +2313,114 @@ async function loadAndRenderSpells(el, charId, character) {
   } catch (e) { console.warn('Could not load spell tooltips:', e); }
 }
 
+/* ═══════════════════════════════════════════════════════════
+   METAMAGIC MODAL — Shared helper for all metamagic prepare flows
+   ═══════════════════════════════════════════════════════════ */
+async function openMetamagicModal(spellName, baseLevel, slots, knownMeta, charId, className, el, character) {
+  const { getValidMetamagicCombinations, applyMetamagicEffects } = await import('../engine/metamagic35e.js');
+  const maxSlot = slots.reduce((max, s) => (s.available && s.level > max) ? s.level : max, 0);
+  const combos = getValidMetamagicCombinations(baseLevel, maxSlot, knownMeta);
+
+  if (!combos.length) {
+    const { showToast } = await import('../components/Toast.js');
+    showToast('No valid metamagic combinations — spell level too high for available slots', 'warning');
+    return;
+  }
+
+  const { showModal } = await import('../components/Modal.js');
+  const { el: modal, close: closeModal } = showModal({
+    title: `⚗️ Metamagic: ${spellName}`,
+    width: 'narrow',
+    content: `
+      <div class="metamagic-modal-content">
+        <div style="font-size:0.75rem;color:var(--text-secondary);margin-bottom:0.75rem;">
+          Base spell level: <strong>${baseLevel}</strong> — Choose a metamagic combination:
+        </div>
+        <div id="meta-combos">
+          ${combos.map((c, i) => `
+            <div class="metamagic-combo-card" data-idx="${i}">
+              <div>
+                <div class="metamagic-combo-feats">${c.feats.join(' + ')}</div>
+                <div class="metamagic-combo-detail">${c.breakdown.join('; ')}</div>
+              </div>
+              <div class="metamagic-combo-slot">Slot ${c.effectiveLevel}</div>
+            </div>
+          `).join('')}
+        </div>
+        <div id="meta-effects-preview" class="metamagic-effects-preview" style="display:none;"></div>
+        <div style="margin-top:0.75rem;display:flex;justify-content:flex-end;gap:0.4rem;">
+          <button class="btn-secondary btn-sm" id="meta-cancel">Cancel</button>
+          <button class="btn-primary btn-sm" id="meta-apply" disabled>Prepare with Metamagic</button>
+        </div>
+      </div>
+    `,
+  });
+
+  let selectedCombo = null;
+  modal.querySelectorAll('.metamagic-combo-card').forEach(card => {
+    card.addEventListener('click', () => {
+      modal.querySelectorAll('.metamagic-combo-card').forEach(c => c.classList.remove('selected'));
+      card.classList.add('selected');
+      selectedCombo = combos[parseInt(card.dataset.idx)];
+      modal.querySelector('#meta-apply').disabled = false;
+
+      // Show effects preview
+      const preview = modal.querySelector('#meta-effects-preview');
+      const effects = applyMetamagicEffects('1d6', selectedCombo.feats);
+      if (effects.notes.length) {
+        preview.style.display = '';
+        preview.innerHTML = `<strong>Effects:</strong> ${effects.notes.join(' | ')}`;
+      } else {
+        preview.style.display = 'none';
+      }
+    });
+  });
+
+  modal.querySelector('#meta-cancel')?.addEventListener('click', closeModal);
+  modal.querySelector('#meta-apply')?.addEventListener('click', async () => {
+    if (!selectedCombo) return;
+    try {
+      const btn = modal.querySelector('#meta-apply');
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Preparing...'; }
+      await apiSaveSpellPrepared({
+        character_id: charId,
+        spell_name: spellName,
+        spell_level: baseLevel,
+        slot_level: selectedCombo.effectiveLevel,
+        class_name: className,
+        metamagic: selectedCombo.feats.join(' + '),
+      });
+      closeModal();
+      await loadAndRenderSpells(el, charId, character);
+    } catch (e) {
+      console.error('Metamagic prepare failed:', e);
+      const btn = modal.querySelector('#meta-apply');
+      if (btn) { btn.disabled = false; btn.textContent = 'Prepare with Metamagic'; }
+    }
+  });
+}
+
 function renderSpellSlotsTable(el, slots, caster, prepared, known) {
   const container = el.querySelector('#cs-spell-slots-table');
   if (!container) return;
 
-  // Count used per level
+  // Count used per level (separate domain vs regular)
   const usedPerLevel = {};
+  const domainUsedPerLevel = {};
   const spellsToCount = caster.type === 'prepared' ? prepared : known;
   for (const sp of spellsToCount) {
     const lvl = parseInt(sp.slot_level ?? sp.spell_level) || 0;
-    if (sp.used == 1) usedPerLevel[lvl] = (usedPerLevel[lvl] || 0) + 1;
+    if (sp.used == 1) {
+      if (sp.is_domain == 1) {
+        domainUsedPerLevel[lvl] = (domainUsedPerLevel[lvl] || 0) + 1;
+      } else {
+        usedPerLevel[lvl] = (usedPerLevel[lvl] || 0) + 1;
+      }
+    }
   }
 
-  let html = `<div class="cs-spell-header"><span>Lvl</span><span>Slots</span><span>DC</span></div>`;
+  const hasDomains = slots.some(s => s.domainSlot);
+  let html = `<div class="cs-spell-header"><span>Lvl</span><span>Slots${hasDomains ? ' + <span class="domain-slot-label">D</span>' : ''}</span><span>DC</span></div>`;
   for (const s of slots) {
     if (!s.available && s.base === null) continue;
     const used = usedPerLevel[s.level] || 0;
@@ -1999,7 +2437,19 @@ function renderSpellSlotsTable(el, slots, caster, prepared, known) {
           pips.push('<span class="spell-pip spell-pip-filled" title="Available"></span>');
         }
       }
-      pipsHtml = `<span class="spell-pip-row">${pips.join('')}</span><span class="spell-pip-count">${remaining}/${s.total}</span>`;
+      // Domain slot pip (gold-colored)
+      if (s.domainSlot) {
+        const domainUsed = domainUsedPerLevel[s.level] || 0;
+        if (domainUsed > 0) {
+          pips.push('<span class="spell-pip spell-pip-domain-used" title="Domain (Used)">D</span>');
+        } else {
+          pips.push('<span class="spell-pip spell-pip-domain" title="Domain Slot">D</span>');
+        }
+      }
+      const totalWithDomain = s.total + (s.domainSlot ? 1 : 0);
+      const totalUsed = used + (domainUsedPerLevel[s.level] || 0);
+      const totalRemaining = Math.max(0, totalWithDomain - totalUsed);
+      pipsHtml = `<span class="spell-pip-row">${pips.join('')}</span><span class="spell-pip-count">${totalRemaining}/${totalWithDomain}</span>`;
     } else {
       pipsHtml = '<span class="spell-pip-none">—</span>';
     }
@@ -2260,6 +2710,7 @@ function wireSpellSearch(el, caster, className, charId, character) {
             <span class="cs-spell-meta">${sp.school || ''} [${filterClass} ${lvl}]</span>
           </div>
           <button class="btn-sm btn-primary cs-spell-add-btn" data-spell-name="${sp.name}" data-spell-level="${lvl}" data-spell-id="${sp.id}">+ Add</button>
+          ${(caster.type === 'prepared' && el._metamagicState) ? `<button class="btn-sm metamagic-btn cs-spell-meta-add-btn" data-spell-name="${sp.name}" data-spell-level="${lvl}" title="Add with Metamagic">⚗️</button>` : ''}
         </div>`;
       }).join('');
 
@@ -2305,6 +2756,25 @@ function wireSpellSearch(el, caster, className, charId, character) {
           }
         });
       });
+
+      // Wire metamagic add buttons in search results
+      if (el._metamagicState) {
+        const { knownMeta: searchMeta, slots: searchSlots } = el._metamagicState;
+        resultsDiv.querySelectorAll('.cs-spell-meta-add-btn').forEach(metaBtn => {
+          metaBtn.addEventListener('click', () => {
+            openMetamagicModal(
+              metaBtn.dataset.spellName,
+              parseInt(metaBtn.dataset.spellLevel) || 0,
+              searchSlots,
+              searchMeta,
+              charId,
+              className,
+              el,
+              character
+            );
+          });
+        });
+      }
     } catch (e) {
       resultsDiv.innerHTML = `<div class="cs-muted" style="padding:0.5rem;color:var(--error);">Search failed: ${e.message}</div>`;
     }

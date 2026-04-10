@@ -28,6 +28,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' || $_SERVER['REQUEST_METHOD'] === 'DEL
 try {
 
     require_once __DIR__ . '/helpers.php';
+    require_once __DIR__ . '/user_db.php';
 
     switch ($action) {
 
@@ -380,6 +381,7 @@ try {
                 'languages',
                 'skills_feats',
                 'feats',
+                'domains',
                 'gear',
                 'role',
                 'history',
@@ -760,6 +762,31 @@ try {
                 $uid
             );
             respond(['ok' => true, 'xp_log' => $logs ?: []]);
+            break;
+
+        /* ── Add Combat XP Log Entry ──────────────────── */
+        case 'add_combat_xp':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $data = json_decode(file_get_contents('php://input'), true);
+            $charId = (int) ($data['character_id'] ?? 0);
+            $townId = (int) ($data['town_id'] ?? 0);
+            $xpGained = (int) ($data['xp_gained'] ?? 0);
+            $reason = trim($data['reason'] ?? 'Combat XP');
+            $source = trim($data['source'] ?? 'encounter');
+
+            if (!$charId || !$townId || !$xpGained) throw new Exception('Missing required fields');
+
+            // Verify ownership
+            verifyTownOwnership($uid, $townId, $uid);
+
+            execute(
+                'INSERT INTO character_xp_log (character_id, town_id, xp_gained, reason, source, game_date) VALUES (?, ?, ?, ?, ?, NOW())',
+                [$charId, $townId, $xpGained, $reason, $source],
+                $uid
+            );
+
+            respond(['ok' => true]);
             break;
 
         /* ── Calendar (per-user) ────────────────────────── */
@@ -1165,7 +1192,8 @@ try {
             );
             // Load participants with character data
             $encounter['participants'] = query(
-                'SELECT ep.*, c.name, c.race, c.class, c.hp as base_hp, c.ac as base_ac,
+                'SELECT ep.*, c.name, c.race, c.class, c.level, c.xp, c.town_id,
+                        c.hp as base_hp, c.ac as base_ac,
                         c.str, c.dex, c.con, c.int_, c.wis, c.cha, c.gear, c.feats, c.atk,
                         c.alignment, c.status as char_status, t.name as town_name
                  FROM encounter_participants ep
@@ -2446,6 +2474,301 @@ try {
                 $rows = [];
             }
             respond(['ok' => true, 'usage' => $rows]);
+            break;
+
+        /* ═══════════════════════════════════════════════════
+           CAMPAIGN RULES — World Context for AI
+           ═══════════════════════════════════════════════════ */
+        case 'get_campaign_rules':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $rows = query('SELECT rules_text, campaign_description, homebrew_settings FROM campaign_rules WHERE user_id = ?', [$uid], 0);
+            if ($rows) {
+                $r = $rows[0];
+                $hb = $r['homebrew_settings'] ?? '{}';
+                $hbDecoded = json_decode($hb, true) ?: [];
+                respond([
+                    'ok' => true,
+                    'rules_text' => $r['rules_text'] ?? '',
+                    'campaign_description' => $r['campaign_description'] ?? '',
+                    'homebrew_settings' => $hbDecoded,
+                ]);
+            } else {
+                respond([
+                    'ok' => true,
+                    'rules_text' => '',
+                    'campaign_description' => '',
+                    'homebrew_settings' => (object) [],
+                ]);
+            }
+            break;
+
+        case 'save_campaign_rules':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $rulesText = trim($input['rules_text'] ?? '');
+            $campDesc = trim($input['campaign_description'] ?? '');
+            $hbSettings = $input['homebrew_settings'] ?? [];
+            $hbJson = json_encode($hbSettings, JSON_UNESCAPED_UNICODE);
+
+            // Upsert: insert or update
+            $existing = query('SELECT id FROM campaign_rules WHERE user_id = ?', [$uid], 0);
+            if ($existing) {
+                execute(
+                    'UPDATE campaign_rules SET rules_text = ?, campaign_description = ?, homebrew_settings = ?, updated_at = NOW() WHERE user_id = ?',
+                    [$rulesText, $campDesc, $hbJson, $uid],
+                    0
+                );
+            } else {
+                execute(
+                    'INSERT INTO campaign_rules (user_id, rules_text, campaign_description, homebrew_settings, updated_at) VALUES (?, ?, ?, ?, NOW())',
+                    [$uid, $rulesText, $campDesc, $hbJson],
+                    0
+                );
+            }
+            respond(['ok' => true]);
+            break;
+
+        /* ═══════════════════════════════════════════════════
+           CUSTOM CONTENT — Homebrew SRD (per-user SQLite DB)
+           Each user gets their own content.db file.
+           ═══════════════════════════════════════════════════ */
+        case 'get_custom_content':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            // Get active campaign from shared MySQL
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+
+            $result = [];
+            $tables = ['custom_races', 'custom_classes', 'custom_feats', 'custom_spells', 'custom_equipment'];
+            foreach ($tables as $tbl) {
+                try {
+                    if ($campId) {
+                        $rows = userQuery($uid, "SELECT * FROM $tbl WHERE campaign_id = ? OR campaign_id IS NULL ORDER BY name", [$campId]);
+                    } else {
+                        $rows = userQuery($uid, "SELECT * FROM $tbl ORDER BY name");
+                    }
+                    $result[$tbl] = $rows;
+                } catch (Exception $e) {
+                    $result[$tbl] = [];
+                }
+            }
+            respond(['ok' => true, 'content' => $result]);
+            break;
+
+        case 'save_custom_race':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $d = $input['race'] ?? [];
+            $itemId = (int) ($d['id'] ?? 0);
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+
+            if ($itemId > 0) {
+                userExecute($uid, 'UPDATE custom_races SET name=?, size=?, speed=?, ability_mods=?, traits=?, languages=? WHERE id=?', [
+                    trim($d['name'] ?? ''), $d['size'] ?? 'Medium', (int) ($d['speed'] ?? 30),
+                    $d['ability_mods'] ?? '', $d['traits'] ?? '', $d['languages'] ?? '',
+                    $itemId
+                ]);
+                respond(['ok' => true, 'id' => $itemId]);
+            } else {
+                $name = trim($d['name'] ?? '');
+                if (!$name) throw new Exception('Race name is required.');
+                $newId = userInsert($uid,
+                    'INSERT INTO custom_races (campaign_id, name, size, speed, ability_mods, traits, languages) VALUES (?,?,?,?,?,?,?)',
+                    [$campId, $name, $d['size'] ?? 'Medium', (int) ($d['speed'] ?? 30),
+                     $d['ability_mods'] ?? '', $d['traits'] ?? '', $d['languages'] ?? '']
+                );
+                respond(['ok' => true, 'id' => $newId]);
+            }
+            break;
+
+        case 'save_custom_class':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $d = $input['class'] ?? [];
+            $itemId = (int) ($d['id'] ?? 0);
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+
+            if ($itemId > 0) {
+                userExecute($uid, 'UPDATE custom_classes SET name=?, hit_die=?, bab_type=?, good_saves=?, skills_per_level=?, class_skills=?, class_features=? WHERE id=?', [
+                    trim($d['name'] ?? ''), $d['hit_die'] ?? 'd8', $d['bab_type'] ?? '3/4',
+                    $d['good_saves'] ?? '', (int) ($d['skills_per_level'] ?? 2),
+                    $d['class_skills'] ?? '', $d['class_features'] ?? '',
+                    $itemId
+                ]);
+                respond(['ok' => true, 'id' => $itemId]);
+            } else {
+                $name = trim($d['name'] ?? '');
+                if (!$name) throw new Exception('Class name is required.');
+                $newId = userInsert($uid,
+                    'INSERT INTO custom_classes (campaign_id, name, hit_die, bab_type, good_saves, skills_per_level, class_skills, class_features) VALUES (?,?,?,?,?,?,?,?)',
+                    [$campId, $name, $d['hit_die'] ?? 'd8', $d['bab_type'] ?? '3/4',
+                     $d['good_saves'] ?? '', (int) ($d['skills_per_level'] ?? 2),
+                     $d['class_skills'] ?? '', $d['class_features'] ?? '']
+                );
+                respond(['ok' => true, 'id' => $newId]);
+            }
+            break;
+
+        case 'save_custom_feat':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $d = $input['feat'] ?? [];
+            $itemId = (int) ($d['id'] ?? 0);
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+
+            $modifiers = json_encode($d['modifiers'] ?? [], JSON_UNESCAPED_UNICODE);
+
+            if ($itemId > 0) {
+                userExecute($uid, 'UPDATE custom_feats SET name=?, type=?, prerequisites=?, benefit=?, description=?, modifiers=? WHERE id=?', [
+                    trim($d['name'] ?? ''), $d['type'] ?? 'General', $d['prerequisites'] ?? '',
+                    $d['benefit'] ?? '', $d['description'] ?? '', $modifiers,
+                    $itemId
+                ]);
+                respond(['ok' => true, 'id' => $itemId]);
+            } else {
+                $name = trim($d['name'] ?? '');
+                if (!$name) throw new Exception('Feat name is required.');
+                $newId = userInsert($uid,
+                    'INSERT INTO custom_feats (campaign_id, name, type, prerequisites, benefit, description, modifiers) VALUES (?,?,?,?,?,?,?)',
+                    [$campId, $name, $d['type'] ?? 'General', $d['prerequisites'] ?? '',
+                     $d['benefit'] ?? '', $d['description'] ?? '', $modifiers]
+                );
+                respond(['ok' => true, 'id' => $newId]);
+            }
+            break;
+
+        case 'save_custom_spell':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $d = $input['spell'] ?? [];
+            $itemId = (int) ($d['id'] ?? 0);
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+
+            if ($itemId > 0) {
+                userExecute($uid, 'UPDATE custom_spells SET name=?, level=?, school=?, casting_time=?, range=?, duration=?, components=?, description=?, classes=? WHERE id=?', [
+                    trim($d['name'] ?? ''), (int) ($d['level'] ?? 0), $d['school'] ?? '',
+                    $d['casting_time'] ?? '1 standard action', $d['range'] ?? '',
+                    $d['duration'] ?? '', $d['components'] ?? '', $d['description'] ?? '',
+                    $d['classes'] ?? '',
+                    $itemId
+                ]);
+                respond(['ok' => true, 'id' => $itemId]);
+            } else {
+                $name = trim($d['name'] ?? '');
+                if (!$name) throw new Exception('Spell name is required.');
+                $newId = userInsert($uid,
+                    'INSERT INTO custom_spells (campaign_id, name, level, school, casting_time, range, duration, components, description, classes) VALUES (?,?,?,?,?,?,?,?,?,?)',
+                    [$campId, $name, (int) ($d['level'] ?? 0), $d['school'] ?? '',
+                     $d['casting_time'] ?? '1 standard action', $d['range'] ?? '',
+                     $d['duration'] ?? '', $d['components'] ?? '', $d['description'] ?? '',
+                     $d['classes'] ?? '']
+                );
+                respond(['ok' => true, 'id' => $newId]);
+            }
+            break;
+
+        case 'save_custom_equipment':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $d = $input['equipment'] ?? [];
+            $itemId = (int) ($d['id'] ?? 0);
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+
+            if ($itemId > 0) {
+                userExecute($uid, 'UPDATE custom_equipment SET name=?, category=?, cost=?, weight=?, damage=?, critical=?, properties=? WHERE id=?', [
+                    trim($d['name'] ?? ''), $d['category'] ?? '', $d['cost'] ?? '',
+                    $d['weight'] ?? '', $d['damage'] ?? '', $d['critical'] ?? '',
+                    $d['properties'] ?? '',
+                    $itemId
+                ]);
+                respond(['ok' => true, 'id' => $itemId]);
+            } else {
+                $name = trim($d['name'] ?? '');
+                if (!$name) throw new Exception('Equipment name is required.');
+                $newId = userInsert($uid,
+                    'INSERT INTO custom_equipment (campaign_id, name, category, cost, weight, damage, critical, properties) VALUES (?,?,?,?,?,?,?,?)',
+                    [$campId, $name, $d['category'] ?? '', $d['cost'] ?? '',
+                     $d['weight'] ?? '', $d['damage'] ?? '', $d['critical'] ?? '',
+                     $d['properties'] ?? '']
+                );
+                respond(['ok' => true, 'id' => $newId]);
+            }
+            break;
+
+        case 'delete_custom_content':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $contentType = $input['content_type'] ?? '';
+            $contentId = (int) ($input['content_id'] ?? 0);
+            if (!$contentId) throw new Exception('Missing content_id.');
+            $validTypes = ['custom_races', 'custom_classes', 'custom_feats', 'custom_spells', 'custom_equipment'];
+            if (!in_array($contentType, $validTypes)) throw new Exception('Invalid content_type.');
+            userExecute($uid, "DELETE FROM $contentType WHERE id = ?", [$contentId]);
+            respond(['ok' => true]);
+            break;
+
+        /* ═══════════════════════════════════════════════════
+           USER FILES — Per-account content library (SQLite)
+           ═══════════════════════════════════════════════════ */
+        case 'get_user_files':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+            try {
+                if ($campId) {
+                    $files = userQuery($uid,
+                        'SELECT * FROM user_files WHERE campaign_id = ? OR campaign_id IS NULL ORDER BY uploaded_at DESC',
+                        [$campId]
+                    );
+                } else {
+                    $files = userQuery($uid, 'SELECT * FROM user_files ORDER BY uploaded_at DESC');
+                }
+                // Build URLs
+                foreach ($files as &$f) {
+                    $f['url'] = "users/{$uid}/content/{$f['filename']}";
+                }
+                unset($f);
+            } catch (Exception $e) {
+                $files = [];
+            }
+            // Storage stats
+            $totalSize = 0;
+            foreach ($files as $f) $totalSize += (int) ($f['file_size'] ?? 0);
+            $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
+            $tier = $udata[0]['subscription_tier'] ?? 'free';
+            $storageLimits = ['free' => 20 * 1024 * 1024, 'subscriber' => 500 * 1024 * 1024];
+            $fileLimits = ['free' => 10, 'subscriber' => 100];
+            respond([
+                'ok' => true,
+                'files' => $files,
+                'storage_used' => $totalSize,
+                'storage_limit' => $storageLimits[$tier] ?? $storageLimits['free'],
+                'file_count' => count($files),
+                'file_limit' => $fileLimits[$tier] ?? $fileLimits['free'],
+            ]);
+            break;
+
+        case 'delete_user_file':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $fileId = (int) ($input['file_id'] ?? 0);
+            if (!$fileId) throw new Exception('Missing file_id.');
+            // Get file info to delete from disk
+            $frow = userQuery($uid, 'SELECT filename FROM user_files WHERE id = ?', [$fileId]);
+            if ($frow) {
+                $filepath = __DIR__ . "/users/{$uid}/content/{$frow[0]['filename']}";
+                if (file_exists($filepath)) @unlink($filepath);
+            }
+            userExecute($uid, 'DELETE FROM user_files WHERE id = ?', [$fileId]);
+            respond(['ok' => true]);
             break;
 
         default:

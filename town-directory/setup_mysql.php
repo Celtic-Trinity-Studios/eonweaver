@@ -172,6 +172,16 @@ try {
         }
     }
 
+    // Add domains column (Cleric domain selections, e.g. "War, Healing")
+    try {
+        $pdo->exec("ALTER TABLE characters ADD COLUMN domains VARCHAR(255) DEFAULT '' AFTER feats");
+        $results[] = '✅ Added domains column';
+    } catch (Exception $e) {
+        if (strpos($e->getMessage(), 'Duplicate column') !== false) {
+            $results[] = '⏭️ domains column already exists';
+        }
+    }
+
     // ── Character Equipment Table ────────────────────────────
     $pdo->exec("CREATE TABLE IF NOT EXISTS character_equipment (
         id            INT AUTO_INCREMENT PRIMARY KEY,
@@ -986,6 +996,122 @@ try {
         $pdo->exec("ALTER TABLE character_xp_log ADD COLUMN xp_tags JSON DEFAULT NULL AFTER game_date");
         $results[] = '✅ Added xp_tags column to character_xp_log';
     } catch (Exception $e) { /* already exists */ }
+
+    // ═══════════════════════════════════════════════════════
+    // CUSTOM CONTENT TABLES (Homebrew SRD content per user)
+    // ═══════════════════════════════════════════════════════
+    $results[] = '';
+    $results[] = '<strong>═══ CUSTOM CONTENT TABLES ═══</strong>';
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS custom_races (
+        id              INT AUTO_INCREMENT PRIMARY KEY,
+        user_id         INT NOT NULL,
+        campaign_id     INT NULL,
+        name            VARCHAR(100) NOT NULL,
+        size            VARCHAR(20) DEFAULT 'Medium',
+        speed           INT DEFAULT 30,
+        ability_mods    TEXT DEFAULT '',
+        traits          TEXT DEFAULT '',
+        languages       TEXT DEFAULT '',
+        created_at      DATETIME DEFAULT NOW(),
+        INDEX idx_cr_user (user_id),
+        INDEX idx_cr_campaign (user_id, campaign_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $results[] = '✅ custom_races table';
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS custom_classes (
+        id              INT AUTO_INCREMENT PRIMARY KEY,
+        user_id         INT NOT NULL,
+        campaign_id     INT NULL,
+        name            VARCHAR(100) NOT NULL,
+        hit_die         VARCHAR(10) DEFAULT 'd8',
+        bab_type        VARCHAR(20) DEFAULT '3/4',
+        good_saves      VARCHAR(50) DEFAULT '',
+        skills_per_level INT DEFAULT 2,
+        class_skills    TEXT DEFAULT '',
+        class_features  TEXT DEFAULT '',
+        created_at      DATETIME DEFAULT NOW(),
+        INDEX idx_cc_user (user_id),
+        INDEX idx_cc_campaign (user_id, campaign_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $results[] = '✅ custom_classes table';
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS custom_feats (
+        id              INT AUTO_INCREMENT PRIMARY KEY,
+        user_id         INT NOT NULL,
+        campaign_id     INT NULL,
+        name            VARCHAR(200) NOT NULL,
+        type            VARCHAR(50) DEFAULT 'General',
+        prerequisites   TEXT DEFAULT '',
+        benefit         TEXT DEFAULT '',
+        description     TEXT DEFAULT '',
+        created_at      DATETIME DEFAULT NOW(),
+        INDEX idx_cf_user (user_id),
+        INDEX idx_cf_campaign (user_id, campaign_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $results[] = '✅ custom_feats table';
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS custom_spells (
+        id              INT AUTO_INCREMENT PRIMARY KEY,
+        user_id         INT NOT NULL,
+        campaign_id     INT NULL,
+        name            VARCHAR(200) NOT NULL,
+        level           INT DEFAULT 0,
+        school          VARCHAR(50) DEFAULT '',
+        casting_time    VARCHAR(100) DEFAULT '1 standard action',
+        `range`         VARCHAR(100) DEFAULT '',
+        duration        VARCHAR(100) DEFAULT '',
+        components      VARCHAR(200) DEFAULT '',
+        description     TEXT DEFAULT '',
+        classes         VARCHAR(500) DEFAULT '',
+        created_at      DATETIME DEFAULT NOW(),
+        INDEX idx_cs_user (user_id),
+        INDEX idx_cs_campaign (user_id, campaign_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $results[] = '✅ custom_spells table';
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS custom_equipment (
+        id              INT AUTO_INCREMENT PRIMARY KEY,
+        user_id         INT NOT NULL,
+        campaign_id     INT NULL,
+        name            VARCHAR(200) NOT NULL,
+        category        VARCHAR(100) DEFAULT '',
+        cost            VARCHAR(50) DEFAULT '',
+        weight          VARCHAR(50) DEFAULT '',
+        damage          VARCHAR(50) DEFAULT '',
+        critical        VARCHAR(50) DEFAULT '',
+        properties      TEXT DEFAULT '',
+        created_at      DATETIME DEFAULT NOW(),
+        INDEX idx_ce_user (user_id),
+        INDEX idx_ce_campaign (user_id, campaign_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $results[] = '✅ custom_equipment table';
+
+    // ═══════════════════════════════════════════════════════
+    // USER FILES (per-account content library)
+    // ═══════════════════════════════════════════════════════
+    $pdo->exec("CREATE TABLE IF NOT EXISTS user_files (
+        id              INT AUTO_INCREMENT PRIMARY KEY,
+        user_id         INT NOT NULL,
+        campaign_id     INT NULL,
+        filename        VARCHAR(255) NOT NULL,
+        original_name   VARCHAR(255) NOT NULL,
+        file_type       VARCHAR(50) DEFAULT 'document',
+        mime_type       VARCHAR(100) DEFAULT '',
+        file_size       INT DEFAULT 0,
+        description     TEXT DEFAULT '',
+        folder          VARCHAR(100) DEFAULT 'content',
+        uploaded_at     DATETIME DEFAULT NOW(),
+        INDEX idx_uf_user (user_id),
+        INDEX idx_uf_campaign (user_id, campaign_id),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $results[] = '✅ user_files table';
 
     $results[] = '';
     $results[] = '🎉 Setup complete! <strong>Delete this file now.</strong>';

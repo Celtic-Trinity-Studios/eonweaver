@@ -93,6 +93,46 @@
                 // BAB progression by class
                 $babFull = ['Fighter', 'Barbarian', 'Paladin', 'Ranger', 'Warrior'];
                 $bab34 = ['Cleric', 'Druid', 'Rogue', 'Monk', 'Bard', 'Adept', 'Expert', 'Aristocrat'];
+
+                // ── Extend tables with custom homebrew content ──────
+                try {
+                    require_once $baseDir . '/user_db.php';
+                    $customRacesApply = userQuery($userId, "SELECT name, speed, size, languages FROM custom_races ORDER BY name");
+                    foreach ($customRacesApply as $cr) {
+                        $rName = $cr['name'];
+                        if (!isset($raceSpeeds[$rName])) $raceSpeeds[$rName] = (int) ($cr['speed'] ?: 30);
+                        if (!isset($raceLangs[$rName]))  $raceLangs[$rName] = $cr['languages'] ?: 'Common';
+                        if (!isset($raceSizes[$rName]) && strtolower($cr['size'] ?? 'Medium') !== 'medium') {
+                            $raceSizes[$rName] = $cr['size'];
+                        }
+                    }
+                    $customClassesApply = userQuery($userId, "SELECT name, hit_die, bab_type, good_saves FROM custom_classes ORDER BY name");
+                    foreach ($customClassesApply as $cc) {
+                        $cName = $cc['name'];
+                        // Add custom class hit dice
+                        if (!isset($hitDice[$cName])) {
+                            $hdMatch = preg_match('/d(\d+)/', $cc['hit_die'] ?? 'd8', $hdm);
+                            $hitDice[$cName] = $hdMatch ? (int) $hdm[1] : 8;
+                        }
+                        // Add custom class BAB type
+                        $babType = $cc['bab_type'] ?? '3/4';
+                        if ($babType === 'Full' && !in_array($cName, $babFull)) $babFull[] = $cName;
+                        elseif ($babType === '3/4' && !in_array($cName, $bab34)) $bab34[] = $cName;
+                        // Add custom class good saves
+                        if (!isset($classGoodSaves[$cName])) {
+                            $saveParts = array_map('trim', explode(',', strtolower($cc['good_saves'] ?? '')));
+                            $goodSaveKeys = [];
+                            foreach ($saveParts as $sp) {
+                                if (stripos($sp, 'fort') !== false) $goodSaveKeys[] = 'fort';
+                                if (stripos($sp, 'ref') !== false) $goodSaveKeys[] = 'ref';
+                                if (stripos($sp, 'will') !== false) $goodSaveKeys[] = 'will';
+                            }
+                            $classGoodSaves[$cName] = $goodSaveKeys;
+                        }
+                    }
+                } catch (Exception $e) {
+                    // user_db may not exist yet — fine
+                }
                 // $babHalf = everything else (Wizard, Sorcerer, Commoner)
 
                 foreach ($changes['new_characters'] as $nc) {
@@ -124,7 +164,7 @@
                         $wis = (int) ($nc['wis'] ?? 10);
                         $cha = (int) ($nc['cha'] ?? 10);
                     } else {
-                        $rolled = rollAbilityScores($race);
+                        $rolled = rollAbilityScores($race, $userId);
                         $str = $rolled['str'];
                         $dex = $rolled['dex'];
                         $con = $rolled['con'];

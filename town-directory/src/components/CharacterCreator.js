@@ -1,11 +1,14 @@
-﻿/**
+/**
  * Eon Weaver — Character Creator (DM Genie Style)
  * Tabbed interface: Class | Abilities & Stats | Skills | Feats | Features | Review
  * All data loaded from SRD database tables.
  */
 import { apiFetch } from '../api/client.js';
+import { apiSaveCharacter } from '../api/characters.js';
 import {
-    loadSrdRaces, loadSrdClasses, loadSrdFeats, loadSrdEquipment, loadSrdSkills,
+    loadSrdSkills,
+    loadMergedRaces, loadMergedClasses, loadMergedFeats, loadMergedEquipment,
+    clearCustomContentCache,
     parseAbilityMods, parseHitDie, parseGoodSaves
 } from '../api/srd.js';
 import { abilityMod, calcBAB, calcBaseSave, maxSkillRanks } from '../engine/rules35e.js';
@@ -36,6 +39,11 @@ function defaultState() {
         // Filters
         showPcClasses: true, showNpcClasses: true, showPrestigeClasses: true,
         showAllSkills: true, showAllFeats: true,
+        // Edit mode fields
+        _editMode: false, _editId: null, _editTownId: null,
+        _editStatus: 'Alive', _editRole: '', _editAge: null,
+        _editPortraitUrl: '', _editXp: 0, _editCr: '',
+        _onEditComplete: null, _onEditCancel: null,
     };
 }
 
@@ -46,9 +54,66 @@ function classHd(c) { return parseHitDie(c?.hit_die); }
 function classGoodSaves(c) { return parseGoodSaves(c?.good_saves); }
 function classSkillList(c) { return (c?.class_skills || '').split(',').map(s => s.trim()).filter(Boolean); }
 function isNpcClass(name) { return NPC_CLASSES.includes(name); }
+
+/**
+ * Built-in mechanical modifiers for SRD feats with quantifiable effects.
+ * These apply automatically without needing homebrew modifier definitions.
+ */
+const SRD_FEAT_MODIFIERS = {
+    'Improved Initiative':  [{ type: 'initiative', value: 4 }],
+    'Toughness':            [{ type: 'hp', value: 3 }],
+    'Iron Will':            [{ type: 'save', target: 'will', value: 2 }],
+    'Great Fortitude':      [{ type: 'save', target: 'fort', value: 2 }],
+    'Lightning Reflexes':   [{ type: 'save', target: 'ref', value: 2 }],
+    'Alertness':            [{ type: 'skill', target: 'Listen', value: 2 }, { type: 'skill', target: 'Spot', value: 2 }],
+    'Dodge':                [{ type: 'ac', value: 1 }],
+    'Point Blank Shot':     [{ type: 'attack', value: 1 }, { type: 'damage', value: 1 }],  // within 30ft
+    'Weapon Focus':         [{ type: 'attack', value: 1 }],
+    'Weapon Specialization':[{ type: 'damage', value: 2 }],
+};
+
+/**
+ * Gather all structured modifiers from selected feats.
+ * Falls back to SRD_FEAT_MODIFIERS for known SRD feats.
+ * Returns an array of { type, target?, value } objects.
+ */
+function getSelectedFeatModifiers() {
+    if (!state) return [];
+    const mods = [];
+    for (const featName of state.selectedFeats) {
+        const feat = srdFeats.find(f => f.name === featName);
+        // 1) Try structured modifiers from homebrew feats
+        let parsed = [];
+        if (feat) {
+            if (typeof feat.modifiers === 'string') {
+                try { parsed = JSON.parse(feat.modifiers) || []; } catch { parsed = []; }
+            } else if (Array.isArray(feat.modifiers)) {
+                parsed = feat.modifiers;
+            }
+        }
+        // 2) Fall back to built-in SRD feat modifiers
+        if (!parsed.length && SRD_FEAT_MODIFIERS[featName]) {
+            parsed = SRD_FEAT_MODIFIERS[featName];
+        }
+        for (const m of parsed) {
+            if (m && m.type && typeof m.value === 'number') mods.push(m);
+        }
+    }
+    return mods;
+}
+
+/** Sum all feat modifiers of a given type (optionally filtered by target). */
+function featBonus(type, target = null) {
+    return getSelectedFeatModifiers()
+        .filter(m => m.type === type && (target === null || m.target === target || m.target === 'all_saves'))
+        .reduce((sum, m) => sum + (m.value || 0), 0);
+}
+
 function finalAbility(ab) {
     const r = getRace(state.race); const mods = raceMods(r);
-    return state.abilities[ab] + (mods[ab] || 0);
+    // ab uses 'int_' internally but feat modifiers use 'int'
+    const modKey = ab === 'int_' ? 'int' : ab;
+    return state.abilities[ab] + (mods[ab] || 0) + featBonus('ability', modKey);
 }
 function totalSkillPoints() {
     const cls = getClass(state.class_); const intMod = abilityMod(finalAbility('int_'));
@@ -60,16 +125,127 @@ function totalSkillPoints() {
 }
 function usedSkillPoints() { return Object.values(state.skillRanks).reduce((a, b) => a + b, 0); }
 
+/** Parse modifiers from a feat object (handles JSON string or array). */
+function parseFeatModifiers(feat) {
+    if (!feat?.modifiers) return [];
+    let mods = feat.modifiers;
+    if (typeof mods === 'string') { try { mods = JSON.parse(mods); } catch { return []; } }
+    return Array.isArray(mods) ? mods.filter(m => m && m.type && typeof m.value === 'number') : [];
+}
+
+/** Format a single modifier as a compact badge string. */
+function formatModBadge(m) {
+    const TL = { str:'STR', dex:'DEX', con:'CON', int:'INT', wis:'WIS', cha:'CHA',
+                 fort:'Fort', ref:'Ref', will:'Will', all_saves:'All Saves' };
+    const v = `${m.value >= 0 ? '+' : ''}${m.value}`;
+    switch (m.type) {
+        case 'ability': return `<span class="cc-mod-badge cc-mod-ability">${v} ${TL[m.target] || m.target}</span>`;
+        case 'save':    return `<span class="cc-mod-badge cc-mod-save">${v} ${TL[m.target] || m.target}</span>`;
+        case 'skill':   return `<span class="cc-mod-badge cc-mod-skill">${v} ${m.target || 'Skill'}</span>`;
+        case 'ac':      return `<span class="cc-mod-badge cc-mod-ac">${v} AC</span>`;
+        case 'hp':      return `<span class="cc-mod-badge cc-mod-hp">${v} HP</span>`;
+        case 'initiative': return `<span class="cc-mod-badge cc-mod-init">${v} Init</span>`;
+        case 'attack':  return `<span class="cc-mod-badge cc-mod-atk">${v} Atk</span>`;
+        case 'damage':  return `<span class="cc-mod-badge cc-mod-dmg">${v} Dmg</span>`;
+        case 'speed':   return `<span class="cc-mod-badge cc-mod-spd">${v} ft</span>`;
+        default:        return `<span class="cc-mod-badge">${v} ${m.type}</span>`;
+    }
+}
+
 /* ═══════════════════════════════════════════════════════════
    MAIN RENDER
    ═══════════════════════════════════════════════════════════ */
 export async function initCreator() {
+    // Clear homebrew cache so we always pick up newly-created custom content
+    clearCustomContentCache();
     [srdRaces, srdClasses, srdFeats, srdEquipment, srdSkills] = await Promise.all([
-        loadSrdRaces(), loadSrdClasses(), loadSrdFeats(), loadSrdEquipment(), loadSrdSkills()
+        loadMergedRaces(), loadMergedClasses(), loadMergedFeats(), loadMergedEquipment(), loadSrdSkills()
     ]);
     state = defaultState();
     state.race = srdRaces[0]?.name || 'Human';
     state.class_ = srdClasses.find(c => !isNpcClass(c.name))?.name || srdClasses[0]?.name || 'Fighter';
+}
+
+/**
+ * Initialize the Creator in EDIT mode from an existing character.
+ * Hydrates the wizard state from stored character data.
+ */
+export async function initCreatorFromCharacter(character, { townId, onComplete, onCancel } = {}) {
+    clearCustomContentCache();
+    [srdRaces, srdClasses, srdFeats, srdEquipment, srdSkills] = await Promise.all([
+        loadMergedRaces(), loadMergedClasses(), loadMergedFeats(), loadMergedEquipment(), loadSrdSkills()
+    ]);
+    state = defaultState();
+
+    // Parse class + level from "Fighter 3" format
+    const classStr = character.class || '';
+    const classMatch = classStr.match(/^(.+?)\s+(\d+)$/);
+    const className = classMatch ? classMatch[1].trim() : classStr.trim();
+    const level = classMatch ? parseInt(classMatch[2]) : (parseInt(character.level) || 1);
+
+    // Set basic fields
+    state.name = character.name || '';
+    state.gender = character.gender || '';
+    state.race = character.race || srdRaces[0]?.name || 'Human';
+    state.class_ = className || srdClasses[0]?.name || 'Fighter';
+    state.level = level;
+    state.alignment = character.alignment || 'True Neutral';
+    state.abilityMethod = 'manual';  // Editing = manual scores
+
+    // Reverse-compute base abilities (subtract racial mods)
+    const race = getRace(state.race);
+    const rMods = raceMods(race);
+    ABILITIES.forEach(ab => {
+        const rawKey = ab === 'int_' ? 'int_' : ab;
+        const charVal = parseInt(character[rawKey]) || 10;
+        const racialMod = rMods[ab] || 0;
+        state.abilities[ab] = charVal - racialMod;
+    });
+
+    // Parse feats
+    state.selectedFeats = (character.feats || '').split(/[,;]/).map(f => f.trim()).filter(Boolean);
+
+    // Parse skill ranks from skills_feats string (e.g. "Climb +5, Hide +3")
+    state.skillRanks = {};
+    const skillsStr = character.skills_feats || '';
+    if (skillsStr) {
+        const parts = skillsStr.split(/,\s*/);
+        for (const part of parts) {
+            const m = part.match(/^(.+?)\s+[+-]?(\d+)$/);
+            if (m) {
+                const skillName = m[1].trim();
+                const total = parseInt(m[2]) || 0;
+                // Estimate ranks = total - ability mod (best guess)
+                const sk = srdSkills.find(s => s.name === skillName);
+                if (sk) {
+                    const abKey = sk.ability.toLowerCase() === 'int' ? 'int_' : sk.ability.toLowerCase();
+                    const abMod = abilityMod(finalAbility(abKey));
+                    state.skillRanks[skillName] = Math.max(0, total - abMod);
+                } else {
+                    state.skillRanks[skillName] = total;  // can't determine, use raw
+                }
+            }
+        }
+    }
+
+    // Other fields
+    state.gear = character.gear || '';
+    state.languages = character.languages || '';
+    state.history = character.history || '';
+
+    // Edit mode metadata
+    state._editMode = true;
+    state._editId = character.id || character.dbId;
+    state._editTownId = townId;
+    state._editStatus = character.status || 'Alive';
+    state._editRole = character.role || '';
+    state._editAge = character.age ? parseInt(character.age) : null;
+    state._editPortraitUrl = character.portrait_url || '';
+    state._editXp = parseInt(character.xp) || 0;
+    state._editCr = character.cr || '';
+    state._onEditComplete = onComplete || null;
+    state._onEditCancel = onCancel || null;
+    state.tab = 'review';  // Start on review tab in edit mode
 }
 
 export function resetCreatorState() {
@@ -82,16 +258,18 @@ export function renderCreator(panel) {
     if (!state) { state = defaultState(); state.race = srdRaces[0]?.name || 'Human'; state.class_ = srdClasses[0]?.name || 'Fighter'; }
     const s = state;
     const cls = getClass(s.class_); const race = getRace(s.race);
+    const isEdit = s._editMode;
 
     panel.innerHTML = `
     <div class="cc-root">
         <div class="cc-header">
             <div class="cc-header-info">
+                ${isEdit ? '<button class="btn-secondary btn-sm" id="cc-cancel-edit" style="margin-right:0.5rem;font-size:0.7rem;">← Back to Sheet</button>' : ''}
                 <input type="text" id="cc-name" class="cc-name-input" value="${s.name}" placeholder="Character Name...">
-                <span class="cc-header-detail">${s.race} ${s.class_} ${s.level}</span>
+                <span class="cc-header-detail">${isEdit ? '✏️ Editing · ' : ''}${s.race} ${s.class_} ${s.level}</span>
             </div>
             <div class="cc-header-right">
-                <select id="cc-race" class="cc-header-select">${srdRaces.map(r => `<option value="${r.name}" ${s.race === r.name ? 'selected' : ''}>${r.name}</option>`).join('')}</select>
+                <select id="cc-race" class="cc-header-select">${srdRaces.map(r => `<option value="${r.name}" ${s.race === r.name ? 'selected' : ''}>${r.name}${r._isHomebrew ? ' ✨' : ''}</option>`).join('')}</select>
                 <select id="cc-alignment" class="cc-header-select">${ALIGNMENTS.map(a => `<option value="${a}" ${s.alignment === a ? 'selected' : ''}>${a}</option>`).join('')}</select>
             </div>
         </div>
@@ -106,6 +284,13 @@ export function renderCreator(panel) {
 
     renderTab(panel);
     bindHeaderEvents(panel);
+
+    // Wire cancel button in edit mode
+    if (isEdit) {
+        panel.querySelector('#cc-cancel-edit')?.addEventListener('click', () => {
+            if (s._onEditCancel) s._onEditCancel();
+        });
+    }
 }
 
 function bindHeaderEvents(panel) {
@@ -164,7 +349,7 @@ function renderClassTab(body, panel) {
             <div class="cc-class-list" id="cc-class-list">
                 ${filtered.map(c => `
                     <div class="cc-class-item ${s.class_ === c.name ? 'selected' : ''}" data-class="${c.name}">
-                        <span class="cc-class-item-name">${c.name}</span>
+                        <span class="cc-class-item-name">${c.name}${c._isHomebrew ? ' <span class="cc-homebrew-badge">✨ Homebrew</span>' : ''}</span>
                         <span class="cc-class-item-hd">${c.hit_die}</span>
                     </div>
                 `).join('')}
@@ -242,16 +427,17 @@ function renderAbilitiesTab(body, panel) {
     let spent = 0; ABILITIES.forEach(a => { spent += POINT_BUY_COST[s.abilities[a]] || 0; });
     const remaining = totalPts - spent;
 
-    // Calculated stats
+    // Calculated stats — include feat modifier bonuses
     const conFinal = finalAbility('con'), dexFinal = finalAbility('dex');
     const conMod = abilityMod(conFinal), dexMod = abilityMod(dexFinal);
     const hpLvl1 = hd + conMod;
-    const hpTotal = Math.max(1, hpLvl1 + (lvl - 1) * Math.max(1, Math.floor(hd / 2 + 1) + conMod));
-    const bab = calcBAB(s.class_, lvl);
-    const ac = 10 + dexMod + ((race.size || 'Medium') === 'Small' ? 1 : 0);
-    const fort = calcBaseSave(lvl, gs.includes('fort')) + abilityMod(finalAbility('con'));
-    const ref = calcBaseSave(lvl, gs.includes('ref')) + abilityMod(finalAbility('dex'));
-    const will = calcBaseSave(lvl, gs.includes('will')) + abilityMod(finalAbility('wis'));
+    const hpTotal = Math.max(1, hpLvl1 + (lvl - 1) * Math.max(1, Math.floor(hd / 2 + 1) + conMod)) + featBonus('hp');
+    const bab = calcBAB(s.class_, lvl) + featBonus('attack');
+    const ac = 10 + dexMod + ((race.size || 'Medium') === 'Small' ? 1 : 0) + featBonus('ac');
+    const fort = calcBaseSave(lvl, gs.includes('fort')) + abilityMod(finalAbility('con')) + featBonus('save', 'fort');
+    const ref = calcBaseSave(lvl, gs.includes('ref')) + abilityMod(finalAbility('dex')) + featBonus('save', 'ref');
+    const will = calcBaseSave(lvl, gs.includes('will')) + abilityMod(finalAbility('wis')) + featBonus('save', 'will');
+    const initBonus = dexMod + featBonus('initiative');
 
     body.innerHTML = `
     <div class="cc-abilities-layout">
@@ -264,7 +450,10 @@ function renderAbilitiesTab(body, panel) {
 
         <div class="cc-ability-grid">
             ${ABILITIES.map(a => {
-        const base = s.abilities[a], rm = mods[a] || 0, fin = base + rm, mod = abilityMod(fin), cost = POINT_BUY_COST[base] || 0;
+        const base = s.abilities[a], rm = mods[a] || 0;
+        const modKey = a === 'int_' ? 'int' : a;
+        const fb = featBonus('ability', modKey);
+        const fin = base + rm + fb, mod = abilityMod(fin), cost = POINT_BUY_COST[base] || 0;
         return `<div class="cc-ability-card">
                     <div class="cc-ab-label">${AB_LABELS[a]}</div>
                     <div class="cc-ab-controls">
@@ -272,7 +461,7 @@ function renderAbilitiesTab(body, panel) {
                         <input type="number" class="cc-ab-input" data-ab="${a}" value="${base}" min="3" max="18" ${s.abilityMethod === 'pointbuy' ? 'readonly' : ''}>
                         ${s.abilityMethod !== 'manual' ? `<button class="cc-ab-btn cc-ab-plus" data-ab="${a}" ${base >= 18 ? 'disabled' : ''}>+</button>` : ''}
                     </div>
-                    ${rm ? `<div class="cc-ab-race">${formatMod(rm)} racial</div>` : '<div class="cc-ab-race">&nbsp;</div>'}
+                    ${rm || fb ? `<div class="cc-ab-race">${rm ? formatMod(rm) + ' racial' : ''}${rm && fb ? ', ' : ''}${fb ? formatMod(fb) + ' feat' : ''}</div>` : '<div class="cc-ab-race">&nbsp;</div>'}
                     <div class="cc-ab-final"><span class="cc-ab-total">${fin}</span><span class="cc-ab-mod">${formatMod(mod)}</span></div>
                     ${s.abilityMethod === 'pointbuy' ? `<div class="cc-ab-cost">Cost: ${cost}</div>` : ''}
                 </div>`;
@@ -286,7 +475,7 @@ function renderAbilitiesTab(body, panel) {
             <div class="cc-stat-box"><div class="cc-stat-label">Fort</div><div class="cc-stat-val">${formatMod(fort)}</div></div>
             <div class="cc-stat-box"><div class="cc-stat-label">Ref</div><div class="cc-stat-val">${formatMod(ref)}</div></div>
             <div class="cc-stat-box"><div class="cc-stat-label">Will</div><div class="cc-stat-val">${formatMod(will)}</div></div>
-            <div class="cc-stat-box"><div class="cc-stat-label">Init</div><div class="cc-stat-val">${formatMod(dexMod)}</div></div>
+            <div class="cc-stat-box"><div class="cc-stat-label">Init</div><div class="cc-stat-val">${formatMod(initBonus)}</div></div>
         </div>
     </div>`;
 
@@ -343,7 +532,8 @@ function renderSkillsTab(body, panel) {
         const maxR = isClass ? maxClass : maxCross;
         const abKey = sk.ability.toLowerCase() === 'int' ? 'int_' : sk.ability.toLowerCase();
         const abMod = abilityMod(finalAbility(abKey));
-        const totalMod = ranks + abMod;
+        const skillFeatBonus = featBonus('skill', sk.name);
+        const totalMod = ranks + abMod + skillFeatBonus;
         return `<div class="cc-skill-row ${isClass ? 'cc-skill-class' : 'cc-skill-cross'} ${ranks > 0 ? 'cc-skill-active' : ''}">
                     <span class="cc-skill-name" title="${sk.trained_only ? 'Trained only' : ''}">
                         ${sk.name}${sk.trained_only ? ' *' : ''}
@@ -355,7 +545,7 @@ function renderSkillsTab(body, panel) {
                         <span class="cc-sk-val">${ranks}</span>
                         <button class="cc-sk-btn cc-sk-plus" data-skill="${sk.name}" ${ranks >= maxR || remaining <= 0 ? 'disabled' : ''}>+</button>
                     </span>
-                    <span class="cc-skill-total ${totalMod >= 0 ? '' : 'text-danger'}">${formatMod(totalMod)}</span>
+                    <span class="cc-skill-total ${totalMod >= 0 ? '' : 'text-danger'}">${formatMod(totalMod)}${skillFeatBonus ? ` <span class="cc-mod-badge cc-mod-skill" style="font-size:.55rem">${formatMod(skillFeatBonus)} feat</span>` : ''}</span>
                 </div>`;
     }).join('')}
         </div>
@@ -444,8 +634,10 @@ function renderFeatsTab(body, panel) {
             ${feats.map(f => {
                 const qualified = meetsPrereqs(f);
                 const selected = s.selectedFeats.includes(f.name);
+                const fmods = parseFeatModifiers(f);
+                const modSummary = fmods.length ? fmods.map(m => formatModBadge(m)).join(' ') : '';
                 return `<div class="cc-feat-row ${qualified ? '' : 'cc-feat-unqualified'} ${selected ? 'cc-feat-selected' : ''}">
-                    <span class="cc-feat-name">${f.name}</span>
+                    <span class="cc-feat-name">${f.name}${f._isHomebrew ? ' <span class="cc-homebrew-badge">✨</span>' : ''}${modSummary ? `<span class="cc-feat-mods">${modSummary}</span>` : ''}</span>
                     <span class="cc-feat-type">${f.type || 'General'}</span>
                     <span class="cc-feat-prereq">${f.prerequisites || 'None'}</span>
                     <span class="cc-feat-action">
@@ -504,19 +696,20 @@ function renderReviewTab(body, panel) {
     const s = state, race = getRace(s.race), cls = getClass(s.class_);
     const mds = raceMods(race), hd = classHd(cls), gs = classGoodSaves(cls);
     const lvl = s.level;
-    const finalAb = {}; ABILITIES.forEach(a => { finalAb[a] = s.abilities[a] + (mds[a] || 0); });
+    const finalAb = {}; ABILITIES.forEach(a => { finalAb[a] = finalAbility(a); });
     const conMod = abilityMod(finalAb.con), dexMod = abilityMod(finalAb.dex);
     const hpLvl1 = hd + conMod;
-    const hpTotal = Math.max(1, hpLvl1 + (lvl - 1) * Math.max(1, Math.floor(hd / 2 + 1) + conMod));
-    const bab = calcBAB(s.class_, lvl), ac = 10 + dexMod + ((race.size || 'Medium') === 'Small' ? 1 : 0);
-    const fort = calcBaseSave(lvl, gs.includes('fort')) + abilityMod(finalAb.con);
-    const ref = calcBaseSave(lvl, gs.includes('ref')) + abilityMod(finalAb.dex);
-    const will = calcBaseSave(lvl, gs.includes('will')) + abilityMod(finalAb.wis);
+    const hpTotal = Math.max(1, hpLvl1 + (lvl - 1) * Math.max(1, Math.floor(hd / 2 + 1) + conMod)) + featBonus('hp');
+    const bab = calcBAB(s.class_, lvl) + featBonus('attack'), ac = 10 + dexMod + ((race.size || 'Medium') === 'Small' ? 1 : 0) + featBonus('ac');
+    const fort = calcBaseSave(lvl, gs.includes('fort')) + abilityMod(finalAb.con) + featBonus('save', 'fort');
+    const ref = calcBaseSave(lvl, gs.includes('ref')) + abilityMod(finalAb.dex) + featBonus('save', 'ref');
+    const will = calcBaseSave(lvl, gs.includes('will')) + abilityMod(finalAb.wis) + featBonus('save', 'will');
 
     const skillSummary = Object.entries(s.skillRanks).filter(([, v]) => v > 0).map(([name, ranks]) => {
         const sk = srdSkills.find(s => s.name === name);
         const abKey = sk ? (sk.ability.toLowerCase() === 'int' ? 'int_' : sk.ability.toLowerCase()) : 'str';
-        return `${name} +${ranks + abilityMod(finalAbility(abKey))}`;
+        const skFeatBonus = featBonus('skill', name);
+        return `${name} +${ranks + abilityMod(finalAbility(abKey)) + skFeatBonus}`;
     }).join(', ') || 'None';
 
     body.innerHTML = `
@@ -533,8 +726,8 @@ function renderReviewTab(body, panel) {
             </div>
             <div class="cc-review-stats">
                 <span>BAB: <strong>+${bab}</strong></span>
-                <span>Init: <strong>${formatMod(dexMod)}</strong></span>
-                <span>Speed: <strong>${parseInt(race.speed) || 30} ft</strong></span>
+                <span>Init: <strong>${formatMod(dexMod + featBonus('initiative'))}</strong></span>
+                <span>Speed: <strong>${(parseInt(race.speed) || 30) + featBonus('speed')} ft</strong></span>
                 <span>Fort: <strong>${formatMod(fort)}</strong></span>
                 <span>Ref: <strong>${formatMod(ref)}</strong></span>
                 <span>Will: <strong>${formatMod(will)}</strong></span>
@@ -553,10 +746,26 @@ function renderReviewTab(body, panel) {
                 <label><strong>Background / History:</strong></label>
                 <textarea id="cc-history" class="form-input" rows="3" placeholder="Brief background...">${s.history}</textarea>
             </div>
-            <div class="cc-review-town">🏕️ Saving to: <strong>Party Camp</strong></div>
+            ${!s._editMode ? '<div class="cc-review-town">🏕️ Saving to: <strong>Party Camp</strong></div>' : `
+                <div class="cc-review-section">
+                    <label><strong>Status:</strong></label>
+                    <select id="cc-edit-status" class="form-select" style="max-width:200px">
+                        ${['Alive', 'Deceased', 'Missing', 'Imprisoned'].map(o => `<option ${s._editStatus === o ? 'selected' : ''}>${o}</option>`).join('')}
+                    </select>
+                </div>
+                <div class="cc-review-section">
+                    <label><strong>Town Role:</strong></label>
+                    <input type="text" id="cc-edit-role" class="form-input" value="${s._editRole}" placeholder="e.g. Blacksmith, Guard...">
+                </div>
+                ${s._editPortraitUrl ? `<div class="cc-review-section"><strong>Portrait:</strong> <img src="${s._editPortraitUrl}" style="width:48px;height:auto;border-radius:4px;vertical-align:middle;margin-left:6px" alt="portrait"></div>` : ''}
+            `}
         </div>
         <div class="cc-review-actions">
-            <button class="btn-primary btn-lg" id="cc-create-btn" ${!s.name ? 'disabled' : ''}>🎲 Create & Add to Party</button>
+            ${s._editMode
+                ? `<button class="btn-secondary btn-lg" id="cc-cancel-edit-btn">Cancel</button>
+                   <button class="btn-primary btn-lg" id="cc-save-edit-btn" ${!s.name ? 'disabled' : ''}>💾 Save Changes</button>`
+                : `<button class="btn-primary btn-lg" id="cc-create-btn" ${!s.name ? 'disabled' : ''}>🎲 Create & Add to Party</button>`
+            }
         </div>
     </div>`;
 
@@ -564,6 +773,34 @@ function renderReviewTab(body, panel) {
     body.querySelector('#cc-gear')?.addEventListener('input', e => { s.gear = e.target.value.trim(); });
     body.querySelector('#cc-languages')?.addEventListener('input', e => { s.languages = e.target.value.trim(); });
     body.querySelector('#cc-history')?.addEventListener('input', e => { s.history = e.target.value.trim(); });
+
+    // Edit mode: wire save & cancel buttons
+    if (s._editMode) {
+        body.querySelector('#cc-edit-status')?.addEventListener('change', e => { s._editStatus = e.target.value; });
+        body.querySelector('#cc-edit-role')?.addEventListener('input', e => { s._editRole = e.target.value.trim(); });
+        body.querySelector('#cc-cancel-edit-btn')?.addEventListener('click', () => {
+            if (s._onEditCancel) s._onEditCancel();
+        });
+        body.querySelector('#cc-save-edit-btn')?.addEventListener('click', async () => {
+            const btn = body.querySelector('#cc-save-edit-btn');
+            if (btn) { btn.disabled = true; btn.textContent = '⏳ Saving...'; }
+            try {
+                const data = getCharacterData();
+                // Overlay edit-mode fields
+                data.id = s._editId;
+                data.status = s._editStatus;
+                data.role = s._editRole;
+                data.portrait_url = s._editPortraitUrl;
+                data.xp = s._editXp;
+                if (s._editAge != null) data.age = s._editAge;
+                await apiSaveCharacter(s._editTownId, data);
+                if (s._onEditComplete) s._onEditComplete();
+            } catch (err) {
+                alert('Save failed: ' + err.message);
+                if (btn) { btn.disabled = false; btn.textContent = '💾 Save Changes'; }
+            }
+        });
+    }
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -573,24 +810,25 @@ export function getCharacterData() {
     const s = state, race = getRace(s.race), cls = getClass(s.class_);
     const mds = raceMods(race), hd = classHd(cls), gs = classGoodSaves(cls);
     const lvl = s.level;
-    const finalAb = {}; ABILITIES.forEach(a => { finalAb[a] = s.abilities[a] + (mds[a] || 0); });
+    const finalAb = {}; ABILITIES.forEach(a => { finalAb[a] = finalAbility(a); });
     const strMod = abilityMod(finalAb.str);
     const conMod = abilityMod(finalAb.con), dexMod = abilityMod(finalAb.dex);
     const hpLvl1 = hd + conMod;
-    const hpTotal = Math.max(1, hpLvl1 + (lvl - 1) * Math.max(1, Math.floor(hd / 2 + 1) + conMod));
-    const bab = calcBAB(s.class_, lvl);
+    const hpTotal = Math.max(1, hpLvl1 + (lvl - 1) * Math.max(1, Math.floor(hd / 2 + 1) + conMod)) + featBonus('hp');
+    const bab = calcBAB(s.class_, lvl) + featBonus('attack');
     const isSmall = (race.size || 'Medium') === 'Small';
     const sizeMod = isSmall ? 1 : 0;
-    const acBase = 10 + dexMod + sizeMod;
-    const fort = calcBaseSave(lvl, gs.includes('fort')) + abilityMod(finalAb.con);
-    const ref = calcBaseSave(lvl, gs.includes('ref')) + abilityMod(finalAb.dex);
-    const will = calcBaseSave(lvl, gs.includes('will')) + abilityMod(finalAb.wis);
+    const acBase = 10 + dexMod + sizeMod + featBonus('ac');
+    const fort = calcBaseSave(lvl, gs.includes('fort')) + abilityMod(finalAb.con) + featBonus('save', 'fort');
+    const ref = calcBaseSave(lvl, gs.includes('ref')) + abilityMod(finalAb.dex) + featBonus('save', 'ref');
+    const will = calcBaseSave(lvl, gs.includes('will')) + abilityMod(finalAb.wis) + featBonus('save', 'will');
 
     // Format skills_feats from selected skill ranks
     const skillEntries = Object.entries(s.skillRanks).filter(([, v]) => v > 0).map(([name, ranks]) => {
         const sk = srdSkills.find(x => x.name === name);
         const abKey = sk ? (sk.ability.toLowerCase() === 'int' ? 'int_' : sk.ability.toLowerCase()) : 'str';
-        const total = ranks + abilityMod(finalAb[abKey] || 10);
+        const skFeatBonus = featBonus('skill', name);
+        const total = ranks + abilityMod(finalAb[abKey] || 10) + skFeatBonus;
         return `${name} ${formatMod(total)}`;
     });
     const skillsFeatsStr = skillEntries.join(', ') || '';
@@ -612,7 +850,7 @@ export function getCharacterData() {
         alignment: s.alignment, age: age,
         hp: hpTotal, hd: `${lvl}${cls.hit_die}`,
         ac: `${acBase}, touch ${10 + dexMod + sizeMod}, flat-footed ${acBase - dexMod}`,
-        init: `${formatMod(dexMod)}`, spd: `${parseInt(race.speed) || 30} ft`,
+        init: `${formatMod(dexMod + featBonus('initiative'))}`, spd: `${(parseInt(race.speed) || 30) + featBonus('speed')} ft`,
         grapple: `${formatMod(grappleMod)}`,
         atk: `Melee: ${formatMod(bab + strMod)} (weapon)`,
         saves: `Fort ${formatMod(fort)}, Ref ${formatMod(ref)}, Will ${formatMod(will)}`,

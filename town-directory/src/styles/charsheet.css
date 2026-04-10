@@ -1201,6 +1201,32 @@
     color: #ef4444;
 }
 
+.cs-bp-sell-btn {
+    padding: .12rem .35rem;
+    border-radius: 3px;
+    border: 1px solid hsla(40, 70%, 50%, 0.3);
+    background: hsla(40, 80%, 45%, 0.12);
+    color: hsl(40, 85%, 65%);
+    cursor: pointer;
+    font-size: .6rem;
+    transition: all .15s;
+    white-space: nowrap;
+}
+
+.cs-bp-sell-btn:hover {
+    background: hsla(40, 80%, 50%, 0.2);
+    border-color: hsla(40, 70%, 55%, 0.5);
+    color: hsl(40, 90%, 70%);
+}
+
+.cs-bp-actions {
+    display: flex;
+    gap: .2rem;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+
 /* Coin Purse */
 .cs-purse {
     margin-bottom: .35rem;

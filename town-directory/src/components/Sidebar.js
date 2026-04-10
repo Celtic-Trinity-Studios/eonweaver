@@ -16,6 +16,8 @@ const NAV_ITEMS = [
   { route: 'party', icon: '🛡️', label: 'Party' },
   { route: 'encounters', icon: '⚔️', label: 'Encounters' },
   { route: 'srd', icon: '📖', label: 'SRD Browser' },
+  { route: 'homebrew', icon: '🧪', label: 'Homebrew' },
+  { route: 'content-library', icon: '📁', label: 'Content Library' },
   { route: 'calendar', icon: '📅', label: 'Calendar' },
   { route: 'help', icon: '❓', label: 'Help & Guide' },
   { route: 'settings', icon: '⚙️', label: 'Settings' },

@@ -105,6 +105,19 @@ export default function SettingsView(container) {
               <option value="brutal">Brutal (constant danger)</option>
             </select>
           </div>
+
+          <div class="form-group">
+            <label for="s-sell-rate">💰 Item Sell Rate</label>
+            <small class="settings-hint">Percentage of base cost when selling items. Will be modified by factions & world events in the future.</small>
+            <select id="s-sell-rate" class="form-select">
+              <option value="100">100% (Full price)</option>
+              <option value="75">75% (Favorable market)</option>
+              <option value="50" selected>50% (Standard — D&D default)</option>
+              <option value="33">33% (Rough economy)</option>
+              <option value="25">25% (Desperate times)</option>
+              <option value="10">10% (Pawnshop prices)</option>
+            </select>
+          </div>
         </section>
 
         <section class="settings-section-card">
@@ -699,6 +712,7 @@ async function loadSettings(container) {
     if (s.death_threshold) container.querySelector('#s-death-threshold').value = s.death_threshold;
     if (s.child_growth) container.querySelector('#s-child-growth').value = s.child_growth;
     if (s.conflict_frequency) container.querySelector('#s-conflict').value = s.conflict_frequency;
+    if (s.sell_rate) container.querySelector('#s-sell-rate').value = s.sell_rate;
   } catch (e) {
     console.error('Failed to load settings:', e);
   }
@@ -740,6 +754,7 @@ async function saveSettings(container) {
     await apiSaveSetting('death_threshold', container.querySelector('#s-death-threshold').value);
     await apiSaveSetting('child_growth', container.querySelector('#s-child-growth').value);
     await apiSaveSetting('conflict_frequency', container.querySelector('#s-conflict').value);
+    await apiSaveSetting('sell_rate', container.querySelector('#s-sell-rate').value);
 
     // Save campaign rules & description
     const campDesc = container.querySelector('#s-campaign-desc').value.trim();

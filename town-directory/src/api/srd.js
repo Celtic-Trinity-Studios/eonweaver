@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Eon Weaver — SRD API Client + Data Loader
  * Fetches all SRD data from the database, filtered by edition.
  * Includes both raw API wrappers (used by SrdBrowserView)
@@ -78,6 +78,103 @@ export async function loadSrdClasses() { return fetchCached('srd_classes'); }
 export async function loadSrdFeats() { return fetchCached('srd_feats'); }
 export async function loadSrdEquipment() { return fetchCached('srd_equipment'); }
 export async function loadSrdSkills() { return fetchCached('srd_skills'); }
+
+/* ═══════════════════════════════════════════════════════════
+   MERGED LOADERS (SRD + Homebrew Custom Content)
+   Used by Character Creator and any UI that needs the full
+   set of available options including user custom content.
+   ═══════════════════════════════════════════════════════════ */
+let _customContentCache = null;
+let _customContentLoading = null;
+
+async function loadCustomContent() {
+    if (_customContentCache) return _customContentCache;
+    if (_customContentLoading) return _customContentLoading;
+    _customContentLoading = (async () => {
+        try {
+            const { apiGetCustomContent } = await import('./content.js');
+            const res = await apiGetCustomContent();
+            _customContentCache = res.content || {};
+        } catch (e) {
+            _customContentCache = {};
+        }
+        _customContentLoading = null;
+        return _customContentCache;
+    })();
+    return _customContentLoading;
+}
+
+/** Clear homebrew cache (call when user adds/edits/deletes custom content) */
+export function clearCustomContentCache() {
+    _customContentCache = null;
+    _customContentLoading = null;
+}
+
+/**
+ * Load SRD races merged with user's custom races.
+ * Custom races are tagged with _isHomebrew: true.
+ */
+export async function loadMergedRaces() {
+    const [srd, custom] = await Promise.all([loadSrdRaces(), loadCustomContent()]);
+    const customRaces = (custom.custom_races || []).map(r => ({
+        ...r,
+        _isHomebrew: true,
+    }));
+    // Deduplicate by name (custom overrides SRD if same name)
+    const byName = new Map();
+    srd.forEach(r => byName.set(r.name.toLowerCase(), r));
+    customRaces.forEach(r => byName.set(r.name.toLowerCase(), r));
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Load SRD classes merged with user's custom classes.
+ * Custom classes are tagged with _isHomebrew: true.
+ */
+export async function loadMergedClasses() {
+    const [srd, custom] = await Promise.all([loadSrdClasses(), loadCustomContent()]);
+    const customClasses = (custom.custom_classes || []).map(c => ({
+        ...c,
+        _isHomebrew: true,
+    }));
+    const byName = new Map();
+    srd.forEach(c => byName.set(c.name.toLowerCase(), c));
+    customClasses.forEach(c => byName.set(c.name.toLowerCase(), c));
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Load SRD feats merged with user's custom feats.
+ * Custom feats are tagged with _isHomebrew: true.
+ */
+export async function loadMergedFeats() {
+    const [srd, custom] = await Promise.all([loadSrdFeats(), loadCustomContent()]);
+    const customFeats = (custom.custom_feats || []).map(f => ({
+        ...f,
+        _isHomebrew: true,
+    }));
+    const byName = new Map();
+    srd.forEach(f => byName.set(f.name.toLowerCase(), f));
+    customFeats.forEach(f => byName.set(f.name.toLowerCase(), f));
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * Load SRD equipment merged with user's custom equipment.
+ * Custom equipment is tagged with _isHomebrew: true.
+ */
+export async function loadMergedEquipment() {
+    const [srd, custom] = await Promise.all([loadSrdEquipment(), loadCustomContent()]);
+    const customEquip = (custom.custom_equipment || []).map(e => ({
+        ...e,
+        _isHomebrew: true,
+    }));
+    const byName = new Map();
+    srd.forEach(e => byName.set(e.name.toLowerCase(), e));
+    customEquip.forEach(e => byName.set(e.name.toLowerCase(), e));
+    return [...byName.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
 
 /* ═══════════════════════════════════════════════════════════
    PARSERS (for DB format strings)

@@ -119,7 +119,7 @@ function roll4d6DropLowest(): int
     return $dice[0] + $dice[1] + $dice[2]; // drop lowest
 }
 
-function rollAbilityScores(string $race = 'Human'): array
+function rollAbilityScores(string $race = 'Human', int $userId = 0): array
 {
     // Roll raw scores
     $scores = [
@@ -140,7 +140,32 @@ function rollAbilityScores(string $race = 'Human'): array
         'Human' => [],
         'Half-Elf' => [],
     ];
-    $mods = $racialMods[$race] ?? [];
+    $mods = $racialMods[$race] ?? null;
+
+    // If race not in SRD table, look up custom race from user's SQLite DB
+    if ($mods === null && $userId > 0) {
+        try {
+            require_once __DIR__ . '/user_db.php';
+            $customRace = userQuery($userId, "SELECT ability_mods FROM custom_races WHERE name = ? LIMIT 1", [$race]);
+            if (!empty($customRace) && !empty($customRace[0]['ability_mods'])) {
+                $mods = [];
+                // Parse "Str +2, Dex -2" format
+                foreach (explode(',', $customRace[0]['ability_mods']) as $part) {
+                    $part = trim($part);
+                    if (preg_match('/^(Str|Dex|Con|Int|Wis|Cha)\s*([+-]\d+)$/i', $part, $m)) {
+                        $key = strtolower($m[1]) === 'int' ? 'int_' : strtolower($m[1]);
+                        $mods[$key] = (int) $m[2];
+                    }
+                }
+            } else {
+                $mods = []; // Custom race with no mods
+            }
+        } catch (Exception $e) {
+            $mods = [];
+        }
+    }
+    if ($mods === null) $mods = [];
+
     foreach ($mods as $stat => $mod) {
         $scores[$stat] = max(3, $scores[$stat] + $mod);
     }

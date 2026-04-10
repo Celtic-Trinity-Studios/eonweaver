@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Eon Weaver — Encounter View
  * Manage combat encounters: list, create, setup (pull from towns), and run combat.
  */
@@ -11,9 +11,22 @@ import {
     apiGetParty
 } from '../api/encounters.js';
 import { apiFetch } from '../api/client.js';
+import { apiSaveCharacter } from '../api/characters.js';
 import { roll, formatMod } from '../engine/dice.js';
 import { abilityMod, parseGearWeapons } from '../engine/rulesAdapter.js';
 import { CONDITIONS, getAllConditions } from '../engine/conditions.js';
+import { showToast } from '../components/Toast.js';
+
+/* ── D&D 3.5e CR → XP Table ──────────────────────────── */
+const CR_XP_TABLE = {
+  '1/8': 50, '1/6': 65, '1/4': 75, '1/3': 100, '1/2': 150,
+  1: 300, 2: 600, 3: 900, 4: 1200, 5: 1800,
+  6: 2700, 7: 3600, 8: 5400, 9: 7200, 10: 10000,
+  11: 13500, 12: 18000, 13: 23400, 14: 30000, 15: 39000,
+  16: 49500, 17: 63000, 18: 81000, 19: 103500, 20: 135000,
+  21: 180000, 22: 225000, 23: 279000, 24: 337500, 25: 405000
+};
+const CR_OPTIONS = Object.keys(CR_XP_TABLE);
 
 export default function EncounterView(container, params) {
     const encounterId = params.id ? parseInt(params.id) : null;
@@ -137,7 +150,6 @@ function renderEncounterDetail(container, encId) {
               <select id="enc-pick-town" class="form-input">
                 <option value="">Select a town...</option>
               </select>
-              <button class="btn-secondary btn-sm" id="enc-add-party-all" title="Quick-add all party members">🛡️ Add Party</button>
             </div>
             <input type="text" id="enc-pick-search" class="form-input" placeholder="Filter characters..." style="margin-bottom:0.5rem">
             <div class="enc-pick-side-default" style="margin-bottom:0.5rem;font-size:0.75rem">
@@ -183,7 +195,10 @@ function renderEncounterDetail(container, encId) {
           <div class="enc-combat-zone">
             <div class="enc-combat-zone-header">
               <h3>⚔️ Combat</h3>
-              <button class="btn-secondary btn-sm" id="enc-end-combat-btn">⏹ End Combat</button>
+              <div class="enc-combat-zone-actions">
+                <button class="btn-secondary btn-sm" id="enc-combat-add-party" title="Add party members to this encounter">🛡️ Add Party</button>
+                <button class="btn-secondary btn-sm" id="enc-end-combat-btn">⏹ End Combat</button>
+              </div>
             </div>
             <div id="enc-combat-area" class="enc-combat-area"></div>
           </div>
@@ -196,6 +211,42 @@ function renderEncounterDetail(container, encId) {
             <button class="btn-secondary btn-xs" id="enc-clear-log-btn">Clear</button>
           </div>
           <div id="enc-combat-log" class="enc-combat-log"></div>
+        </div>
+
+        <!-- CR Calculator & XP Award (auto-calculated from encounter) -->
+        <div class="enc-cr-panel">
+          <div class="enc-cr-header">
+            <h3>📊 Encounter XP Calculator</h3>
+          </div>
+          <div class="enc-cr-body">
+            <div class="enc-cr-monsters">
+              <div class="enc-cr-auto-label">Enemies in encounter:</div>
+              <div id="enc-cr-auto-list" class="enc-cr-list"></div>
+              <div class="enc-cr-manual-section">
+                <div class="enc-cr-manual-label">Add extra (unlisted monsters):</div>
+                <div class="enc-cr-add-row">
+                  <select id="enc-cr-select" class="form-input enc-cr-select">
+                    ${CR_OPTIONS.map(cr => `<option value="${cr}">CR ${cr} (${CR_XP_TABLE[cr].toLocaleString()} XP)</option>`).join('')}
+                  </select>
+                  <input type="number" id="enc-cr-count" class="form-input enc-cr-count" value="1" min="1" max="50" title="Count">
+                  <button class="btn-primary btn-sm" id="enc-cr-add-btn">+ Add</button>
+                </div>
+                <div id="enc-cr-extra-list" class="enc-cr-list"></div>
+              </div>
+            </div>
+            <div class="enc-cr-summary">
+              <div class="enc-cr-total">
+                <span>Total XP:</span>
+                <strong id="enc-cr-total-xp">0</strong>
+              </div>
+              <div class="enc-cr-per-member">
+                <span>Per Party Member:</span>
+                <strong id="enc-cr-per-xp">0</strong>
+                <span class="enc-cr-party-count" id="enc-cr-party-info">(0 party members)</span>
+              </div>
+              <button class="btn-primary" id="enc-award-xp-btn" disabled>🏆 Award XP to Party</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -459,25 +510,6 @@ function bindDetailEvents(container, encId) {
         } catch (err) { alert('Error: ' + err.message); }
     });
 
-    // Add all party members
-    container.querySelector('#enc-add-party-all').addEventListener('click', async () => {
-        try {
-            const partyRes = await apiGetParty();
-            const party = partyRes.party || [];
-            if (!party.length) { alert('No party members. Add characters to your party first (🛡️ Party page).'); return; }
-            const existingIds = new Set((currentEncounter?.participants || []).map(p => parseInt(p.character_id)));
-            let added = 0;
-            for (const m of party) {
-                if (!existingIds.has(parseInt(m.character_id))) {
-                    await apiAddParticipant(encId, parseInt(m.character_id), 'party');
-                    added++;
-                }
-            }
-            if (added === 0) { alert('All party members are already in this encounter.'); }
-            await refreshEncounter(container);
-        } catch (err) { alert('Error: ' + err.message); }
-    });
-
     // Add group
     container.querySelector('#enc-add-group-btn').addEventListener('click', async () => {
         const name = prompt('Group/location name:', 'New Location');
@@ -550,6 +582,183 @@ function bindDetailEvents(container, encId) {
         combatLog = [];
         container.querySelector('#enc-combat-log').innerHTML = '';
     });
+
+    // Add Party to Combat (picker modal)
+    container.querySelector('#enc-combat-add-party').addEventListener('click', async () => {
+        try {
+            const partyRes = await apiGetParty();
+            const party = partyRes.party || [];
+            if (!party.length) { showToast('No party members. Add to your party first (🛡️ Party page).', 'warning'); return; }
+            const existingIds = new Set((currentEncounter?.participants || []).map(p => parseInt(p.character_id)));
+            const available = party.filter(m => !existingIds.has(parseInt(m.character_id)));
+            if (!available.length) { showToast('All party members are already in this encounter.', 'info'); return; }
+
+            const { showModal } = await import('../components/Modal.js');
+            const { el: modal, close } = showModal({
+                title: '🛡️ Add Party Members to Combat',
+                width: 'narrow',
+                content: `
+                    <div class="enc-party-picker">
+                        ${available.map(m => `
+                            <label class="enc-party-pick-item" data-char-id="${m.character_id}">
+                                <input type="checkbox" class="enc-party-check" data-char-id="${m.character_id}" checked>
+                                <span class="enc-party-pick-name">${m.name}</span>
+                                <span class="enc-party-pick-detail">${m.race || ''} ${m.class || ''} L${m.level || '?'}</span>
+                                <span class="enc-party-pick-stats">♥${m.hp || '?'} 🛡${m.ac || '?'}</span>
+                            </label>
+                        `).join('')}
+                        <div style="margin-top:0.75rem;display:flex;gap:0.5rem;justify-content:flex-end">
+                            <button class="btn-secondary btn-sm" id="enc-party-pick-cancel">Cancel</button>
+                            <button class="btn-primary btn-sm" id="enc-party-pick-add">Add Selected</button>
+                        </div>
+                    </div>
+                `
+            });
+            modal.querySelector('#enc-party-pick-cancel').addEventListener('click', close);
+            modal.querySelector('#enc-party-pick-add').addEventListener('click', async () => {
+                const checked = [...modal.querySelectorAll('.enc-party-check:checked')];
+                if (!checked.length) { showToast('No members selected.', 'warning'); return; }
+                let added = 0;
+                for (const cb of checked) {
+                    await apiAddParticipant(encId, parseInt(cb.dataset.charId), 'party');
+                    added++;
+                }
+                close();
+                showToast(`Added ${added} party member${added > 1 ? 's' : ''} to combat.`, 'success');
+                await refreshEncounter(container);
+                updateCrCalculator(container);
+            });
+        } catch (err) { showToast('Error: ' + err.message, 'error'); }
+    });
+
+    // ── CR Calculator (auto from encounter + manual extras) ──
+    let extraCrEntries = []; // { cr: string, count: number }
+
+    function renderExtraCrList() {
+        const listEl = container.querySelector('#enc-cr-extra-list');
+        if (!listEl) return;
+        if (!extraCrEntries.length) {
+            listEl.innerHTML = '';
+        } else {
+            listEl.innerHTML = extraCrEntries.map((e, i) => `
+                <div class="enc-cr-entry">
+                    <span class="enc-cr-entry-label">${e.count}× CR ${e.cr}</span>
+                    <span class="enc-cr-entry-xp">${(CR_XP_TABLE[e.cr] * e.count).toLocaleString()} XP</span>
+                    <button class="btn-danger btn-xs enc-cr-extra-remove" data-idx="${i}" title="Remove">✕</button>
+                </div>
+            `).join('');
+            listEl.querySelectorAll('.enc-cr-extra-remove').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    extraCrEntries.splice(parseInt(btn.dataset.idx), 1);
+                    renderExtraCrList();
+                    updateCrCalculator(container);
+                });
+            });
+        }
+    }
+
+    container.querySelector('#enc-cr-add-btn')?.addEventListener('click', () => {
+        const cr = container.querySelector('#enc-cr-select').value;
+        const count = parseInt(container.querySelector('#enc-cr-count').value) || 1;
+        const existing = extraCrEntries.find(e => e.cr === cr);
+        if (existing) { existing.count += count; }
+        else { extraCrEntries.push({ cr, count }); }
+        container.querySelector('#enc-cr-count').value = '1';
+        renderExtraCrList();
+        updateCrCalculator(container);
+    });
+
+    // Award XP button
+    container.querySelector('#enc-award-xp-btn')?.addEventListener('click', async () => {
+        const { autoXp, extraXp } = calcEncounterXp();
+        const totalXP = autoXp + extraXp;
+        const partyMembers = (currentEncounter?.participants || []).filter(p => p.side === 'party');
+        if (!partyMembers.length) { showToast('No party members in encounter!', 'warning'); return; }
+        if (!totalXP) { showToast('No enemy XP to award.', 'warning'); return; }
+
+        const perMember = Math.floor(totalXP / partyMembers.length);
+        if (!confirm(`Award ${perMember.toLocaleString()} XP to each of ${partyMembers.length} party member${partyMembers.length > 1 ? 's' : ''}?`)) return;
+
+        const btn = container.querySelector('#enc-award-xp-btn');
+        btn.disabled = true;
+        btn.textContent = '⏳ Awarding...';
+
+        let awarded = 0;
+        for (const p of partyMembers) {
+            try {
+                const charId = parseInt(p.character_id);
+                const townId = parseInt(p.town_id);
+                if (!charId || !townId) continue;
+                const currentXp = parseInt(p.xp) || 0;
+                const newXp = currentXp + perMember;
+                await apiSaveCharacter(townId, { id: charId, xp: newXp });
+                await apiFetch('add_combat_xp', { method: 'POST', body: {
+                    character_id: charId, town_id: townId,
+                    xp_gained: perMember,
+                    reason: `Combat XP: ${currentEncounter.name}`,
+                    source: 'encounter'
+                }});
+                awarded++;
+                addCombatLog(container, `${p.name} gained ${perMember.toLocaleString()} XP (${currentXp} → ${newXp})`, 'success');
+            } catch (e) {
+                console.error(`Failed to award XP to ${p.name}:`, e);
+                addCombatLog(container, `Failed to award XP to ${p.name}: ${e.message}`, 'danger');
+            }
+        }
+
+        showToast(`Awarded ${perMember.toLocaleString()} XP to ${awarded} party member${awarded > 1 ? 's' : ''}!`, 'success');
+        btn.textContent = '✅ XP Awarded!';
+        setTimeout(() => { btn.textContent = '🏆 Award XP to Party'; btn.disabled = false; }, 3000);
+    });
+
+    /** Calculate XP from encounter enemies (using level as CR) + extra entries */
+    function calcEncounterXp() {
+        const enemies = (currentEncounter?.participants || []).filter(p => p.side === 'enemy' || p.side === 'neutral');
+        let autoXp = 0;
+        enemies.forEach(e => {
+            const cr = parseInt(e.level) || 1;
+            autoXp += CR_XP_TABLE[cr] || CR_XP_TABLE[String(cr)] || 0;
+        });
+        let extraXp = extraCrEntries.reduce((s, e) => s + (CR_XP_TABLE[e.cr] || 0) * e.count, 0);
+        return { autoXp, extraXp };
+    }
+
+    /** Render the auto-calculated enemy list and update summary */
+    function updateCrCalculator(cont) {
+        const autoListEl = cont.querySelector('#enc-cr-auto-list');
+        if (!autoListEl) return;
+        const enemies = (currentEncounter?.participants || []).filter(p => p.side === 'enemy' || p.side === 'neutral');
+        const partyMembers = (currentEncounter?.participants || []).filter(p => p.side === 'party');
+
+        if (!enemies.length) {
+            autoListEl.innerHTML = '<div class="enc-cr-empty">No enemies in encounter</div>';
+        } else {
+            autoListEl.innerHTML = enemies.map(e => {
+                const cr = parseInt(e.level) || 1;
+                const xp = CR_XP_TABLE[cr] || CR_XP_TABLE[String(cr)] || 0;
+                return `<div class="enc-cr-entry">
+                    <span class="enc-cr-entry-label">${e.name} (CR ${cr})</span>
+                    <span class="enc-cr-entry-xp">${xp.toLocaleString()} XP</span>
+                </div>`;
+            }).join('');
+        }
+
+        const { autoXp, extraXp } = calcEncounterXp();
+        const totalXP = autoXp + extraXp;
+        const perMember = partyMembers.length > 0 ? Math.floor(totalXP / partyMembers.length) : 0;
+
+        const totalEl = cont.querySelector('#enc-cr-total-xp');
+        const perEl = cont.querySelector('#enc-cr-per-xp');
+        const infoEl = cont.querySelector('#enc-cr-party-info');
+        const awardBtn = cont.querySelector('#enc-award-xp-btn');
+        if (totalEl) totalEl.textContent = totalXP.toLocaleString();
+        if (perEl) perEl.textContent = perMember.toLocaleString();
+        if (infoEl) infoEl.textContent = `(${partyMembers.length} party member${partyMembers.length !== 1 ? 's' : ''})`;
+        if (awardBtn) awardBtn.disabled = !totalXP || !partyMembers.length;
+    }
+
+    renderExtraCrList();
+    updateCrCalculator(container);
 }
 
 function showSetupMode(container) {
@@ -566,7 +775,6 @@ function showCombatMode(container) {
     container.querySelector('#enc-mode-combat').classList.add('active');
     if (currentEncounter) container.querySelector('#enc-round-num').textContent = currentEncounter.current_round || 0;
 }
-
 
 /* ═══════════════════════════════════════════════════════════
    COMBAT UI
@@ -640,8 +848,10 @@ function renderCombatCard(p) {
             </div>
             <span class="enc-hp-text">♥ ${p.current_hp}/${p.max_hp}${parseInt(p.temp_hp) > 0 ? ` (+${p.temp_hp})` : ''}</span>
             <div class="enc-hp-buttons">
+                <button class="btn-danger btn-xs enc-hp-minus" data-part-id="${p.id}" title="-1 HP">−1</button>
                 <button class="btn-danger btn-xs enc-dmg-btn" data-part-id="${p.id}">-HP</button>
                 <button class="btn-success btn-xs enc-heal-btn" data-part-id="${p.id}">+HP</button>
+                <button class="btn-success btn-xs enc-hp-plus" data-part-id="${p.id}" title="+1 HP">+1</button>
             </div>
         </div>
         <div class="enc-ccard-stats">
@@ -665,6 +875,31 @@ function renderCombatCard(p) {
 }
 
 function bindCombatCardEvents(container) {
+    // Quick -1 HP
+    container.querySelectorAll('.enc-hp-minus').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const partId = parseInt(btn.dataset.partId);
+            const p = currentEncounter.participants.find(x => parseInt(x.id) === partId);
+            if (!p) return;
+            const newHp = Math.max(-10, parseInt(p.current_hp) - 1);
+            await apiUpdateParticipant(partId, { current_hp: newHp, is_active: newHp > -10 ? 1 : 0 });
+            if (newHp <= 0 && parseInt(p.current_hp) > 0) addCombatLog(container, `${p.name} goes DOWN! (0 HP) 💀`, 'danger');
+            await refreshEncounter(container);
+        });
+    });
+
+    // Quick +1 HP
+    container.querySelectorAll('.enc-hp-plus').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const partId = parseInt(btn.dataset.partId);
+            const p = currentEncounter.participants.find(x => parseInt(x.id) === partId);
+            if (!p) return;
+            const newHp = Math.min(parseInt(p.max_hp), parseInt(p.current_hp) + 1);
+            await apiUpdateParticipant(partId, { current_hp: newHp, is_active: 1 });
+            await refreshEncounter(container);
+        });
+    });
+
     // Damage
     container.querySelectorAll('.enc-dmg-btn').forEach(btn => {
         btn.addEventListener('click', async () => {

@@ -91,6 +91,32 @@ if ($action === 'intake_roster') {
     $campaignRules = $campaignRulesRows ? trim($campaignRulesRows[0]['rules_text'] ?? '') : '';
     $campaignDesc = $campaignRulesRows ? trim($campaignRulesRows[0]['campaign_description'] ?? '') : '';
 
+    // ── Load Custom (Homebrew) Content for AI prompt ──
+    $customRaceRef = '';
+    $customClassRef = '';
+    try {
+        require_once $baseDir . '/user_db.php';
+        $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$userId], 0);
+        $campIdIntake = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+        if ($campIdIntake) {
+            $customRacesIntake = userQuery($userId, "SELECT name, ability_mods FROM custom_races WHERE campaign_id = ? OR campaign_id IS NULL ORDER BY name", [$campIdIntake]);
+            $customClassesIntake = userQuery($userId, "SELECT name, hit_die FROM custom_classes WHERE campaign_id = ? OR campaign_id IS NULL ORDER BY name", [$campIdIntake]);
+        } else {
+            $customRacesIntake = userQuery($userId, "SELECT name, ability_mods FROM custom_races ORDER BY name");
+            $customClassesIntake = userQuery($userId, "SELECT name, hit_die FROM custom_classes ORDER BY name");
+        }
+        if (!empty($customRacesIntake)) {
+            $rn = array_map(function($r) { return $r['name']; }, $customRacesIntake);
+            $customRaceRef = "\n- HOMEBREW RACES AVAILABLE (may also use these): " . implode(', ', $rn);
+        }
+        if (!empty($customClassesIntake)) {
+            $cn = array_map(function($c) { return "{$c['name']} ({$c['hit_die']})"; }, $customClassesIntake);
+            $customClassRef = "\n- HOMEBREW CLASSES AVAILABLE (may also use these): " . implode(', ', $cn);
+        }
+    } catch (Exception $e) {
+        // No user DB yet — fine
+    }
+
     $history = query('SELECT heading, content FROM history WHERE town_id = ? ORDER BY sort_order', [$townId], $uid);
     $historyText = '';
     if ($history) {
@@ -131,6 +157,102 @@ if ($action === 'intake_roster') {
 
     // Race enforcement list — filled by demographics computation, applied after AI returns
     $enforcedRaceList = [];
+
+    // ═══════════════════════════════════════════════════════════
+    // STANDARD NPC MODE — Procedural generation (NO AI credits)
+    // Creature intakes skip this and fall through to the AI path below
+    // ═══════════════════════════════════════════════════════════
+    if (!$isCreatureIntake) {
+        require_once $baseDir . '/roster_generator.php';
+
+        $existingCount = count($existingNames);
+        $hasHistory = !empty($history);
+        $isNewSettlement = ($existingCount === 0 && !$hasHistory);
+
+        // Compute race enforcement list from demographics (if set)
+        if ($demographics) {
+            $demoParts = array_map('trim', explode(',', $demographics));
+            $demoEntries = [];
+            foreach ($demoParts as $part) {
+                if (preg_match('/^(.+?)\s+(\d+)%?$/', trim($part), $dm)) {
+                    $demoEntries[] = ['race' => trim($dm[1]), 'pct' => (int) $dm[2]];
+                }
+            }
+
+            if (!empty($demoEntries)) {
+                $totalPct = array_sum(array_column($demoEntries, 'pct'));
+                if ($totalPct <= 0) $totalPct = 100;
+                $raceCounts_tmp = [];
+                $totalAssigned = 0;
+                foreach ($demoEntries as $idx => $entry) {
+                    $exact = ($entry['pct'] / $totalPct) * $numArrivals;
+                    $floored = (int) floor($exact);
+                    $raceCounts_tmp[$idx] = [
+                        'race' => $entry['race'],
+                        'count' => $floored,
+                        'remainder' => $exact - $floored,
+                    ];
+                    $totalAssigned += $floored;
+                }
+                $remainingSlots = $numArrivals - $totalAssigned;
+                if ($remainingSlots > 0) {
+                    $sortedIdx = array_keys($raceCounts_tmp);
+                    usort($sortedIdx, function ($a, $b) use ($raceCounts_tmp) {
+                        return $raceCounts_tmp[$b]['remainder'] <=> $raceCounts_tmp[$a]['remainder'];
+                    });
+                    for ($ri = 0; $ri < $remainingSlots && $ri < count($sortedIdx); $ri++) {
+                        $raceCounts_tmp[$sortedIdx[$ri]]['count']++;
+                    }
+                }
+                foreach ($raceCounts_tmp as $rc) {
+                    for ($ei = 0; $ei < $rc['count']; $ei++) {
+                        $enforcedRaceList[] = $rc['race'];
+                    }
+                }
+                shuffle($enforcedRaceList);
+            }
+        }
+
+        // Build existing role counts for gap analysis
+        $existingRoleCounts = [];
+        foreach ($characters as $c) {
+            $role = strtolower(trim($c['role'] ?? ''));
+            if ($role) $existingRoleCounts[$role] = ($existingRoleCounts[$role] ?? 0) + 1;
+        }
+
+        // Gather custom classes from homebrew content
+        $customClassData = [];
+        try {
+            require_once $baseDir . '/user_db.php';
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$userId], 0);
+            $campIdForClasses = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+            if ($campIdForClasses) {
+                $customClassData = userQuery($userId, "SELECT name, hit_die FROM custom_classes WHERE campaign_id = ? OR campaign_id IS NULL ORDER BY name", [$campIdForClasses]);
+            } else {
+                $customClassData = userQuery($userId, "SELECT name, hit_die FROM custom_classes ORDER BY name");
+            }
+        } catch (Exception $e) {
+            // No user DB yet — fine
+        }
+
+        // Generate roster procedurally — instant, no API call
+        $validRoster = generateRoster($numArrivals, [
+            'existingNames'    => $existingNames,
+            'enforcedRaceList' => $enforcedRaceList,
+            'settlementType'   => $settlementType,
+            'biome'            => $biome,
+            'isNewSettlement'  => $isNewSettlement,
+            'instructions'     => $instructions,
+            'existingRoles'    => $existingRoleCounts,
+            'genderCounts'     => $genderCounts,
+            'customClasses'    => $customClassData,
+        ]);
+
+        simRespond(['ok' => true, 'roster' => $validRoster, 'town_id' => $townId, 'is_creature_intake' => false]);
+    }
+    // ═══════════════════════════════════════════════════════════
+    // CREATURE MODE continues below (AI-based)
+    // ═══════════════════════════════════════════════════════════
 
     if ($isCreatureIntake) {
         // CREATURE MODE — skip diversity rules, honor user instructions
@@ -270,8 +392,8 @@ For each character provide ONLY: name, race, class, gender, age, role, alignment
 ## DIVERSITY RULES:
 - EVERY character must have a UNIQUE first name. Never reuse the same first name twice in this list or from the existing names.
 - BANNED FIRST NAMES (the AI over-uses these — NEVER use them): Elara, Lyra, Theron, Seraphina, Kael, Aelara, Elowen, Rowan, Thorne, Astra, Kaelen, Isolde, Alaric, Lysander, Cassian, Aurelia, Selene, Eldric, Zephyr, Nyx, Orion, Sylas, Briar, Ember, Vesper, Ashwyn, Corvus, Liora, Thalion, Arianne, Elowyn, Caelum, Sable, Ravenna, Fenris, Seren, Astrid, Mira, Vera, Vex, Kira.
-{$raceRule}
-- VARY classes: NPC classes DOMINATE. At least 70% should be Commoner, Expert, Warrior, Adept, or Aristocrat. Player classes (Fighter, Rogue, Cleric, Wizard, etc.) are RARE — max 1 in 10.
+{$raceRule}{$customRaceRef}
+- VARY classes: NPC classes DOMINATE. At least 70% should be Commoner, Expert, Warrior, Adept, or Aristocrat. Player classes (Fighter, Rogue, Cleric, Wizard, etc.) are RARE — max 1 in 10.{$customClassRef}
 - VARY roles: Use roles appropriate for the settlement type and current state.{$noBuildingsRule}
 - VARY names: {$nameRule}
 - VARY gender: Roughly 50/50 split (unless the race/creature type has a different norm).
