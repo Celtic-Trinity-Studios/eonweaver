@@ -69,7 +69,7 @@
 | 0:40–0:50 | Switch to Inventory & Feats tab. Show equipped items, the equip/unequip mechanism, and the feat list. | *"Inventory tracks every item — equip and unequip from gear slots. Feats are listed with full SRD descriptions on hover."* |
 | 0:50–1:00 | Show the PDF Export button. Click it — show the PDF generating or a quick flash of the exported PDF. | *"Need a printable sheet? One click exports a formatted PDF character sheet with the full stat breakdown."* |
 | 1:00–1:10 | Show the Level Up button. Click it — show the AI Level Up modal or the Level-Up Wizard steps (Class → HP → Skills → Feats → Spells → Summary). | *"Level up in one click. The wizard walks through every 3.5e step — class selection, HP roll, skill points, new feats, spell slots. Or use AI mode for a narrative-flavored level up."* |
-| 1:10–1:20 | Show the portrait area — upload button or existing portrait. | *"Upload custom portraits for any NPC. Make them yours."* |
+| 1:10–1:20 | Show the portrait area — hover to reveal the camera overlay. Click it to upload a portrait. Show the file picker, pick an image, see it appear in the header. | *"Click any portrait to upload a custom image. The camera overlay appears on hover — pick a file and it's instantly resized and saved."* |
 | 1:20–1:30 | Fade or cut. | *"A complete D&D 3.5 character engine. Not a summary card — the real thing."* |
 
 ---
@@ -204,6 +204,21 @@
 
 ---
 
+## Video 14: Character Import — Statblock & AI Prompt
+**Runtime:** ~45–60 seconds  
+**Goal:** Show the flexible import system — paste statblocks or describe a character and let AI build it.
+
+| Timestamp | On-Screen Action | Narration / Caption |
+|-----------|-----------------|-------------------|
+| 0:00–0:08 | From the town roster, click the 📥 Import button in the header. The import modal opens with a dropdown selector showing "Paste Statblock" and "AI Character Prompt". | *"Need to bring in a specific character? The Import system gives you options."* |
+| 0:08–0:20 | With "Paste Statblock" selected, paste a statblock into the textarea. Click Preview — show the parsed character preview with stats, class, race. Click Import — character appears on the roster. | *"Paste a statblock and the parser handles the rest. Preview it, then import. No AI credits needed — it's instant local parsing."* |
+| 0:20–0:28 | Switch the dropdown to "AI Character Prompt". The textarea changes to a prompt field. A Level Range dropdown appears below it. | *"Or switch to AI mode. Describe the character you want in plain English."* |
+| 0:28–0:40 | Type a prompt like "A grizzled half-orc barbarian named Krag, level 5, former gladiator turned bounty hunter". Select Level Range → "Mid-Low (3-6)". Click Generate. Show the loading spinner. | *"Be as specific or vague as you want. Set a level range — or leave it on Auto. The AI generates a complete stat block, feats, gear, and backstory."* |
+| 0:40–0:50 | Character sheet appears — full stats, equipment, backstory. The character is automatically added to the roster and selected. | *"One prompt. One click. A fully realized D&D character ready for the table. Perfect for quest givers, villains, or any NPC that needs more depth."* |
+| 0:50–0:55 | Fade or cut. | *"Statblocks or stories — import either way."* |
+
+---
+
 ## General Production Notes
 
 ### Recording Tips
@@ -220,20 +235,22 @@ Record in this order to maximize state reuse (each builds on the last):
 2. **Video 8** — Settings (while you're explaining the system)
 3. **Video 2** — Town Roster (navigate into a town)
 4. **Video 4** — Character Sheet (already in a town)
-5. **Video 10** — Creature Intake (still in town view)
-6. **Video 11** — Social Systems (still in town view)
-7. **Video 12** — Town History (still in town view)
-8. **Video 3** — Simulation Time Skip (run a fresh simulation)
-9. **Video 9** — World Simulation (after single-town sim)
-10. **Video 5** — SRD Browser (standalone)
-11. **Video 6** — Encounter Tracker (standalone)
-12. **Video 7** — Party Management (standalone)
-13. **Video 13** — Help System (standalone, quick)
+5. **Video 14** — Character Import (still in town view)
+6. **Video 10** — Creature Intake (still in town view)
+7. **Video 11** — Social Systems (still in town view)
+8. **Video 12** — Town History (still in town view)
+9. **Video 3** — Simulation Time Skip (run a fresh simulation)
+10. **Video 9** — World Simulation (after single-town sim)
+11. **Video 5** — SRD Browser (standalone)
+12. **Video 6** — Encounter Tracker (standalone)
+13. **Video 7** — Party Management (standalone)
+14. **Video 13** — Help System (standalone, quick)
 
 ### Kickstarter Main Video
 Consider stitching these into a single **2–3 minute highlight reel** for the main Kickstarter video:
 - 10 seconds of Dashboard
 - 15 seconds of Roster + Character Sheet
+- 10 seconds of Character Import (AI prompt mode)
 - 20 seconds of Simulation (the hook)
 - 10 seconds of SRD Browser
 - 10 seconds of Encounters
@@ -241,8 +258,8 @@ Consider stitching these into a single **2–3 minute highlight reel** for the m
 - 15 seconds of Settings / Customization
 - 10 seconds of closing call-to-action
 
-Total: ~100 seconds + intro/outro = ~2:30
+Total: ~110 seconds + intro/outro = ~2:45
 
 ---
 
-*(Last updated: 2026-03-31)*
+*(Last updated: 2026-04-13)*

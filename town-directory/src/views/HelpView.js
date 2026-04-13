@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Eon Weaver — Help & Guide View
  * Tabbed help page — select a topic on the left, view content on the right.
  */
@@ -185,11 +185,15 @@ export default function HelpView(container) {
       icon: '👥',
       title: 'AI Intake',
       content: `
-        <p>The AI Intake bar at the bottom of the Town Roster generates new D&D-legal characters using AI. Characters arrive fully statted with abilities, HP, AC, feats, skills, spells, equipment, and backstory.</p>
+        <p>The AI Intake bar at the bottom of the Town Roster generates new D&D-legal characters. Standard NPC populations are generated <strong>procedurally</strong> (instantly, no AI credits), while creature/monster intake uses AI.</p>
         
         <div class="help-feature">
           <strong>🔢 Count</strong>
           <p>Set how many characters to generate (1-100). Large numbers are automatically batched into groups of 10.</p>
+        </div>
+        <div class="help-feature">
+          <strong>⚡ Procedural Generation (NPCs)</strong>
+          <p>Standard NPC intake uses <strong>no AI credits</strong>. Names, races, classes, roles, and levels are generated procedurally using your town's demographic targets and biome settings. Characters are then optionally fleshed out with backstories via AI.</p>
         </div>
         <div class="help-feature">
           <strong>📝 Instructions</strong>
@@ -199,16 +203,45 @@ export default function HelpView(container) {
             <li><code>merchants and traders only</code> — specific professions</li>
             <li><code>a family of 4 with 2 parents and 2 children</code> — family groups</li>
             <li><code>all evil-aligned, rogues and assassins</code> — alignment + class</li>
-            <li><code>noble elves with high CHA</code> — race + stat preferences</li>
             <li><code>a patrol of 5 guards, all fighters level 3</code> — specific class/level</li>
           </ul>
         </div>
         <div class="help-feature">
           <strong>🎲 Generate</strong>
-          <p>Click Generate and the AI produces characters that respect your town's demographic targets, biome, and generation rules.</p>
+          <p>Click Generate and characters are produced that respect your town's demographic targets, biome, and generation rules.</p>
         </div>
         <div class="help-tip">
-          💡 <strong>Tip:</strong> Leave instructions blank for a natural, diverse population. The AI follows your town's demographics, biome, and name style automatically.
+          💡 <strong>Tip:</strong> Leave instructions blank for a natural, diverse population. The system follows your town's demographics, biome, and name style automatically.
+        </div>
+      `
+    },
+    {
+      id: 'character-import',
+      icon: '📥',
+      title: 'Character Import',
+      content: `
+        <p>The <strong>Import</strong> button (📥) in the town roster header opens a flexible import modal. A dropdown lets you choose your import method, with more formats planned for the future.</p>
+        
+        <h4>Import Methods</h4>
+        <div class="help-feature">
+          <strong>📋 Paste Statblock</strong>
+          <p>Paste a D&D statblock in text format. The parser handles semicolon-separated formats like:</p>
+          <p><code>Name: Race Class; CR X; hp XX; AC XX; Init +X; Atk +X melee; AL NG; SV Fort +3, Ref +1, Will +2; Str 14, Dex 12, Con 13, Int 10, Wis 11, Cha 10. Languages: Common. Skills/Feats: Climb +5; Power Attack. Gear: longsword, chain shirt.</code></p>
+          <p>Click <strong>Preview</strong> to parse and review, then <strong>Import</strong> to add to the roster. <em>No AI credits used.</em></p>
+        </div>
+        <div class="help-feature">
+          <strong>🤖 AI Character Prompt</strong>
+          <p>Describe any character in plain language and the AI generates a complete D&D stat block — ability scores, HP, AC, feats, skills, gear, and backstory — in one click.</p>
+          <p>Examples:</p>
+          <ul class="help-list">
+            <li><em>"A grizzled half-orc barbarian named Krag, level 5, former gladiator turned bounty hunter"</em></li>
+            <li><em>"An elderly elven wizard who runs the town's library, specializing in divination magic"</em></li>
+            <li><em>"A charismatic halfling bard who secretly works as a spy for the thieves' guild"</em></li>
+          </ul>
+          <p>Select a <strong>Level Range</strong> (Auto, Low 1-3, Mid-Low 3-6, Mid 5-10, Mid-High 8-14, High 12-20) to control power level. <em>Uses AI credits (one call per character).</em></p>
+        </div>
+        <div class="help-tip">
+          💡 <strong>Tip:</strong> The AI prompt mode is best for creating important, detailed NPCs — quest givers, villains, recurring characters. For filling out general population, use the faster AI Intake bar instead.
         </div>
       `
     },
@@ -324,7 +357,11 @@ export default function HelpView(container) {
         </div>
         <div class="help-feature">
           <strong>📝 Background</strong>
-          <p>Personal history, backstory, personality traits, and portrait. Upload custom portraits by clicking the portrait area.</p>
+          <p>Personal history, backstory, personality traits, and portrait.</p>
+        </div>
+        <div class="help-feature">
+          <strong>📷 Portrait Upload</strong>
+          <p>Click the character's portrait in the sheet header to upload a custom image. A camera icon overlay appears on hover. Images are automatically resized and optimized. You can also upload portraits from the Background tab.</p>
         </div>
         <div class="help-feature">
           <strong>Action Buttons</strong>
