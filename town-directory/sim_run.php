@@ -1,6 +1,7 @@
 <?php
             $townId = (int) ($input['town_id'] ?? 0);
             $months = max(0, min(24, (int) ($input['months'] ?? 1)));  // 0 = intake mode
+            $days = max(0, min(30, (int) ($input['days'] ?? 0)));      // 0 = full month
             $rulesRaw = $input['rules'] ?? '';
             $rules = is_string($rulesRaw) ? trim($rulesRaw) : (is_array($rulesRaw) ? json_encode($rulesRaw) : '');
             $instructions = is_string($input['instructions'] ?? '') ? trim($input['instructions'] ?? '') : '';
@@ -586,16 +587,27 @@ SPROMPT;
                 $curYear = 1490;
                 $eraName = 'DR';
                 $mpy = 12;
+                $daysPerMonthArr = array_fill(0, 12, 30);
                 $monthNamesList = ['Hammer', 'Alturiak', 'Ches', 'Tarsakh', 'Mirtul', 'Kythorn', 'Flamerule', 'Eleasis', 'Eleint', 'Marpenoth', 'Uktar', 'Nightal'];
                 if ($calData) {
                     $curMonth = (int) ($calData['current_month'] ?? 1);
                     $curYear = (int) ($calData['current_year'] ?? 1490);
                     $eraName = trim($calData['era_name'] ?? 'DR');
                     $mpy = (int) ($calData['months_per_year'] ?? 12);
+                    // days_per_month: JSON array or legacy single int
+                    $dpmRaw = $calData['days_per_month'] ?? '30';
+                    $dpmDecoded = json_decode($dpmRaw, true);
+                    if (is_array($dpmDecoded)) {
+                        $daysPerMonthArr = $dpmDecoded;
+                    } else {
+                        $daysPerMonthArr = array_fill(0, $mpy, (int)($dpmRaw ?: 30));
+                    }
                     $decoded = json_decode($calData['month_names'] ?? '[]', true);
                     if (!empty($decoded))
                         $monthNamesList = $decoded;
                 }
+                // Current month's specific day count
+                $daysPerMonth = $daysPerMonthArr[$curMonth - 1] ?? 30;
                 $curMonthName = $monthNamesList[$curMonth - 1] ?? "Month $curMonth";
 
                 // Build numbered month reference
@@ -616,6 +628,42 @@ CRITICAL: You MUST use EXACTLY these month names in the new_history_entry headin
 Example heading: "{$curMonthName}, {$curYear} {$eraName}: Title Here"
 DO NOT invent month names like "Sunstone", "Frostfall", "Thaw", etc. Use ONLY the names listed above.
 CAL;
+
+                // ── Weather context (from town_meta) ────
+                $weatherBlock = '';
+                $weatherJson = $townMeta2['weather_year'] ?? '';
+                if ($weatherJson) {
+                    $weatherData = json_decode($weatherJson, true);
+                    if ($weatherData && !empty($weatherData['months'])) {
+                        // Find current month's weather
+                        $curMonthWeather = null;
+                        foreach ($weatherData['months'] as $wm) {
+                            if (($wm['month'] ?? 0) == $curMonth) {
+                                $curMonthWeather = $wm;
+                                break;
+                            }
+                        }
+                        if ($curMonthWeather) {
+                            $weatherBlock = "\n## CURRENT WEATHER ({$curMonthName}):\n";
+                            $weatherBlock .= "- Temperature: " . ($curMonthWeather['avg_temp'] ?? 'unknown') . "\n";
+                            $weatherBlock .= "- Conditions: " . ($curMonthWeather['weather_pattern'] ?? 'unknown') . "\n";
+                            $weatherBlock .= "- Precipitation: " . ($curMonthWeather['precipitation'] ?? 'unknown') . "\n";
+                            if (!empty($curMonthWeather['description'])) {
+                                $weatherBlock .= "- " . $curMonthWeather['description'] . "\n";
+                            }
+                            if (!empty($curMonthWeather['notable_events'])) {
+                                $weatherBlock .= "Notable weather events: " . implode(', ', $curMonthWeather['notable_events']) . "\n";
+                            }
+                            $weatherBlock .= "IMPORTANT: Reference this weather in your narrative. Weather affects daily life, travel, farming, construction, and combat.\n";
+                        }
+                    }
+                }
+
+                // Pre-compute partial-month text for prompt
+                $partialText = '';
+                if ($days > 0) {
+                    $partialText = " (PARTIAL: only the first {$days} days of the month — scale all events, XP, arrivals, etc. proportionally to {$days}/{$daysPerMonth} of a full month)";
+                }
 
                 $prompt = <<<PROMPT
 
@@ -660,8 +708,10 @@ DM Override: If the DM's instructions below specify exact XP for a character, ho
 - Available races: Human, Elf, Dwarf, Halfling, Gnome, Half-Elf, Half-Orc.{$customRaceRef}
 - Feats: 1 at L1 (Humans 2). Use common SRD feats (Alertness, Toughness, Skill Focus, Dodge, Weapon Focus, Power Attack, etc).
 - Skills: pick appropriate class skills. The system will calculate bonuses.
-- NAMING: Use WILDLY diverse naming styles. Mix Anglo, Celtic, Norse, Mediterranean, Slavic, Arabic, East Asian, invented fantasy, and archaic names. NO two new characters should share the same first syllable.
-- BANNED FIRST NAMES (AI over-uses these — NEVER use): Elara, Lyra, Lyria, Theron, Seraphina, Kael, Aelara, Elowen, Rowan, Thorne, Astra, Kaelen, Isolde, Alaric, Lysander, Cassian, Aurelia, Selene, Eldric, Zephyr, Nyx, Orion, Sylas, Briar, Ember, Vesper, Corvus, Liora, Thalion, Arianne, Caelum, Ravenna, Fenris, Seren, Astrid, Mira, Vex, Kira.
+- NAMING: Use WILDLY diverse naming styles. Mix Anglo, Celtic, Norse, Mediterranean, Slavic, Arabic, East Asian, African, Polynesian, invented fantasy, and archaic names. NO two new characters should share the same first syllable. Every character MUST have a completely unique first AND last name not seen in the roster.
+- BANNED FIRST NAMES (AI over-uses these — NEVER use): Elara, Lyra, Lyria, Theron, Seraphina, Kael, Aelara, Elowen, Rowan, Thorne, Astra, Kaelen, Isolde, Alaric, Lysander, Cassian, Aurelia, Selene, Eldric, Zephyr, Nyx, Orion, Sylas, Briar, Ember, Vesper, Corvus, Liora, Thalion, Arianne, Caelum, Ravenna, Fenris, Seren, Astrid, Mira, Vex, Kira, Caspian, Faelar, Cerys, Brynjar, Caladwen, Eamon, Rhiannon, Galen, Torin, Eira, Lirael, Aldric, Iris, Wren, Sage, Luna, Celeste, Sorrel, Ash, Raven, Dusk, Storm, Frost, Vale, Wilder, Fern, Ivy, Hazel, Cedar, Linden, Birch.
+- BANNED SURNAMES (AI recycles these constantly — NEVER use): Meadowlight, Thornvale, Greenleaf, Fairfax, Brightwood, Darkhollow, Ironforge, Stormwind, Blackthorn, Silverbrook, Goldleaf, Moonshadow, Starweaver, Dawnfire, Nightshade, Willowmere, Oakenshield, Stoneheart, Frostborne, Flamecrest, Sunblade, Shadowmere, Ravenwood, Wolfbane, Hawthorne, Whitmore, Ashford, Blackwood, Redcliffe, Holloway, Dunbar, Reed, Windwalker.
+- BETTER NAME EXAMPLES: Mabari Tcheko, Idris al-Fadl, Suki Tanabe, Bogdan Kreshnik, Njeri Oduya, Piotr Skaraborg, Ximena Cuervo, Tahani zo Nkosi, Dragan Vulic, Umeko Hashi, Fiachna mac Dara, Kalindi Deshpande, Oskar Hulgaard.
 ## WORLD SIMULATION SETTINGS:
 - Relationship Formation Speed: {$relSpeed}. Characters forge relationships over time — romantic, friendly, AND hostile.
 - Birth Rate: {$birthRate}. Births require an ESTABLISHED romantic relationship of at least 9 months PLUS race-appropriate gestation (Human ~9mo, Elf ~12mo, Dwarf ~12mo, Halfling ~8mo). Do NOT generate births unless a couple clearly had enough time together. One-night stands producing fatherless children are uncommon but possible. For new settlements or short simulations, births should be VERY rare.
@@ -672,6 +722,7 @@ DM Override: If the DM's instructions below specify exact XP for a character, ho
 {$settlementBlock2}
 {$buildingContext}
 {$calBlock}
+{$weatherBlock}
 
 ## BUILDING & CONSTRUCTION RULES:
 - The town ONLY has the buildings listed above. Do NOT assume buildings exist that are not listed.
@@ -732,9 +783,19 @@ A realistic town is NOT a utopia. You MUST include conflict and tension:
 {$closedBordersBlock}
 {$demoBlock}
 ## Your Task:
-Simulate {$months} month(s) of time passing. You MUST include:
+Simulate {$months} month(s){$partialText} of time passing. You MUST include:
 - XP gains, new relationships (positive AND negative), births, deaths, drama, events, role changes.
 - Use the CALENDAR MONTH NAMES (not "Month 1") in all history entries and event descriptions.
+
+## ⚠️ DEATH SYSTEM — HOW DEATHS WORK:
+You do NOT pick specific characters to die. Instead, describe the death scenario and what KIND of person dies.
+The system will automatically match the best fitting character from the roster.
+Provide: reason (narrative), plus optional matching hints: preferred_class, preferred_role, age_category, preferred_alignment.
+- age_category: "elderly" (50+), "adult" (18-49), "young" (0-17), or "any"
+- preferred_class: e.g. "Commoner", "Warrior", "Expert"
+- preferred_role: e.g. "Guard", "Farmer", "Blacksmith"
+- preferred_alignment: e.g. "CE", "NG" — useful for deaths caused by villainy or heroism
+The system will find the best match. If no match exists, the death is skipped.
 
 ## CRITICAL: Output Format
 You MUST respond with ONLY a valid JSON object (no markdown, no code fences, JUST the raw JSON) in this exact structure:
@@ -743,7 +804,7 @@ You MUST respond with ONLY a valid JSON object (no markdown, no code fences, JUS
   "events": [{"month": 1, "description": "What happened"}],
   "changes": {
     "new_characters": [{"name":"Full Name","race":"Human","class":"Commoner 1","gender":"M or F","age":25,"alignment":"NG","role":"Farmer","skills_feats":"Craft, Profession","feats":"Skill Focus","reason":"Born to... / Arrived..."}],
-    "deaths": [{"name":"Character Name","reason":"How they died"}],
+    "deaths": [{"reason":"Died of old age, passing peacefully","preferred_class":"Commoner","age_category":"elderly"},{"reason":"Killed by wolves while on patrol","preferred_class":"Warrior","preferred_role":"Guard","age_category":"adult"}],
     "new_relationships": [{"char1":"Name","char2":"Name","type":"rival","reason":"Why"}],
     "xp_gains": [{"name":"Character Name","xp_gained":65,"reason":"What they did","tags":{"activity":"active","danger":"moderate","role_pressure":"leadership","personal_change":"none","class_relevance":"strong"}}],
     "stat_changes": [{"name":"Character Name","field":"hp","old_value":"10","new_value":"12","reason":"Why"}],
@@ -752,6 +813,8 @@ You MUST respond with ONLY a valid JSON object (no markdown, no code fences, JUS
   },
   "new_history_entry": {"heading":"Hammer, 1490 DR: Title of Events","content":"Detailed narrative using calendar month names"}
 }
+
+REMINDER: In xp_gains, stat_changes, role_changes, and new_relationships — ALL character names MUST be copied EXACTLY from the "Current Residents" roster above. Deaths use criteria-based matching, so no name is needed.
 PROMPT;
             } // end if($months===0) else
 

@@ -237,7 +237,11 @@ export function renderCharacterSheet(el, c, { onListRefresh, onDelete, container
     <!-- Header -->
     <div class="cs-header">
       <div class="cs-header-left">
-        <div class="cs-portrait-wrap">${portraitHtml}</div>
+        <div class="cs-portrait-wrap" id="cs-portrait-click" title="Click to upload portrait" style="cursor:pointer;position:relative;">
+          ${portraitHtml}
+          <div class="cs-portrait-overlay"><span>📷</span></div>
+          <input type="file" id="cs-portrait-header-file" accept="image/*" style="display:none">
+        </div>
         <div class="cs-header-info">
           <h1 class="cs-name">${c.name}</h1>
           <p class="cs-subtitle">${subtitle}</p>
@@ -471,6 +475,36 @@ export function renderCharacterSheet(el, c, { onListRefresh, onDelete, container
     };
     reader.readAsDataURL(file);
   });
+
+  // ── Wire header portrait click-to-upload ────────────
+  const headerPortrait = el.querySelector('#cs-portrait-click');
+  const headerFileInput = el.querySelector('#cs-portrait-header-file');
+  if (headerPortrait && headerFileInput) {
+    headerPortrait.addEventListener('click', (e) => {
+      if (e.target.closest('input')) return; // don't double-trigger
+      headerFileInput.click();
+    });
+    headerFileInput.addEventListener('change', async (e) => {
+      const file = e.target.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const img = new Image();
+        img.onload = async () => {
+          let w = img.width, h = img.height; const s = Math.min(200 / w, 270 / h);
+          if (s < 1) { w = Math.round(w * s); h = Math.round(h * s); }
+          const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+          cv.getContext('2d').drawImage(img, 0, 0, w, h);
+          const url = cv.toDataURL('image/jpeg', 0.72);
+          c.portrait_url = url;
+          await apiSaveCharacter(getState().currentTownId || c.town_id, { id: c.id, portrait_url: url }).catch(() => { });
+          const ch = getState().currentTown?.characters?.find(x => x.id === c.id); if (ch) ch.portrait_url = url;
+          renderCharacterSheet(el, c, { onListRefresh, onDelete, containerRef });
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
 
   // ── Wire Edit/Delete/LevelUp ───────────────────────
   el.querySelector('#cs-edit-btn')?.addEventListener('click', async () => {

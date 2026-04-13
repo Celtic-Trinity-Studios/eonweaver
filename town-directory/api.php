@@ -807,10 +807,20 @@ try {
                 'current_day' => 1,
                 'era_name' => 'DR',
                 'months_per_year' => 12,
-                'days_per_month' => 30,
+                'days_per_month' => '[30,30,30,30,30,30,30,30,30,30,30,30]',
                 'month_names' => '["Hammer","Alturiak","Ches","Tarsakh","Mirtul","Kythorn","Flamerule","Eleasis","Eleint","Marpenoth","Uktar","Nightal"]'
             ];
             $cal['month_names'] = json_decode($cal['month_names'], true) ?? [];
+            // days_per_month: decode JSON array, or expand legacy single int to array
+            $dpmRaw = $cal['days_per_month'];
+            $dpmDecoded = json_decode($dpmRaw, true);
+            if (is_array($dpmDecoded)) {
+                $cal['days_per_month'] = $dpmDecoded;
+            } else {
+                $dpmVal = (int) ($dpmRaw ?: 30);
+                $mpy = (int) ($cal['months_per_year'] ?? 12);
+                $cal['days_per_month'] = array_fill(0, $mpy, $dpmVal);
+            }
             respond(['ok' => true, 'calendar' => $cal]);
             break;
 
@@ -839,7 +849,7 @@ try {
                     trim($c['era_name'] ?? 'DR'),
                     (int) ($c['months_per_year'] ?? 12),
                     json_encode(array_values($monthNames)),
-                    (int) ($c['days_per_month'] ?? 30),
+                    is_array($c['days_per_month'] ?? null) ? json_encode(array_values($c['days_per_month'])) : (string)((int)($c['days_per_month'] ?? 30)),
                 ],
                 $uid
             );

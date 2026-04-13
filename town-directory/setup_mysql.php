@@ -302,7 +302,7 @@ try {
         era_name        VARCHAR(50) DEFAULT 'DR',
         months_per_year INT DEFAULT 12,
         month_names     TEXT DEFAULT '[\"Hammer\",\"Alturiak\",\"Ches\",\"Tarsakh\",\"Mirtul\",\"Kythorn\",\"Flamerule\",\"Eleasis\",\"Eleint\",\"Marpenoth\",\"Uktar\",\"Nightal\"]',
-        days_per_month  INT DEFAULT 30,
+        days_per_month  VARCHAR(500) DEFAULT '30',
         UNIQUE KEY unique_user_camp (user_id, campaign_id),
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
@@ -320,6 +320,12 @@ try {
         
         $results[] = '✅ Upgraded calendar to be campaign-specific';
     } catch (Exception $e) { /* already exists or keys mismatch, ignore */ }
+
+    // Migration: days_per_month from INT to VARCHAR (supports JSON array for per-month day counts)
+    try {
+        $pdo->exec("ALTER TABLE calendar MODIFY COLUMN days_per_month VARCHAR(500) DEFAULT '30'");
+        $results[] = '✅ Upgraded days_per_month to support per-month day counts';
+    } catch (Exception $e) { /* already varchar, ignore */ }
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS site_settings (
         id          INT AUTO_INCREMENT PRIMARY KEY,

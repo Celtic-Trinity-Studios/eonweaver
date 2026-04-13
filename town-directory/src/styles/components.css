@@ -252,98 +252,199 @@
     background: var(--bg-tertiary);
 }
 
-/* AI intake bar */
-.intake-bar {
+/* Town Setup bar (replaces intake bar) */
+.setup-bar {
     border-top: 1px solid var(--border);
     background: var(--bg-secondary);
     padding: .5rem .75rem;
 }
 
-.intake-bar-row {
+/* ── Town Setup Wizard ────────────────────────────────────── */
+.setup-wizard {
     display: flex;
-    align-items: center;
-    gap: .5rem;
+    flex-direction: column;
+    gap: 0;
 }
 
-.intake-label {
-    font-size: .78rem;
-    font-weight: 600;
+.setup-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 2px solid var(--border);
+    margin-bottom: 1rem;
+}
+
+.setup-tab {
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    color: var(--text-muted);
+    padding: .65rem 1rem;
+    font-size: .82rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--duration-fast);
+}
+
+.setup-tab:hover {
     color: var(--text-secondary);
-    white-space: nowrap;
+    background: var(--bg-hover);
 }
 
-.intake-input {
-    width: 60px !important;
-    padding: .3rem .5rem !important;
-    font-size: .8rem !important;
-    text-align: center;
+.setup-tab.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
 }
 
-.intake-status {
-    font-size: .78rem;
+.setup-panel {
+    display: none;
+    padding: 0 .25rem;
+}
+
+.setup-panel.active {
+    display: block;
+    animation: fadeIn 0.2s ease;
+}
+
+.setup-desc {
+    color: var(--text-muted);
+    font-size: .8rem;
+    margin-bottom: 1rem;
+    line-height: 1.5;
+}
+
+.setup-row {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-end;
+    flex-wrap: wrap;
+    margin-bottom: .75rem;
+}
+
+.setup-info-value {
+    font-size: .85rem;
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+    padding: .35rem .6rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    display: inline-block;
+    min-width: 80px;
+}
+
+.setup-actions {
+    display: flex;
+    gap: .5rem;
+    margin: .75rem 0;
+}
+
+.setup-status {
+    font-size: .82rem;
     margin-top: .35rem;
     line-height: 1.4;
+    min-height: 1.4em;
 }
 
-.intake-instructions-row {
-    margin-top: .35rem;
+/* Building preview grid */
+.setup-building-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: .5rem;
+    max-height: 300px;
+    overflow-y: auto;
+    padding: .25rem;
 }
 
-.intake-instr-input {
-    width: 100% !important;
-    padding: .3rem .5rem !important;
-    font-size: .75rem !important;
-    color: var(--text-secondary) !important;
-    background: var(--bg-tertiary) !important;
-    border: 1px solid var(--border) !important;
-}
-
-.intake-instr-input::placeholder {
-    color: var(--text-muted);
-    font-style: italic;
-    font-size: .72rem;
-}
-
-.intake-preview {
+.setup-building-card {
     background: var(--bg-tertiary);
     border: 1px solid var(--border);
     border-radius: var(--radius-sm);
     padding: .5rem .65rem;
-    margin-top: .35rem;
+    transition: border-color var(--duration-fast);
 }
 
-.intake-preview-header {
-    font-weight: 600;
-    font-size: .78rem;
-    color: var(--success);
-    margin-bottom: .35rem;
-    padding-bottom: .25rem;
-    border-bottom: 1px solid var(--border);
+.setup-building-card:hover {
+    border-color: var(--accent-dim);
 }
 
-.intake-preview-list {
-    max-height: 150px;
+.setup-building-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: .25rem;
+    font-size: .82rem;
+}
+
+.setup-building-type {
+    font-size: .7rem;
+    color: var(--text-muted);
+    background: var(--bg-secondary);
+    padding: .1rem .4rem;
+    border-radius: var(--radius-sm);
+    text-transform: capitalize;
+}
+
+.setup-building-desc {
+    font-size: .75rem;
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+/* Weather preview grid */
+.setup-weather-preview {
+    max-height: 400px;
     overflow-y: auto;
 }
 
-.intake-preview-item {
-    font-size: .75rem;
-    padding: .15rem 0;
-    color: var(--text-secondary);
-    border-bottom: 1px solid rgba(255, 255, 255, .03);
+.setup-weather-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: .5rem;
+    padding: .25rem;
 }
 
-.intake-preview-item strong {
+.setup-weather-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: .5rem .65rem;
+}
+
+.setup-weather-month {
+    font-weight: 600;
+    font-size: .85rem;
     color: var(--text-primary);
+    margin-bottom: .25rem;
 }
 
-.intake-preview-actions {
-    display: flex;
-    gap: .4rem;
-    margin-top: .4rem;
-    padding-top: .35rem;
-    border-top: 1px solid var(--border);
+.setup-weather-temp {
+    font-size: .8rem;
+    color: var(--accent);
+    margin-bottom: .15rem;
 }
+
+.setup-weather-pattern {
+    font-size: .78rem;
+    color: var(--text-secondary);
+    margin-bottom: .25rem;
+}
+
+.setup-weather-events {
+    display: flex;
+    flex-direction: column;
+    gap: .1rem;
+}
+
+.setup-weather-event {
+    font-size: .7rem;
+    color: var(--text-muted);
+    line-height: 1.3;
+}
+
+.setup-preview-list {
+    margin-top: .5rem;
+}
+
 
 /* character detail*/
 .char-detail {
@@ -624,6 +725,80 @@
 .import-preview .preview-row strong {
     color: var(--text-primary);
     font-weight: 500;
+}
+
+/* ── Import Method Dropdown ─────────────────────────────── */
+.import-method-row {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    padding-bottom: .75rem;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: .25rem;
+}
+
+.import-method-label {
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.import-method-select {
+    flex: 1;
+    max-width: 300px;
+}
+
+.import-hint {
+    font-size: .72rem;
+    color: var(--text-muted);
+    font-style: italic;
+}
+
+/* ── AI Prompt Options ──────────────────────────────────── */
+.ai-prompt-options {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: .5rem .75rem;
+    background: rgba(147, 112, 219, .06);
+    border: 1px solid rgba(147, 112, 219, .15);
+    border-radius: var(--radius-sm);
+}
+
+.ai-opt-row {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    font-size: .78rem;
+    color: var(--text-secondary);
+}
+
+.ai-opt-row label {
+    font-weight: 500;
+    white-space: nowrap;
+}
+
+.ai-opt-row select {
+    font-size: .78rem;
+    padding: .25rem .5rem;
+}
+
+/* ── Inline Spinner ─────────────────────────────────────── */
+.spinner-inline {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, .2);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spinInline .6s linear infinite;
+    vertical-align: middle;
+    margin-right: .35rem;
+}
+
+@keyframes spinInline {
+    to { transform: rotate(360deg); }
 }
 
 /* ── Toast ───────────────────────────────────────────────── */

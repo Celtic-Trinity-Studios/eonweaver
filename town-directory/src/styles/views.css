@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Eon Weaver — View-Specific Styles
  * SRD browser, simulation, calendar view overrides.
  */
@@ -941,13 +941,49 @@
     text-align: center;
 }
 
-.cal-month-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-    gap: .5rem;
+/* Calendar month list */
+.cal-months-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: .75rem;
 }
 
-.cal-month-input-row {
+.cal-months-header h3 {
+    margin: 0;
+}
+
+.cal-month-count {
+    font-size: .8rem;
+    font-weight: 400;
+    color: var(--text-muted);
+    margin-left: .25rem;
+}
+
+.cal-months-controls {
+    display: flex;
+    gap: .35rem;
+}
+
+.cal-months-controls button {
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.cal-month-list {
+    display: flex;
+    flex-direction: column;
+    gap: .35rem;
+}
+
+.cal-month-row {
     display: flex;
     align-items: center;
     gap: .5rem;
@@ -971,6 +1007,21 @@
     flex: 1;
     font-size: .9rem !important;
     padding: .4rem .6rem !important;
+}
+
+.cal-month-days {
+    width: 65px;
+    flex-shrink: 0;
+    text-align: center;
+    font-size: .85rem !important;
+    padding: .4rem .3rem !important;
+}
+
+.cal-days-label {
+    font-size: .75rem;
+    color: var(--text-muted);
+    flex-shrink: 0;
+    min-width: 28px;
 }
 
 /* ── Simulation View ─────────────────────────────────────── */

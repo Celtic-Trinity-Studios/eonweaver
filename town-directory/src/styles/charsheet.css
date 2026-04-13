@@ -77,6 +77,28 @@
     opacity: .4;
 }
 
+/* ── Portrait upload overlay ────────────────────────────── */
+.cs-portrait-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0, 0, 0, .55);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity .2s;
+    border-radius: 4px;
+}
+
+.cs-portrait-overlay span {
+    font-size: 1.2rem;
+    filter: drop-shadow(0 1px 3px rgba(0, 0, 0, .5));
+}
+
+.cs-portrait-wrap:hover .cs-portrait-overlay {
+    opacity: 1;
+}
+
 .cs-header-info {
     min-width: 0;
 }

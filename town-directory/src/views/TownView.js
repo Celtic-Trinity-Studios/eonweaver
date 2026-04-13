@@ -10,9 +10,11 @@ import { apiGetTowns as dt, apiGetTownMeta as Pt, apiSaveTownMeta as Qe, apiDele
 import { apiGetCharacters as Ee, apiSaveCharacter as St, apiLevelUpCharacter as An, apiDeleteCharacter as ka, apiMoveCharacter as La, apiGetXpLog as Mn, normalizeCharacter as Me } from '../api/characters.js';
 import { apiRunSimulation as wt, apiApplySimulation as Ve, apiIntakeRoster as Cn, apiIntakeFlesh as ws, apiIntakeCreature as Ss, apiGetCampaignRules as Ft, apiAutoAssignSpellsTown as xn } from '../api/simulation.js';
 import { apiGetBuildings as qn, apiSaveBuilding as or, apiDeleteBuilding as cr, apiSaveRoom as dr, apiDeleteRoom as pr, apiAssignCharacterBuilding as ur } from '../api/buildings.js';
+import { openCharacterImportModal } from '../components/CharacterImport.js';
 import { showModal as ha, closeModal as ft } from '../components/Modal.js';
 import { showToast as ye } from '../components/Toast.js';
 import { renderCharacterSheet as at } from '../components/CharacterSheet.js';
+import { openTownSetupWizard } from '../components/TownSetupWizard.js';
 
 // Bundle artifact namespace imports — Pe/yn were Vite's internal module refs in the original bundle
 import * as Pe from '../components/Modal.js';
@@ -62,19 +64,8 @@ const Bi={Human:"var(--race-human, #c9a84c)",Dwarf:"var(--race-dwarf, #a0522d)",
           <div class="list-header" id="list-header"></div>
           <div class="list-body" id="list-body"></div>
           <div class="list-footer" id="stats-bar"></div>
-          <div class="intake-bar" id="intake-bar">
-            <div class="intake-bar-row">
-              <label class="intake-label">👥 AI Intake</label>
-              <input type="number" id="intake-count" class="form-input intake-input" min="1" max="50" value="5" title="Number of people to generate (1-50)">
-              <button class="btn-primary btn-sm" id="intake-generate-btn">🎲 Generate</button>
-            </div>
-            <div class="intake-instructions-row">
-              <input type="text" id="intake-instructions" class="form-input intake-instr-input" placeholder="Instructions (e.g. 'all dwarves', 'merchants only', 'a family of 4')..." title="Optional instructions for character generation">
-            </div>
-            <div class="intake-status" id="intake-status"></div>
-            <div class="intake-bar-row" style="margin-top:0.3rem;">
-              <button class="btn-secondary btn-sm" id="auto-assign-spells-btn" title="Auto-assign role-optimal spells to all casters in town">✨ Auto-Assign Spells</button>
-            </div>
+          <div class="setup-bar" id="setup-bar">
+            <button class="btn-primary btn-sm" id="town-setup-btn" style="width:100%;padding:0.6rem;">🏗️ Town Setup</button>
           </div>
         </aside>
         <section class="detail-panel-inline" id="detail-area">
@@ -82,9 +73,27 @@ const Bi={Human:"var(--race-human, #c9a84c)",Dwarf:"var(--race-dwarf, #a0522d)",
         </section>
       </div>
     </div>
-  `,Oi(e,a)}async function Oi(e,t){var s,a,n,l,i,r,p,o,c,d,u,v,m;try{const b=await dt(),y=Array.isArray(b)?b:b.towns||[],f=e.querySelector("#town-select-view");f&&(f.innerHTML=y.map(w=>`<option value="${w.id}" ${w.id===t?"selected":""}>${w.name}</option>`).join(""),f.addEventListener("change",w=>{ge(`town/${w.target.value}`)}));const[g,k]=await Promise.all([Ee(t),qn(t).catch(()=>({buildings:[]}))]),_=(g.characters||[]).map(Me),$=k.buildings||[],L=y.find(w=>w.id===t)||{id:t,name:"Unknown"};L.characters=_,L.buildings=$,ee({currentTownId:t,currentTown:L,towns:y}),Ze(e,_,$),et(e,_),Ra(e),ke(e,_),xe(e,_),(s=e.querySelector("#town-search"))==null||s.addEventListener("input",w=>{ee({searchQuery:w.target.value.trim()}),ke(e,_)}),(a=e.querySelector("#town-sim-btn"))==null||a.addEventListener("click",()=>{ge("simulation")}),(n=e.querySelector("#town-stats-btn"))==null||n.addEventListener("click",()=>{ge("townstats/"+t)}),(l=e.querySelector("#town-import-btn"))==null||l.addEventListener("click",()=>{ji(e,t,_)}),(i=e.querySelector("#town-history-btn"))==null||i.addEventListener("click",()=>{Wi(t)}),(r=e.querySelector("#town-settings-btn"))==null||r.addEventListener("click",()=>{Ui(t)}),(p=e.querySelector("#town-buildings-btn"))==null||p.addEventListener("click",async()=>{const{openBuildingsPanel:w}=await import("../components/BuildingsPanel.js");w(t)}),(o=e.querySelector("#town-social-btn"))==null||o.addEventListener("click",async()=>{const{openTownSocialPanel:w}=await import("../components/TownSocialPanel.js");w(t)}),(c=e.querySelector("#town-purge-btn"))==null||c.addEventListener("click",async()=>{
+  `,Oi(e,a)}async function Oi(e,t){var s,a,n,l,i,r,p,o,c,d,u,v,m;try{const b=await dt(),y=Array.isArray(b)?b:b.towns||[],f=e.querySelector("#town-select-view");f&&(f.innerHTML=y.map(w=>`<option value="${w.id}" ${w.id===t?"selected":""}>${w.name}</option>`).join(""),f.addEventListener("change",w=>{ge(`town/${w.target.value}`)}));const[g,k]=await Promise.all([Ee(t),qn(t).catch(()=>({buildings:[]}))]),_=(g.characters||[]).map(Me),$=k.buildings||[],L=y.find(w=>w.id===t)||{id:t,name:"Unknown"};L.characters=_,L.buildings=$,ee({currentTownId:t,currentTown:L,towns:y}),Ze(e,_,$),et(e,_),Ra(e),ke(e,_),xe(e,_),(s=e.querySelector("#town-search"))==null||s.addEventListener("input",w=>{ee({searchQuery:w.target.value.trim()}),ke(e,_)}),(a=e.querySelector("#town-sim-btn"))==null||a.addEventListener("click",()=>{ge("simulation")}),(n=e.querySelector("#town-stats-btn"))==null||n.addEventListener("click",()=>{ge("townstats/"+t)}),(l=e.querySelector("#town-import-btn"))==null||l.addEventListener("click",()=>{openCharacterImportModal(e,t,_)}),(i=e.querySelector("#town-history-btn"))==null||i.addEventListener("click",()=>{Wi(t)}),(r=e.querySelector("#town-settings-btn"))==null||r.addEventListener("click",()=>{Ui(t)}),(p=e.querySelector("#town-buildings-btn"))==null||p.addEventListener("click",async()=>{const{openBuildingsPanel:w}=await import("../components/BuildingsPanel.js");w(t)}),(o=e.querySelector("#town-social-btn"))==null||o.addEventListener("click",async()=>{const{openTownSocialPanel:w}=await import("../components/TownSocialPanel.js");w(t)});
+// Town Setup Wizard button
+const setupBtn = e.querySelector("#town-setup-btn");
+if (setupBtn) {
+  setupBtn.addEventListener("click", () => {
+    openTownSetupWizard(t, async () => {
+      const F = ((await Ee(t)).characters || []).map(Me);
+      Z().currentTown.characters = F;
+      _.length = 0;
+      _.push(...F);
+      Ze(e, _, $);
+      et(e, _);
+      ke(e, _);
+      xe(e, _);
+    });
+  });
+}
+(c=e.querySelector("#town-purge-btn"))==null||c.addEventListener("click",async()=>{
 const {showModal:sm} = await ne(async()=>{const{showModal:r}=await Promise.resolve().then(()=>Pe);return{showModal:r}},void 0);
 const w=L.name||"this town",A=_.length;
+console.log('[Purge] Opening purge modal for town:', w, '| Population:', A, '| TownID:', t);
 const {el:modalEl, close:closeModal} = sm({
 title:"☠️ Purge Town Data",
 width:"normal",
@@ -99,8 +108,9 @@ content:`
 </div>
 <div class="form-group" style="margin-top:1rem;">
 <label>Type town name to confirm: <strong>${w}</strong></label>
-<input type="text" id="purge-confirm-name" class="form-input" style="margin-top:0.5rem;">
+<input type="text" id="purge-confirm-name" class="form-input" style="margin-top:0.5rem;" placeholder="Type the exact town name here">
 </div>
+<div id="purge-status" style="margin-top:0.5rem;"></div>
 <div class="modal-actions" style="margin-top:1rem;">
 <button class="btn-danger" id="purge-confirm-btn" disabled>Purge Selected Data</button>
 <button class="btn-secondary" id="purge-cancel-btn">Cancel</button>
@@ -113,41 +123,62 @@ const confirmBtn = modalEl.querySelector('#purge-confirm-btn');
 const cancelBtn = modalEl.querySelector('#purge-cancel-btn');
 const popChk = modalEl.querySelector('#purge-pop-chk');
 const bldChk = modalEl.querySelector('#purge-bld-chk');
+const purgeStatus = modalEl.querySelector('#purge-status');
 confirmName.addEventListener('input', () => {
-    confirmBtn.disabled = confirmName.value.trim().toLowerCase() !== w.toLowerCase();
+    const match = confirmName.value.trim().toLowerCase() === w.trim().toLowerCase();
+    confirmBtn.disabled = !match;
 });
 cancelBtn.addEventListener('click', () => closeModal());
 confirmBtn.addEventListener('click', async () => {
     const purgePop = popChk.checked;
     const purgeBld = bldChk.checked;
     if (!purgePop && !purgeBld) {
-        alert("No data selected to purge.");
+        purgeStatus.innerHTML = '<span style="color:var(--error)">⚠️ No data selected to purge.</span>';
         return;
     }
     confirmBtn.disabled = true;
-    confirmBtn.textContent = 'Purging...';
+    confirmBtn.textContent = '⏳ Purging...';
+    purgeStatus.innerHTML = '<span style="color:var(--text-secondary)">🔄 Purging data...</span>';
+    console.log('[Purge] Starting purge — pop:', purgePop, '| bld:', purgeBld, '| townId:', t);
     try {
         const h = await $a(t, purgePop, purgeBld);
+        console.log('[Purge] API response:', h);
         let msg = [];
         if (purgePop) msg.push((h.purged || A) + " characters");
         if (purgeBld) msg.push("buildings");
-        alert(msg.join(" and ") + " purged from " + w + ".");
+        const successMsg = msg.join(" and ") + " purged from " + w + ".";
+        purgeStatus.innerHTML = `<span style="color:var(--success)">✅ ${successMsg}</span>`;
+        ye(successMsg, 'success');
         if (purgePop) {
             const F = ((await Ee(t)).characters||[]).map(Me);
+            console.log('[Purge] Re-fetched characters after purge:', F.length);
             Z().currentTown.characters=F;
             _.length=0;
             _.push(...F);
-            Ze(e,F);
+            Ze(e,F,$);
             et(e,F);
             ke(e,F);
             xe(e,F);
             const D=e.querySelector("#detail-area");
             D&&(D.innerHTML='<div class="detail-empty">Select a character</div>');
         }
-        closeModal();
+        if (purgeBld) {
+            // Refresh buildings list after building purge
+            try {
+                const bldData = await qn(t);
+                const newBld = bldData.buildings || [];
+                $.length = 0;
+                $.push(...newBld);
+                if (Z().currentTown) Z().currentTown.buildings = newBld;
+            } catch(be) { console.warn('[Purge] Building refresh error:', be); }
+        }
+        setTimeout(() => closeModal(), 1500);
     } catch(err) {
-        alert("Failed to purge: " + err.message);
+        console.error('[Purge] FAILED:', err);
+        purgeStatus.innerHTML = `<span style="color:var(--error)">❌ Failed to purge: ${err.message}</span>`;
+        ye('Purge failed: ' + err.message, 'error');
         confirmBtn.disabled = false;
+        confirmBtn.textContent = 'Purge Selected Data';
     }
 });
 }),(d=e.querySelector("#town-delete-btn"))==null||d.addEventListener("click",async()=>{const w=L.name||"this town",A=prompt('This will permanently delete "'+w+`" and ALL its characters.
@@ -1260,43 +1291,44 @@ Type the town name to confirm:`);if(A&&A.trim().toLowerCase()===w.toLowerCase())
             </div>
             ${o.full_text?`<div class="srd-description">${Ae(o.full_text)}</div>`:""}
         </div>
-    `})}const As=["Hammer","Alturiak","Ches","Tarsakh","Mirtul","Kythorn","Flamerule","Eleasis","Eleint","Marpenoth","Uktar","Nightal"];function ul(e){e.innerHTML=`
+    `})}const As=["Hammer","Alturiak","Ches","Tarsakh","Mirtul","Kythorn","Flamerule","Eleasis","Eleint","Marpenoth","Uktar","Nightal"];function ul(e){let _mpy=12;e.innerHTML=`
     <div class="view-calendar">
       <header class="view-header"><h1>📅 Calendar</h1></header>
       <div class="calendar-display" id="cal-display">Loading...</div>
-      <div class="settings-grid">
-        <section class="settings-section-card">
-          <h3>Current Date</h3>
-          <div class="form-row">
-            <div class="form-group"><label>Day</label><input type="number" id="cal-day" min="1" max="100" class="form-input"></div>
-            <div class="form-group"><label>Month</label><input type="number" id="cal-month" min="1" max="20" class="form-input"></div>
-            <div class="form-group"><label>Year</label><input type="number" id="cal-year" class="form-input"></div>
-          </div>
-          <div class="form-group"><label>Era Name</label><input type="text" id="cal-era" placeholder="DR" class="form-input"></div>
-        </section>
-        <section class="settings-section-card">
-          <h3>Configuration</h3>
-          <div class="form-row">
-            <div class="form-group"><label>Months/Year</label><input type="number" id="cal-mpy" min="1" max="20" class="form-input"></div>
-            <div class="form-group"><label>Days/Month</label><input type="number" id="cal-dpm" min="1" max="100" class="form-input"></div>
-          </div>
-        </section>
-      </div>
 
-      <section class="settings-section-card" style="margin-top:1rem;">
-        <h3>📝 Month Names</h3>
-        <p class="settings-hint" style="margin-bottom:0.75rem;">Each month gets its own name. These names are used in simulation history entries and event descriptions.<br>Change "Months/Year" above to add or remove months.</p>
-        <div class="cal-month-grid" id="cal-month-grid"></div>
+      <section class="settings-section-card" style="margin-bottom:1rem;">
+        <h3>Current Date</h3>
+        <div class="form-row" style="flex-wrap:wrap;gap:1rem;">
+          <div class="form-group" style="flex:1;min-width:80px;"><label>Day</label><input type="number" id="cal-day" min="1" max="100" class="form-input"></div>
+          <div class="form-group" style="flex:1;min-width:80px;"><label>Month</label><input type="number" id="cal-month" min="1" max="20" class="form-input"></div>
+          <div class="form-group" style="flex:2;min-width:120px;"><label>Year</label><input type="number" id="cal-year" class="form-input"></div>
+          <div class="form-group" style="flex:1;min-width:100px;"><label>Era Name</label><input type="text" id="cal-era" placeholder="DR" class="form-input"></div>
+        </div>
+      </section>
+
+      <section class="settings-section-card">
+        <div class="cal-months-header">
+          <h3>📝 Months <span class="cal-month-count" id="cal-month-count">(12)</span></h3>
+          <div class="cal-months-controls">
+            <button class="btn-secondary btn-sm" id="cal-remove-month" title="Remove last month">−</button>
+            <button class="btn-secondary btn-sm" id="cal-add-month" title="Add a month">+</button>
+          </div>
+        </div>
+        <div class="cal-month-list" id="cal-month-list"></div>
       </section>
 
       <div class="settings-actions"><button class="btn-primary" id="cal-save">💾 Save Calendar</button></div>
-    </div>`;function t(a,n){const l=e.querySelector("#cal-month-grid");if(!l)return;for(;n.length<a;)n.push("Month "+(n.length+1));const i=[];for(let r=0;r<a;r++)i.push(`
-              <div class="cal-month-input-row">
+    </div>`;function t(a,n,d){const l=e.querySelector("#cal-month-list");if(!l)return;for(;n.length<a;)n.push("Month "+(n.length+1));for(;d.length<a;)d.push(30);const i=[];for(let r=0;r<a;r++)i.push(`
+              <div class="cal-month-row">
                 <span class="cal-month-number">${r+1}</span>
-                <input type="text" class="form-input cal-month-name" data-month-idx="${r}" 
-                       value="${(n[r]||"").replace(/"/g,"&quot;")}" 
+                <input type="text" class="form-input cal-month-name" data-month-idx="${r}"
+                       value="${(n[r]||"").replace(/"/g,"&quot;")}"
                        placeholder="Month ${r+1}">
-              </div>`);l.innerHTML=i.join(""),n.slice(0,a)}function s(){const a=e.querySelectorAll(".cal-month-name");return Array.from(a).map(n=>n.value.trim()||`Month ${parseInt(n.dataset.monthIdx)+1}`)}e.querySelector("#cal-mpy").addEventListener("input",a=>{const n=Math.max(1,Math.min(20,parseInt(a.target.value)||12)),l=s();t(n,l);const i=e.querySelector("#cal-month");i&&(i.max=n)}),ml(e,t),e.querySelector("#cal-save").addEventListener("click",()=>vl(e,s))}async function ml(e,t){try{const a=(await Et()).calendar;if(!a)return;e.querySelector("#cal-display").textContent=ot(a),e.querySelector("#cal-day").value=a.current_day||1,e.querySelector("#cal-month").value=a.current_month||1,e.querySelector("#cal-year").value=a.current_year||1490,e.querySelector("#cal-era").value=a.era_name||"DR";const n=a.months_per_year||12;e.querySelector("#cal-mpy").value=n,e.querySelector("#cal-dpm").value=a.days_per_month||30;const l=Array.isArray(a.month_names)?a.month_names:As.slice();t(n,l),ee({calendar:a})}catch(s){console.error("Calendar load error:",s),t(12,As.slice())}}async function vl(e,t){try{const s=t(),a={current_day:parseInt(e.querySelector("#cal-day").value)||1,current_month:parseInt(e.querySelector("#cal-month").value)||1,current_year:parseInt(e.querySelector("#cal-year").value)||1490,era_name:e.querySelector("#cal-era").value||"DR",months_per_year:parseInt(e.querySelector("#cal-mpy").value)||12,days_per_month:parseInt(e.querySelector("#cal-dpm").value)||30,month_names:s};await on(a),ee({calendar:a}),e.querySelector("#cal-display").textContent=ot(a),ye("Calendar saved!","success")}catch(s){ye("Save failed: "+s.message,"error")}}function hl(e){const t=Z();if(!t.currentTownId){e.innerHTML=`
+                <input type="number" class="form-input cal-month-days" data-month-idx="${r}"
+                       value="${d[r]||30}" min="1" max="100"
+                       title="Days in this month" style="width:65px;text-align:center;">
+                <span class="cal-days-label">days</span>
+              </div>`);l.innerHTML=i.join("");_mpy=a;const ct=e.querySelector("#cal-month-count");if(ct)ct.textContent=`(${a})`;const mi=e.querySelector("#cal-month");if(mi)mi.max=a}function s(){const a=e.querySelectorAll(".cal-month-name");return Array.from(a).map(n=>n.value.trim()||`Month ${parseInt(n.dataset.monthIdx)+1}`)}function gd(){const a=e.querySelectorAll(".cal-month-days");return Array.from(a).map(n=>Math.max(1,parseInt(n.value)||30))}e.querySelector("#cal-add-month").addEventListener("click",()=>{if(_mpy>=20)return;const n=s(),d=gd();t(_mpy+1,n,d)});e.querySelector("#cal-remove-month").addEventListener("click",()=>{if(_mpy<=1)return;const n=s(),d=gd();n.pop();d.pop();t(_mpy-1,n,d)});ml(e,t),e.querySelector("#cal-save").addEventListener("click",()=>vl(e,s,gd,_mpy))}async function ml(e,t){try{const a=(await Et()).calendar;if(!a)return;e.querySelector("#cal-display").textContent=ot(a),e.querySelector("#cal-day").value=a.current_day||1,e.querySelector("#cal-month").value=a.current_month||1,e.querySelector("#cal-year").value=a.current_year||1490,e.querySelector("#cal-era").value=a.era_name||"DR";const n=a.months_per_year||12;const l=Array.isArray(a.month_names)?a.month_names:As.slice();let da;if(Array.isArray(a.days_per_month)){da=a.days_per_month}else{const dv=parseInt(a.days_per_month)||30;da=Array(n).fill(dv)}t(n,l,da),ee({calendar:a})}catch(s){console.error("Calendar load error:",s),t(12,As.slice(),Array(12).fill(30))}}async function vl(e,t,gd,mpy){try{const s=t(),md=gd(),a={current_day:parseInt(e.querySelector("#cal-day").value)||1,current_month:parseInt(e.querySelector("#cal-month").value)||1,current_year:parseInt(e.querySelector("#cal-year").value)||1490,era_name:e.querySelector("#cal-era").value||"DR",months_per_year:mpy,days_per_month:md,month_names:s};await on(a),ee({calendar:a}),e.querySelector("#cal-display").textContent=ot(a),ye("Calendar saved!","success")}catch(s){ye("Save failed: "+s.message,"error")}}function hl(e){const t=Z();if(!t.currentTownId){e.innerHTML=`
       <div class="view-simulation">
         <header class="view-header"><h1>⏩ AI Simulation</h1></header>
         <div class="dash-card" style="margin-top:1rem; text-align:center; padding:2rem;">
@@ -1435,7 +1467,7 @@ ${O.new_history_entry.content}`);try{const Q=await Ve(c,V,O.new_history_entry||n
              <button class="btn-secondary btn-sm" id="sim-goto-town-btn">🏰 Go to Town View</button>`:`<button class="btn-primary" id="sim-apply-btn">✅ Apply All Changes</button>
              <button class="btn-danger" id="sim-reject-btn">❌ Reject & Discard</button>`}
       </div>
-    `,v.style.display="block",v.querySelectorAll(".sim-res-tab").forEach(S=>{S.addEventListener("click",()=>{var H;v.querySelectorAll(".sim-res-tab").forEach(O=>O.classList.remove("active")),v.querySelectorAll(".sim-res-panel").forEach(O=>O.classList.remove("active")),S.classList.add("active"),(H=v.querySelector(`.sim-res-panel[data-sim-panel="${S.dataset.simTab}"]`))==null||H.classList.add("active")})}),v.scrollIntoView({behavior:"smooth"}),(J=v.querySelector("#sim-goto-town-btn"))==null||J.addEventListener("click",()=>{ge("town/"+t.currentTownId)}),D?(async()=>{try{const H=((await Ee(t.currentTownId)).characters||[]).map(Me);t.currentTown&&(t.currentTown.characters=H),ee({selectedCharId:null})}catch{}})():(v.querySelector("#sim-apply-btn").addEventListener("click",async()=>{var H;const S=v.querySelector("#sim-apply-btn");S.disabled=!0,S.textContent="⏳ Applying...",n("Applying simulation changes...","info");try{const O=await Ve(t.currentTownId,u,d.new_history_entry||null,s);O.debug_info&&console.log("Apply debug_info:",O.debug_info);const V=O.applied||{},Q=[];V.new_characters&&Q.push(`${V.new_characters} characters added`),V.deaths&&Q.push(`${V.deaths} deaths`),V.relationships&&Q.push(`${V.relationships} relationships`),V.xp&&Q.push(`${V.xp} XP updates`),V.stats&&Q.push(`${V.stats} stat changes`),V.roles&&Q.push(`${V.roles} role changes`),V.buildings&&Q.push(`${V.buildings} building changes`),V.auto_levelups&&Q.push(`${V.auto_levelups} auto level-ups`),V.history&&Q.push("history updated");const se=V.levelup_details||[];if(se.length){se.forEach(pe=>n(`  ⬆️ ${pe.name} (${pe.class||"?"}): Lv ${pe.old_level} → ${pe.new_level}`,"success"));const de=v.querySelector(".sim-res-tabs"),Le=v.querySelector(".sim-res-panels");if(de&&Le){const pe=document.createElement("button");pe.className="sim-res-tab",pe.dataset.simTab="levelups",pe.innerHTML=`⬆️ Level Ups <span class="sim-tab-badge">${se.length}</span>`,de.appendChild(pe);const be=document.createElement("div");be.className="sim-res-panel",be.dataset.simPanel="levelups",be.innerHTML=`<div class="sim-change-list">${se.map(Se=>{var $e,I;return`
+    `,v.style.display="block",v.querySelectorAll(".sim-res-tab").forEach(S=>{S.addEventListener("click",()=>{var H;v.querySelectorAll(".sim-res-tab").forEach(O=>O.classList.remove("active")),v.querySelectorAll(".sim-res-panel").forEach(O=>O.classList.remove("active")),S.classList.add("active"),(H=v.querySelector(`.sim-res-panel[data-sim-panel="${S.dataset.simTab}"]`))==null||H.classList.add("active")})}),v.scrollIntoView({behavior:"smooth"}),(J=v.querySelector("#sim-goto-town-btn"))==null||J.addEventListener("click",()=>{ge("town/"+t.currentTownId)}),D?(async()=>{try{const H=((await Ee(t.currentTownId)).characters||[]).map(Me);t.currentTown&&(t.currentTown.characters=H),ee({selectedCharId:null})}catch{}})():(v.querySelector("#sim-apply-btn").addEventListener("click",async()=>{var H;const S=v.querySelector("#sim-apply-btn");S.disabled=!0,S.textContent="⏳ Applying...",n("Applying simulation changes...","info");try{const O=await Ve(t.currentTownId,u,d.new_history_entry||null,s);O.debug_info&&console.log("Apply debug_info:",O.debug_info);const V=O.applied||{},Q=[];V.new_characters&&Q.push(`${V.new_characters} characters added`),V.deaths&&Q.push(`${V.deaths} deaths`),V.relationships&&Q.push(`${V.relationships} relationships`),V.xp&&Q.push(`${V.xp} XP updates`),V.stats&&Q.push(`${V.stats} stat changes`),V.roles&&Q.push(`${V.roles} role changes`),V.buildings&&Q.push(`${V.buildings} building changes`),V.auto_levelups&&Q.push(`${V.auto_levelups} auto level-ups`),V.history&&Q.push("history updated");if(V.deaths_failed&&V.deaths_failed.length){V.deaths_failed.forEach(df=>n(`  ⚠️ Death not applied: ${df}`,"warn"));const aiDeaths=(u.deaths||[]).length;n(`  ⚠️ ${V.deaths}/${aiDeaths} deaths actually matched characters in the DB`,"warn")}const se=V.levelup_details||[];if(se.length){se.forEach(pe=>n(`  ⬆️ ${pe.name} (${pe.class||"?"}): Lv ${pe.old_level} → ${pe.new_level}`,"success"));const de=v.querySelector(".sim-res-tabs"),Le=v.querySelector(".sim-res-panels");if(de&&Le){const pe=document.createElement("button");pe.className="sim-res-tab",pe.dataset.simTab="levelups",pe.innerHTML=`⬆️ Level Ups <span class="sim-tab-badge">${se.length}</span>`,de.appendChild(pe);const be=document.createElement("div");be.className="sim-res-panel",be.dataset.simPanel="levelups",be.innerHTML=`<div class="sim-change-list">${se.map(Se=>{var $e,I;return`
                 <div class="sim-change-item sim-change-xp">
                   <strong>${Se.name}</strong>
                   <span class="sim-stat-field">${Se.class||""}:</span>
@@ -1552,7 +1584,7 @@ ${O.new_history_entry.content}`);try{const Q=await Ve(c,V,O.new_history_entry||n
 `),_e.length>0&&(oe+=`Death details: ${_e.map(he=>`${he.name}: ${he.reason}`).join("; ")}
 `),oe+=`[END PLAN]
 
-`,ie=oe+ie}try{k.textContent=`Month ${C}/${t} — Simulating ${T.name}...`,g.style.width=`${D/F*100}%`,q(D/F*100),W&&(W.innerHTML=`<span style="color:var(--warning);">⏳ Month ${C}...</span>`),h("⏳",`Month <strong>${C}/${t}</strong> — Simulating <strong>${T.name}</strong>...`);const le=await wt(T.id,1,r,ie,0);if(le.simulation){console.log(`[WorldSim] ${T.name} Month ${C}:`,JSON.stringify(le.simulation).slice(0,500));const ue=le.simulation,_e=ue.changes||{},oe=_e.new_characters||ue.new_characters||[],he=_e.deaths||ue.deaths||[],Ie=_e.births||ue.births||[],ut=_e.events||ue.events||[];await Ve(T.id,_e,ue.new_history_entry||null,1).then(ve=>{var At,hs,gs;(At=ve==null?void 0:ve.applied)!=null&&At.auto_levelups&&(V+=ve.applied.auto_levelups,se[T.id].levelups=(se[T.id].levelups||0)+ve.applied.auto_levelups),(gs=(hs=ve==null?void 0:ve.applied)==null?void 0:hs.levelup_details)!=null&&gs.length&&Q.push(...ve.applied.levelup_details.map(Za=>({...Za,town:T.name,townId:T.id,month:C})))});const Ce=Ie.map(ve=>({...ve,town:T.name,townId:T.id,month:C})),ms=he.map(ve=>({...ve,town:T.name,townId:T.id,month:C})),vs=oe.map(ve=>({...ve,town:T.name,townId:T.id,month:C})),Qa=ut.map(ve=>({...ve,town:T.name,townId:T.id,month:C}));if(J.push(...Ce),Y.push(...ms),S.push(...vs),H.push(...Qa),se[T.id].arrivals+=vs.length,se[T.id].births+=Ce.length,se[T.id].deaths+=ms.length,we[T.id].push(((x=le.simulation.new_history_entry)==null?void 0:x.content)||""),W){const ve=se[T.id],At=ve.levelups?` ⬆${ve.levelups}`:"";W.innerHTML=`<span style="color:var(--success);">✅ ${C}/${t}</span>
+`,ie=oe+ie}try{k.textContent=`Month ${C}/${t} — Simulating ${T.name}...`,g.style.width=`${D/F*100}%`,q(D/F*100),W&&(W.innerHTML=`<span style="color:var(--warning);">⏳ Month ${C}...</span>`),h("⏳",`Month <strong>${C}/${t}</strong> — Simulating <strong>${T.name}</strong>...`);const le=await wt(T.id,1,r,ie,0);if(le.simulation){console.log(`[WorldSim] ${T.name} Month ${C}:`,JSON.stringify(le.simulation).slice(0,500));const ue=le.simulation,_e=ue.changes||{},oe=_e.new_characters||ue.new_characters||[],he=_e.deaths||ue.deaths||[],Ie=_e.births||ue.births||[],ut=_e.events||ue.events||[];await Ve(T.id,_e,ue.new_history_entry||null,1).then(ve=>{var At,hs,gs;(At=ve==null?void 0:ve.applied)!=null&&At.auto_levelups&&(V+=ve.applied.auto_levelups,se[T.id].levelups=(se[T.id].levelups||0)+ve.applied.auto_levelups),(gs=(hs=ve==null?void 0:ve.applied)==null?void 0:hs.levelup_details)!=null&&gs.length&&Q.push(...ve.applied.levelup_details.map(Za=>({...Za,town:T.name,townId:T.id,month:C})));if(ve?.applied?.deaths_failed?.length){ve.applied.deaths_failed.forEach(df=>{h("⚠️",`<strong>${T.name}</strong>: Death not applied — ${df}`,"sim-log-error")})}});const Ce=Ie.map(ve=>({...ve,town:T.name,townId:T.id,month:C})),ms=he.map(ve=>({...ve,town:T.name,townId:T.id,month:C})),vs=oe.map(ve=>({...ve,town:T.name,townId:T.id,month:C})),Qa=ut.map(ve=>({...ve,town:T.name,townId:T.id,month:C}));if(J.push(...Ce),Y.push(...ms),S.push(...vs),H.push(...Qa),se[T.id].arrivals+=vs.length,se[T.id].births+=Ce.length,se[T.id].deaths+=ms.length,we[T.id].push(((x=le.simulation.new_history_entry)==null?void 0:x.content)||""),W){const ve=se[T.id],At=ve.levelups?` ⬆${ve.levelups}`:"";W.innerHTML=`<span style="color:var(--success);">✅ ${C}/${t}</span>
                 <span style="font-size:0.7rem;color:var(--text-muted);margin-left:0.5rem;">
                   +${ve.arrivals} 👤  ${ve.births} 👶  ${ve.deaths} 💀${At}
                 </span>`}}else W&&(W.innerHTML=`<span style="color:var(--error);">⚠️ Month ${C} no data</span>`),h("⚠️",`<strong>${T.name}</strong> month ${C}: No simulation data returned`)}catch(le){if((U=le.message)!=null&&U.includes("503")){W&&(W.innerHTML=`<span style="color:var(--warning);">🔄 Retrying M${C}...</span>`),await new Promise(ue=>setTimeout(ue,5e3));try{const ue=await wt(T.id,1,r,ie,0);if(ue.simulation){const _e=ue.simulation.changes||{};await Ve(T.id,_e,ue.simulation.new_history_entry||null,1);const oe=(_e.births||[]).map(Ce=>({...Ce,town:T.name,townId:T.id,month:C})),he=(_e.deaths||[]).map(Ce=>({...Ce,town:T.name,townId:T.id,month:C})),Ie=(_e.new_characters||[]).map(Ce=>({...Ce,town:T.name,townId:T.id,month:C})),ut=(_e.events||[]).map(Ce=>({...Ce,town:T.name,townId:T.id,month:C}));if(J.push(...oe),Y.push(...he),S.push(...Ie),H.push(...ut),se[T.id].arrivals+=Ie.length,se[T.id].births+=oe.length,se[T.id].deaths+=he.length,we[T.id].push(((K=ue.simulation.new_history_entry)==null?void 0:K.content)||""),W){const Ce=se[T.id];W.innerHTML=`<span style="color:var(--success);">✅ ${C}/${t}</span> <span style="font-size:0.7rem;color:var(--text-muted);margin-left:0.5rem;">+${Ce.arrivals} 👤  ${Ce.births} 👶  ${Ce.deaths} 💀</span>`}}}catch(ue){fe[T.id]=(fe[T.id]||"")+` Month ${C}: ${ue.message}`,W&&(W.innerHTML=`<span style="color:var(--error);">❌ M${C}: ${ue.message.slice(0,30)}</span>`)}}else fe[T.id]=(fe[T.id]||"")+` Month ${C}: ${le.message}`,W&&(W.innerHTML=`<span style="color:var(--error);">❌ M${C}: ${le.message.slice(0,30)}</span>`),h("❌",`<strong>${T.name}</strong> M${C}: ${le.message.slice(0,80)}`,"sim-log-error")}await new Promise(le=>setTimeout(le,1500)),D++}if(k.textContent=`Month ${C}/${t} — Checking movement...`,d.length>=2)try{const T=await Promise.all(d.map(W=>Ee(W.id).catch(()=>({characters:[]}))));for(let W=0;W<d.length;W++){const ie=d[W],re=(((ae=T[W])==null?void 0:ae.characters)||[]).filter(oe=>(oe.status||"Alive")==="Alive"),le=["mayor","chieftain","chief","lord","lady","captain of the guard","town leader"],ue=re.filter(oe=>parseInt(oe.months_in_town||0)>=Ms).filter(oe=>{const he=(oe.role||"").toLowerCase().trim();return!le.some(Ie=>he.includes(Ie))});if(ue.length===0)continue;const _e=ue.filter(()=>Math.random()<.2).slice(0,2);for(const oe of _e){const he=d.filter(ut=>ut.id!==ie.id),Ie=he[Math.floor(Math.random()*he.length)];try{await La(oe.id,ie.id,Ie.id),O.push({name:oe.name,class:oe.class,level:oe.level,fromTown:ie.name,fromTownId:ie.id,toTown:Ie.name,toTownId:Ie.id,monthsLived:parseInt(oe.months_in_town||0),month:C}),h("🚶",`<strong>${oe.name}</strong> moved from ${ie.name} → ${Ie.name}`)}catch{}}}}catch{}D++}const Se=d.map(C=>{const T=se[C.id],W=(we[C.id]||[]).map((re,le)=>({month:le+1,content:re||""})).filter(re=>re.content),ie=fe[C.id];return{town:C.name,townId:C.id,ok:!ie,births:T.births,deaths:T.deaths,arrivals:T.arrivals,events:H.filter(re=>re.townId===C.id).length,narrativeEntries:W,error:ie||""}});g.style.width="100%",k.textContent=`✅ World simulation complete! (${d.length} towns × ${t} months)`,y.disabled=!1,y.textContent="🌍 Run World Simulation",q(100);const $e=S.length,I=J.length,E=Y.length,j=H.length,B=O.length;h("🏁",`<strong>Simulation complete!</strong> Arrivals: ${$e} | Births: ${I} | Deaths: ${E} | Events: ${j} | Moves: ${B}`,"sim-log-success"),Object.keys(fe).length>0&&h("⚠️",`${Object.keys(fe).length} town(s) had errors — check results below.`),M.style.display="",M.addEventListener("click",()=>{$.remove()}),$.addEventListener("click",C=>{C.target===$&&$.remove()}),n(_,Se,t,J,Y,S,H,O,Le,pe,V,Q)}function n(l,i,r,p,o,c,d,u,v=[],m=0,b=0,y=[]){l.style.display="";const f=i.filter(h=>h.ok),g=i.filter(h=>!h.ok),k=p.length,_=o.length,$=c.length,L=d.length;l.innerHTML=`

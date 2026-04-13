@@ -8,12 +8,14 @@
             $userSettings = query('SELECT dnd_edition FROM users WHERE id = ?', [$userId], 0);
             $dndEdition = $userSettings ? ($userSettings[0]['dnd_edition'] ?? '3.5e') : '3.5e';
 
-            $applied = ['new_characters' => 0, 'deaths' => 0, 'relationships' => 0, 'xp' => 0, 'stats' => 0, 'roles' => 0, 'history' => 0];
+            $applied = ['new_characters' => 0, 'deaths' => 0, 'relationships' => 0, 'xp' => 0, 'stats' => 0, 'roles' => 0, 'history' => 0, 'arrivals_failed' => [], 'deaths_failed' => [], 'death_details' => []];
             $debugInfo = []; // Temporary debug output
 
             // Increment months_in_town for all living characters in this town
             // Keep raw value: 0 = intake only (no XP/level-ups), 1+ = simulated months
             $monthsElapsed = (int) ($input['months_elapsed'] ?? 1);
+            $daysElapsedInit = (int) ($input['days_elapsed'] ?? 0);
+            $isSimulation = ($monthsElapsed > 0 || $daysElapsedInit > 0);
             if ($monthsElapsed > 0) {
                 try {
                     execute("UPDATE characters SET months_in_town = months_in_town + ? WHERE town_id = ? AND status = 'Alive'", [$monthsElapsed, $townId], $uid);
@@ -139,9 +141,25 @@
                     $charName = trim($nc['name'] ?? 'Unknown');
                     if (!$charName || $charName === 'Unknown')
                         continue;
+                    // Dedup: if name exists, make it unique instead of rejecting
                     $existing = query('SELECT id FROM characters WHERE town_id = ? AND name = ? LIMIT 1', [$townId, $charName], $uid);
-                    if (!empty($existing))
-                        continue;
+                    if (!empty($existing)) {
+                        $suffixes = ['the Younger', 'II', 'III', 'IV', 'the Elder', 'Jr.', 'the Bold', 'the Quiet', 'the Red', 'the Fair'];
+                        $uniquified = false;
+                        foreach ($suffixes as $suffix) {
+                            $tryName = $charName . ' ' . $suffix;
+                            $check = query('SELECT id FROM characters WHERE town_id = ? AND name = ? LIMIT 1', [$townId, $tryName], $uid);
+                            if (empty($check)) {
+                                $charName = $tryName;
+                                $uniquified = true;
+                                break;
+                            }
+                        }
+                        if (!$uniquified) {
+                            $applied['arrivals_failed'][] = $charName . ' (duplicate name — all suffix variants exhausted)';
+                            continue;
+                        }
+                    }
 
                     $aiRawData = json_encode($nc, JSON_UNESCAPED_UNICODE);
                     $isCreature = !empty($nc['is_creature']);
@@ -257,6 +275,7 @@
                         }
                     }
 
+                    $charInserted = false;
                     try {
                         $historyText = trim($nc['reason'] ?? $nc['history'] ?? '');
                         execute('INSERT INTO characters (town_id, name, race, class, level, gender, age, status, alignment,
@@ -277,6 +296,7 @@
                             is_array($nc['gear'] ?? '') ? implode(', ', $nc['gear']) : ($nc['gear'] ?? ''),
                             $languages, 0, $cr, $historyText, $aiRawData
                         ], $uid);
+                        $charInserted = true;
                     } catch (Exception $e) {
                         try {
                             execute('INSERT INTO characters (town_id, name, race, class, level, gender, age, status, alignment, hp, ac, str, dex, con, int_, wis, cha, spouse, spouse_label, role, skills_feats, feats, gear, ai_data)
@@ -292,9 +312,14 @@
                                 is_array($nc['gear'] ?? '') ? implode(', ', $nc['gear']) : ($nc['gear'] ?? ''),
                                 $aiRawData
                             ], $uid);
-                        } catch (Exception $e2) { /* non-fatal */ }
+                            $charInserted = true;
+                        } catch (Exception $e2) {
+                            $applied['arrivals_failed'][] = $charName . ' (' . $e2->getMessage() . ')';
+                        }
                     }
-                    $applied['new_characters']++;
+                    if ($charInserted) {
+                        $applied['new_characters']++;
+                    }
 
                     // Skip equipment/spells/skills for creatures
                     if ($isCreature) continue;
@@ -474,20 +499,126 @@
                 }
             }
 
-            // Deaths
+            // Deaths — criteria-based matching
             if (!empty($changes['deaths'])) {
+                // Load all living characters for scoring
+                $livingChars = query(
+                    "SELECT id, name, race, class, level, age, gender, alignment, role, hp, status FROM characters WHERE town_id = ? AND status = 'Alive'",
+                    [$townId],
+                    $uid
+                );
+                $alreadyKilled = []; // Track IDs killed this batch to avoid double-kills
+
                 foreach ($changes['deaths'] as $d) {
-                    execute(
-                        "UPDATE characters SET status = 'Deceased' WHERE town_id = ? AND name = ? AND status = 'Alive'",
-                        [$townId, $d['name']],
-                        $uid
-                    );
-                    $applied['deaths']++;
+                    $reason = trim($d['reason'] ?? 'Unknown cause');
+
+                    // If AI still sent a name, try exact match first (backward compat)
+                    $deathName = trim($d['name'] ?? '');
+                    if ($deathName) {
+                        foreach ($livingChars as $lc) {
+                            if (!in_array($lc['id'], $alreadyKilled) && strcasecmp(trim($lc['name']), $deathName) === 0) {
+                                $rowsAffected = execute(
+                                    "UPDATE characters SET status = 'Deceased' WHERE id = ? AND status = 'Alive'",
+                                    [$lc['id']],
+                                    $uid
+                                );
+                                if ($rowsAffected > 0) {
+                                    $applied['deaths']++;
+                                    $alreadyKilled[] = $lc['id'];
+                                    $applied['death_details'][] = ['name' => $lc['name'], 'reason' => $reason, 'match' => 'exact'];
+                                    continue 2; // Next death entry
+                                }
+                            }
+                        }
+                    }
+
+                    // Criteria-based matching: score each living character
+                    $prefClass = strtolower(trim($d['preferred_class'] ?? ''));
+                    $prefRole = strtolower(trim($d['preferred_role'] ?? ''));
+                    $ageCat = strtolower(trim($d['age_category'] ?? 'any'));
+                    $prefAlign = strtoupper(trim($d['preferred_alignment'] ?? ''));
+
+                    $bestScore = -1;
+                    $bestChar = null;
+                    $candidates = [];
+
+                    foreach ($livingChars as $lc) {
+                        if (in_array($lc['id'], $alreadyKilled)) continue;
+
+                        $score = 0;
+                        $charClass = strtolower(trim($lc['class'] ?? ''));
+                        $charRole = strtolower(trim($lc['role'] ?? ''));
+                        $charAge = (int) ($lc['age'] ?? 25);
+                        $charAlign = strtoupper(trim($lc['alignment'] ?? ''));
+
+                        // Class match: +10
+                        if ($prefClass && strpos($charClass, $prefClass) !== false) {
+                            $score += 10;
+                        }
+
+                        // Role match: +8
+                        if ($prefRole && (strpos($charRole, $prefRole) !== false || strpos($prefRole, $charRole) !== false)) {
+                            $score += 8;
+                        }
+
+                        // Age category match: +6
+                        if ($ageCat === 'elderly' && $charAge >= 50) {
+                            $score += 6;
+                            // Bonus for very old
+                            if ($charAge >= 70) $score += 3;
+                        } elseif ($ageCat === 'adult' && $charAge >= 18 && $charAge < 50) {
+                            $score += 6;
+                        } elseif ($ageCat === 'young' && $charAge < 18) {
+                            $score += 6;
+                        } elseif ($ageCat === 'any') {
+                            $score += 2; // Slight bonus so 'any' still produces a match
+                        }
+
+                        // Alignment match: +4
+                        if ($prefAlign && $charAlign === $prefAlign) {
+                            $score += 4;
+                        }
+
+                        // Small random factor to avoid always killing the same person (0-2)
+                        $score += mt_rand(0, 2);
+
+                        if ($score > $bestScore) {
+                            $bestScore = $score;
+                            $bestChar = $lc;
+                        }
+                    }
+
+                    if ($bestChar && $bestScore >= 2) {
+                        $rowsAffected = execute(
+                            "UPDATE characters SET status = 'Deceased' WHERE id = ? AND status = 'Alive'",
+                            [$bestChar['id']],
+                            $uid
+                        );
+                        if ($rowsAffected > 0) {
+                            $applied['deaths']++;
+                            $alreadyKilled[] = $bestChar['id'];
+                            $matchType = $deathName ? 'name+criteria' : 'criteria';
+                            $applied['death_details'][] = [
+                                'name' => $bestChar['name'],
+                                'reason' => $reason,
+                                'match' => $matchType,
+                                'score' => $bestScore
+                            ];
+                        } else {
+                            $applied['deaths_failed'][] = "Matched {$bestChar['name']} but UPDATE failed";
+                        }
+                    } else {
+                        $criteriaDesc = $reason;
+                        if ($prefClass) $criteriaDesc .= " (class: $prefClass)";
+                        if ($prefRole) $criteriaDesc .= " (role: $prefRole)";
+                        if ($ageCat !== 'any') $criteriaDesc .= " (age: $ageCat)";
+                        $applied['deaths_failed'][] = "No matching character for: $criteriaDesc";
+                    }
                 }
             }
 
             // â”€â”€ XP gains â€” skip entirely during intake (monthsElapsed=0) â”€â”€
-           if ($monthsElapsed > 0) {
+           if ($isSimulation) {
             // Look up current game date for the XP log
             $calRow = query('SELECT current_month, current_year, era_name, month_names FROM calendar WHERE user_id = ?', [$userId], 0);
             $gameDate = '';
@@ -583,7 +714,8 @@
                 // Fallback: routine tag score (activity=routine, all else=none)
                 // NPC: ~5 base, PC: ~10 base
                 $baseScore = $isNpc ? mt_rand(3, 8) : mt_rand(8, 15);
-                $xpGain = (int) floor($baseScore * $diffMultFb) * $monthsElapsed;
+                $xpTimeScale = $monthsElapsed > 0 ? $monthsElapsed : max(0.1, $daysElapsedInit / 30);
+                $xpGain = (int) floor($baseScore * $diffMultFb * $xpTimeScale);
 
                 // Apply diminishing returns
                 $charLevel = (int) ($mc['level'] ?? 1);
@@ -986,44 +1118,118 @@
                 }
             }
 
-            // Advance calendar by N months (skip if months=0)
+            // Advance calendar by months and/or days
             $monthsElapsed = (int) ($input['months_elapsed'] ?? 0);
-            if ($monthsElapsed > 0) {
-                $cal = query('SELECT * FROM calendar WHERE user_id = ?', [$uid], $uid);
+            $daysElapsed = (int) ($input['days_elapsed'] ?? 0);
+            $debugInfo['calendar_input'] = ['months_elapsed' => $monthsElapsed, 'days_elapsed' => $daysElapsed, 'uid' => $uid];
+            if ($monthsElapsed > 0 || $daysElapsed > 0) {
+                // Get active campaign (same pattern as api.php get_calendar)
+                $activeCampApply = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+                $campIdApply = $activeCampApply ? (int) $activeCampApply[0]['id'] : null;
+                $debugInfo['calendar_campaign'] = $campIdApply;
 
-                // If no calendar row, create one with defaults
+                if ($campIdApply) {
+                    $cal = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id = ?', [$uid, $campIdApply]);
+                    // Fallback: check for legacy row with NULL campaign_id
+                    if (!$cal) {
+                        $cal = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id IS NULL', [$uid]);
+                        if ($cal) {
+                            // Auto-fix: link this calendar to the active campaign
+                            execute('UPDATE calendar SET campaign_id = ? WHERE id = ?', [$campIdApply, $cal[0]['id']]);
+                            $debugInfo['calendar_migrated'] = true;
+                        }
+                    }
+                } else {
+                    $cal = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id IS NULL', [$uid]);
+                }
+                $debugInfo['calendar_found'] = !empty($cal);
+                $debugInfo['calendar_row_count'] = count($cal ?: []);
+
+                // If no calendar row, create one with defaults (IGNORE to prevent duplicate key)
                 if (!$cal) {
-                    execute(
-                        'INSERT INTO calendar (user_id, current_year, current_month, current_day, era_name, months_per_year, month_names, days_per_month) VALUES (?, 1490, 1, 1, ?, 12, ?, 30)',
-                        [$uid, 'DR', '["Hammer","Alturiak","Ches","Tarsakh","Mirtul","Kythorn","Flamerule","Eleasis","Eleint","Marpenoth","Uktar","Nightal"]'],
-                        $uid
-                    );
-                    $cal = query('SELECT * FROM calendar WHERE user_id = ?', [$uid], $uid);
+                    try {
+                        execute(
+                            'INSERT IGNORE INTO calendar (user_id, campaign_id, current_year, current_month, current_day, era_name, months_per_year, month_names, days_per_month) VALUES (?, ?, 1490, 1, 1, ?, 12, ?, ?)',
+                            [$uid, $campIdApply, 'DR', '["Hammer","Alturiak","Ches","Tarsakh","Mirtul","Kythorn","Flamerule","Eleasis","Eleint","Marpenoth","Uktar","Nightal"]', '[30,30,30,30,30,30,30,30,30,30,30,30]']
+                        );
+                        $debugInfo['calendar_inserted'] = true;
+                    } catch (Exception $e) {
+                        $debugInfo['calendar_insert_err'] = $e->getMessage();
+                    }
+                    if ($campIdApply) {
+                        $cal = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id = ?', [$uid, $campIdApply]);
+                    } else {
+                        $cal = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id IS NULL', [$uid]);
+                    }
+                    $debugInfo['calendar_found_after_insert'] = !empty($cal);
                 }
 
                 if ($cal) {
                     $mpy = (int) ($cal[0]['months_per_year'] ?? 12);
                     $year = (int) ($cal[0]['current_year'] ?? 1490);
                     $month = (int) ($cal[0]['current_month'] ?? 1);
+                    $day = (int) ($cal[0]['current_day'] ?? 1);
+                    $debugInfo['calendar_before'] = ['year' => $year, 'month' => $month, 'day' => $day, 'mpy' => $mpy];
+
+                    // Parse per-month days array
+                    $dpmRaw = $cal[0]['days_per_month'] ?? '30';
+                    $dpmDecoded = json_decode($dpmRaw, true);
+                    $daysPerMonthArr = is_array($dpmDecoded) ? $dpmDecoded : array_fill(0, $mpy, (int)($dpmRaw ?: 30));
+
+                    // First: advance by whole months
                     $month += $monthsElapsed;
                     while ($month > $mpy) {
                         $month -= $mpy;
                         $year++;
                     }
-                    execute(
-                        'UPDATE calendar SET current_year=?, current_month=? WHERE user_id=?',
-                        [$year, $month, $uid],
-                        $uid
-                    );
-                    $applied['calendar'] = "Advanced to month $month of year $year";
+
+                    // Then: advance by days (overflow into months/years)
+                    if ($daysElapsed > 0) {
+                        $day += $daysElapsed;
+                        $maxDay = $daysPerMonthArr[$month - 1] ?? 30;
+                        while ($day > $maxDay) {
+                            $day -= $maxDay;
+                            $month++;
+                            if ($month > $mpy) {
+                                $month = 1;
+                                $year++;
+                            }
+                            $maxDay = $daysPerMonthArr[$month - 1] ?? 30;
+                        }
+                    }
+
+                    // Clamp day to new month's max days
+                    $maxDay = $daysPerMonthArr[$month - 1] ?? 30;
+                    if ($day > $maxDay) $day = $maxDay;
+                    if ($day < 1) $day = 1;
+
+                    $debugInfo['calendar_after'] = ['year' => $year, 'month' => $month, 'day' => $day];
+
+                    if ($campIdApply) {
+                        $rowsUpdated = execute(
+                            'UPDATE calendar SET current_year=?, current_month=?, current_day=? WHERE user_id=? AND campaign_id=?',
+                            [$year, $month, $day, $uid, $campIdApply]
+                        );
+                    } else {
+                        $rowsUpdated = execute(
+                            'UPDATE calendar SET current_year=?, current_month=?, current_day=? WHERE user_id=? AND campaign_id IS NULL',
+                            [$year, $month, $day, $uid]
+                        );
+                    }
+                    $debugInfo['calendar_rows_updated'] = $rowsUpdated;
                     $mNames = json_decode($cal[0]['month_names'] ?? '[]', true) ?: [];
+                    $monthName = $mNames[$month - 1] ?? "Month $month";
+                    $applied['calendar'] = "Advanced to day $day of $monthName, year $year";
                     $applied['calendar_date'] = [
                         'month' => $month,
                         'year' => $year,
+                        'day' => $day,
                         'era' => trim($cal[0]['era_name'] ?? 'DR'),
-                        'month_name' => $mNames[$month - 1] ?? "Month $month"
+                        'month_name' => $monthName
                     ];
                 }
+            } else {
+                $debugInfo['calendar_skipped'] = 'months_elapsed=0 and days_elapsed=0';
             }
 
             simRespond(['ok' => true, 'applied' => $applied, 'debug_info' => $debugInfo]);

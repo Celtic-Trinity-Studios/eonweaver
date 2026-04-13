@@ -3,7 +3,7 @@
  * Includes campaign selector and navigation.
  */
 import { navigate } from '../router.js';
-import { getState, setState } from '../stores/appState.js';
+import { getState, setState, subscribe } from '../stores/appState.js';
 import { calendarToString } from '../api/settings.js';
 import { apiSwitchCampaign, apiGetCampaigns } from '../api/campaigns.js';
 import { setCurrentEdition, clearSrdCache } from '../api/srd.js';
@@ -188,3 +188,16 @@ export function updateSidebarUser(user) {
   const el = document.getElementById('sidebar-user-info');
   if (el) el.textContent = user ? `👤 ${user.username}` : '';
 }
+
+// Auto-update sidebar calendar whenever state.calendar changes
+let _lastCalStr = '';
+subscribe((state) => {
+  if (state.calendar) {
+    const newStr = calendarToString(state.calendar);
+    if (newStr !== _lastCalStr) {
+      _lastCalStr = newStr;
+      const el = document.getElementById('sidebar-calendar-text');
+      if (el) el.textContent = newStr;
+    }
+  }
+});

@@ -51,6 +51,13 @@ export default function SimulationView(container) {
             </div>
           </div>
           <div class="sim-field">
+            <label>📅 Days (Partial Month)</label>
+            <div style="display:flex;align-items:center;gap:0.5rem;">
+              <input type="number" id="sim-days" class="form-input" min="0" max="30" value="0" style="width:70px;text-align:center;" title="Days to simulate within the month (0 = full month)">
+              <span style="font-size:0.75rem;color:var(--text-muted)">0 = full month</span>
+            </div>
+          </div>
+          <div class="sim-field">
             <label>👥 Intake (Force Arrivals)</label>
             <div style="display:flex;align-items:center;gap:0.5rem;">
               <input type="number" id="sim-intake-count" class="form-input" min="0" max="50" value="0" style="width:70px;text-align:center;" title="Number of people to force move in (0 = natural only)">
@@ -267,8 +274,9 @@ export default function SimulationView(container) {
 
     let fullInstructions = instructions;
     let intakeCount = Math.max(0, Math.min(50, parseInt(cont.querySelector('#sim-intake-count')?.value) || 0));
+    let daysCount = Math.max(0, Math.min(30, parseInt(cont.querySelector('#sim-days')?.value) || 0));
 
-    log(`--- Starting simulation: ${selectedMonths} month(s), town ID ${townId} ---`);
+    log(`--- Starting simulation: ${selectedMonths} month(s)${daysCount ? ` (${daysCount} days)` : ''}, town ID ${townId} ---`);
     log(`Instructions: ${fullInstructions || '(none)'}`);
     log(`Rules length: ${rules.length} chars`);
     log(`Forced intake: ${intakeCount > 0 ? intakeCount + ' new arrivals' : 'none (natural only)'}`);
@@ -297,7 +305,7 @@ export default function SimulationView(container) {
         }, 1000);
 
         log('Calling apiRunSimulation (single)...', 'info');
-        const result = await apiRunSimulation(townId, selectedMonths, rules, fullInstructions, intakeCount);
+        const result = await apiRunSimulation(townId, selectedMonths, rules, fullInstructions, intakeCount, daysCount);
         clearInterval(progressInterval);
         progressFill.style.width = '100%';
         progressText.textContent = 'Simulation complete!';
@@ -397,6 +405,16 @@ export default function SimulationView(container) {
               if (ad.levelup_details && ad.levelup_details.length) {
                 merged.changes.levelup_details.push(...ad.levelup_details);
                 log(`  ⬆️ ${ad.levelup_details.length} level-up(s) this batch`, 'info');
+              }
+              // Log actual vs AI-requested deaths
+              if (ad.deaths_failed && ad.deaths_failed.length) {
+                ad.deaths_failed.forEach(f => log(`  ⚠️ Death not applied: ${f}`, 'warn'));
+              }
+              if (typeof ad.deaths === 'number') {
+                const aiDeaths = (ch.deaths || []).length;
+                if (ad.deaths < aiDeaths) {
+                  log(`  ⚠️ Only ${ad.deaths}/${aiDeaths} deaths matched characters in the DB`, 'warn');
+                }
               }
             } catch (applyErr) {
               log(`  Warning: Could not apply batch ${batch + 1}: ${applyErr.message}`, 'warn');
@@ -675,6 +693,13 @@ export default function SimulationView(container) {
           if (a.buildings) applySummary.push(`${a.buildings} building changes`);
           if (a.auto_levelups) applySummary.push(`${a.auto_levelups} auto level-ups`);
           if (a.history) applySummary.push('history updated');
+
+          // Log failed deaths so users can see the discrepancy
+          if (a.deaths_failed && a.deaths_failed.length) {
+            a.deaths_failed.forEach(f => log(`  ⚠️ Death not applied: ${f}`, 'warn'));
+            const aiDeaths = (changes.deaths || []).length;
+            log(`  ⚠️ ${a.deaths}/${aiDeaths} deaths actually matched characters in the DB`, 'warn');
+          }
 
           // Log level-up details and inject Level Ups tab
           const luDetails = a.levelup_details || [];

@@ -3,21 +3,45 @@
  */
 import { simFetch } from './client.js';
 import { apiFetch } from './client.js';
+import { getState, setState } from '../stores/appState.js';
 
-export function apiRunSimulation(townId, months, rules, instructions, numArrivals = 0) {
-    return simFetch('run_simulation', { town_id: townId, months, rules, instructions, num_arrivals: numArrivals });
+export function apiRunSimulation(townId, months, rules, instructions, numArrivals = 0, days = 0) {
+    return simFetch('run_simulation', { town_id: townId, months, rules, instructions, num_arrivals: numArrivals, days });
 }
 
 export function apiPlanSimulation(townId, months, rules, instructions) {
     return simFetch('plan_simulation', { town_id: townId, months, rules, instructions });
 }
 
-export function apiApplySimulation(townId, changes, historyEntry, monthsElapsed = 0) {
+export function apiGenerateWeather(townId) {
+    return simFetch('generate_weather', { town_id: townId });
+}
+
+export function apiApplySimulation(townId, changes, historyEntry, monthsElapsed = 0, daysElapsed = 0) {
     return simFetch('apply_simulation', {
         town_id: townId,
         changes,
         history_entry: historyEntry,
         months_elapsed: monthsElapsed,
+        days_elapsed: daysElapsed,
+    }).then(res => {
+        // Auto-update sidebar calendar when server advances the date
+        if (res?.applied?.calendar_date) {
+            try {
+                const cal = getState().calendar || {};
+                const cd = res.applied.calendar_date;
+                setState({
+                    calendar: {
+                        ...cal,
+                        current_month: cd.month,
+                        current_year: cd.year,
+                        current_day: cd.day || cal.current_day,
+                        era_name: cd.era || cal.era_name,
+                    }
+                });
+            } catch (e) { /* non-fatal */ }
+        }
+        return res;
     });
 }
 
@@ -72,4 +96,8 @@ export function apiAutoAssignSpellsTown(townId, force = false) {
 
 export function apiQuickLevelUp(townId, characterId) {
     return simFetch('quick_level_up', { town_id: townId, character_id: characterId });
+}
+
+export function apiIntakeCustom(townId, prompt, levelRange = '') {
+    return simFetch('intake_custom', { town_id: townId, prompt, level_range: levelRange });
 }

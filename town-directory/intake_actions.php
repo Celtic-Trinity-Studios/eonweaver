@@ -1037,3 +1037,151 @@ elseif ($action === 'intake_creature') {
         ]
     ]);
 }
+
+// ==========================================================
+// INTAKE CUSTOM - Generate a single character from a freeform prompt
+// One AI call, returns a complete character ready to save.
+// ==========================================================
+elseif ($action === 'intake_custom') {
+    $townId = (int) ($input['town_id'] ?? 0);
+    $prompt = trim($input['prompt'] ?? '');
+    $levelRange = trim($input['level_range'] ?? '');
+
+    verifyTownOwnership($userId, $townId, $uid);
+    if (!$prompt)
+        throw new Exception('Character description is required.');
+
+    if (!defined('OPENROUTER_API_KEY') || !OPENROUTER_API_KEY) {
+        $keyRows = query("SELECT gemini_api_key FROM users WHERE id = ?", [$userId], 0);
+        $apiKey = $keyRows ? ($keyRows[0]['gemini_api_key'] ?? '') : '';
+        if (!$apiKey)
+            throw new Exception('No OpenRouter API key set. Go to Settings to add your key.');
+    } else {
+        $apiKey = OPENROUTER_API_KEY;
+    }
+
+    $town = query('SELECT * FROM towns WHERE id = ?', [$townId], $uid);
+    $townName = $town ? $town[0]['name'] : 'Unknown';
+
+    $userSettings = query('SELECT dnd_edition FROM users WHERE id = ?', [$userId], 0);
+    $dndEdition = $userSettings ? ($userSettings[0]['dnd_edition'] ?? '3.5e') : '3.5e';
+
+    $characters = query('SELECT name FROM characters WHERE town_id = ? ORDER BY name', [$townId], $uid);
+    $existingNames = array_map(function ($c) { return $c['name']; }, $characters ?: []);
+    $existingNamesList = !empty($existingNames) ? implode(', ', $existingNames) : '(none)';
+
+    $campaignRulesRows = query('SELECT rules_text, campaign_description FROM campaign_rules WHERE user_id = ?', [$userId], $uid);
+    $campaignRules = $campaignRulesRows ? trim($campaignRulesRows[0]['rules_text'] ?? '') : '';
+    $campaignDesc = $campaignRulesRows ? trim($campaignRulesRows[0]['campaign_description'] ?? '') : '';
+
+    $srdFeats = srdQuery($dndEdition, 'SELECT name, type, prerequisites FROM feats ORDER BY name');
+    $featRef = '';
+    $featsByType = [];
+    foreach ($srdFeats as $f) {
+        $type = $f['type'] ?: 'General';
+        if (!isset($featsByType[$type])) $featsByType[$type] = [];
+        $prereq = $f['prerequisites'] ? " (Prereq: {$f['prerequisites']})" : '';
+        $featsByType[$type][] = $f['name'] . $prereq;
+    }
+    foreach (['General', 'Fighter', 'Metamagic'] as $type) {
+        if (isset($featsByType[$type])) {
+            $featRef .= "  {$type}: " . implode(', ', array_slice($featsByType[$type], 0, 30)) . "\n";
+        }
+    }
+
+    $campDescBlock = $campaignDesc ? "\nWorld Setting: {$campaignDesc}" : '';
+    $levelBlock = $levelRange ? "\nLevel Range: {$levelRange}" : '';
+
+    $customPrompt = "You are a D&D {$dndEdition} character creator. Generate ONE complete character based on the user's description below.
+
+## USER DESCRIPTION:
+{$prompt}
+{$levelBlock}
+
+## LOCATION:
+Town: \"{$townName}\"
+{$campDescBlock}
+{$campaignRules}
+
+## RULES:
+- Create a COMPLETE character with full ability scores (Str, Dex, Con, Int, Wis, Cha).
+- Ability scores should be appropriate for the race and class. Use values between 8-18.
+- HP should be calculated correctly based on class hit die + Con modifier x level.
+- AC should reflect their equipment/armor.
+- Generate appropriate feats. Pick from valid feats:
+{$featRef}
+- Generate relevant skills for their class and background.
+- Give them appropriate gear/equipment for their class, level, and role.
+- Write a rich 2-4 sentence backstory ('history') that ties into their description.
+- Name MUST NOT duplicate any existing name: {$existingNamesList}
+- 'class' format: 'ClassName Level', e.g. 'Fighter 5', 'Expert 3'.
+- 'gender' must be 'M' or 'F'.
+- All ability scores and hp must be NUMBERS, not strings.
+
+## OUTPUT (VALID JSON ONLY - no markdown, no code fences, JUST the raw JSON object):
+{\"name\":\"Character Name\",\"race\":\"Race\",\"class\":\"ClassName Level\",\"gender\":\"M\",\"age\":30,\"status\":\"Alive\",\"alignment\":\"NG\",\"role\":\"Role in town\",\"str\":14,\"dex\":12,\"con\":13,\"int_\":10,\"wis\":11,\"cha\":10,\"hp\":22,\"ac\":\"16\",\"init\":\"+1\",\"spd\":\"30\",\"saves\":\"Fort +4, Ref +1, Will +1\",\"skills_feats\":\"Climb +5, Intimidate +3\",\"feats\":\"Power Attack, Cleave\",\"gear\":\"longsword, chain shirt, shield\",\"languages\":\"Common, Dwarven\",\"history\":\"A brief backstory...\"}";
+
+    $openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
+    $model = defined("OPENROUTER_MODEL") ? OPENROUTER_MODEL : "google/gemini-2.5-flash";
+
+    $payload = json_encode([
+        "model" => $model,
+        "messages" => [["role" => "user", "content" => $customPrompt]],
+        "temperature" => 0.9,
+        "max_tokens" => 2048
+    ]);
+    $ch = curl_init($openRouterUrl);
+    curl_setopt_array($ch, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $payload,
+        CURLOPT_HTTPHEADER => [
+            "Authorization: Bearer {$apiKey}",
+            "HTTP-Referer: https://eonweaver.com",
+            "X-Title: Eon Weaver",
+            "Content-Type: application/json"
+        ],
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 60,
+        CURLOPT_SSL_VERIFYPEER => true
+    ]);
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr = curl_error($ch);
+    curl_close($ch);
+    resetDB();
+
+    if ($httpCode !== 200 || !$response) {
+        throw new Exception("AI API error (HTTP {$httpCode}): " . ($curlErr ?: substr($response ?: '', 0, 300)));
+    }
+
+    $data = json_decode($response, true);
+    if (!empty($data['usage'])) {
+        trackTokenUsage($userId, $data['usage']);
+    }
+    $respText = $data["choices"][0]["message"]["content"] ?? "";
+    $respText = preg_replace('/^\s*`json\s*/i', '', $respText);
+    $respText = preg_replace('/\s*`\s*$/', '', $respText);
+    $respText = trim($respText);
+
+    $parsed = json_decode($respText, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        $cleaned = preg_replace('/[\x00-\x1F\x7F]/u', ' ', $respText);
+        $parsed = json_decode($cleaned, true);
+    }
+    if (!$parsed || !isset($parsed['name'])) {
+        throw new Exception('Failed to parse AI response. Raw: ' . substr($respText, 0, 300));
+    }
+
+    foreach (['str', 'dex', 'con', 'int_', 'wis', 'cha', 'hp'] as $field) {
+        $val = $parsed[$field] ?? ($field === 'int_' ? ($parsed['int'] ?? 10) : 10);
+        $parsed[$field] = (int) $val;
+    }
+    if (isset($parsed['int'])) {
+        if (!isset($parsed['int_']) || !$parsed['int_']) $parsed['int_'] = (int) $parsed['int'];
+        unset($parsed['int']);
+    }
+    $parsed['status'] = $parsed['status'] ?? 'Alive';
+    $parsed['age'] = (int) ($parsed['age'] ?? 25);
+
+    simRespond(['ok' => true, 'character' => $parsed, 'town_id' => $townId]);
+}

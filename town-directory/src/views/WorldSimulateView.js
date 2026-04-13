@@ -13,7 +13,8 @@ import {
   apiGetCampaignRules,
   apiPlanSimulation,
 } from '../api/simulation.js';
-import { apiGetCalendar } from '../api/settings.js';
+import { apiGetCalendar, calendarToString } from '../api/settings.js';
+import { updateSidebarCalendar } from '../components/Sidebar.js';
 
 const MIN_RESIDENCY_MONTHS = 6; // Must live in town this many months before eligible to move
 
@@ -40,6 +41,13 @@ export default function WorldSimulateView(container) {
           <div class="sim-field">
             <label>⏱️ Months to Simulate (per town)</label>
             <div class="sim-months-group" id="ws-months-group"></div>
+          </div>
+          <div class="sim-field">
+            <label>📅 Days (Partial Month)</label>
+            <div style="display:flex;align-items:center;gap:0.5rem;">
+              <input type="number" id="ws-days" class="form-input" min="0" max="30" value="0" style="width:70px;text-align:center;" title="Days to simulate within each month (0 = full month)">
+              <span style="font-size:0.75rem;color:var(--text-muted)">0 = full month</span>
+            </div>
           </div>
           <div class="sim-field">
             <label>👥 Intake (Force Arrivals per town)</label>
@@ -190,6 +198,7 @@ export default function WorldSimulateView(container) {
 
     const worldInstructions = cont.querySelector('#ws-instructions')?.value?.trim() || '';
     const intakeCount = Math.max(0, Math.min(50, parseInt(cont.querySelector('#ws-intake-count')?.value) || 0));
+    const selectedDays = Math.max(0, Math.min(100, parseInt(cont.querySelector('#ws-days')?.value) || 0));
 
     // Collect per-town instructions
     const perTownInstructions = {};
@@ -394,7 +403,7 @@ export default function WorldSimulateView(container) {
           if (statusEl) statusEl.innerHTML = `<span style="color:var(--warning);">⏳ Month ${month}...</span>`;
           simLog('⏳', `Month <strong>${month}/${selectedMonths}</strong> — Simulating <strong>${town.name}</strong>...`);
 
-          const result = await apiRunSimulation(town.id, 1, rules, monthInstructions, 0);
+          const result = await apiRunSimulation(town.id, 1, rules, monthInstructions, 0, selectedDays);
 
           if (result.simulation) {
             // Debug: log the actual response structure
@@ -410,7 +419,9 @@ export default function WorldSimulateView(container) {
             const birthsList = ch.births || sim.births || [];
             const eventsList = ch.events || sim.events || [];
 
-            await apiApplySimulation(town.id, ch, sim.new_history_entry || null, 1)
+            const applyMonths = selectedDays > 0 ? 0 : 1;
+            const applyDays = selectedDays > 0 ? selectedDays : 0;
+            await apiApplySimulation(town.id, ch, sim.new_history_entry || null, applyMonths, applyDays)
               .then(applyRes => {
                 if (applyRes?.applied?.auto_levelups) {
                   totalAutoLevelups += applyRes.applied.auto_levelups;
@@ -418,6 +429,39 @@ export default function WorldSimulateView(container) {
                 }
                 if (applyRes?.applied?.levelup_details?.length) {
                   allLevelups.push(...applyRes.applied.levelup_details.map(lu => ({ ...lu, town: town.name, townId: town.id, month })));
+                }
+                // Use server's actual death/arrival counts for accuracy
+                if (applyRes?.applied) {
+                  const actualDeaths = applyRes.applied.deaths || 0;
+                  const actualArrivals = applyRes.applied.new_characters || 0;
+                  // Override frontend counts with server truth
+                  townTotals[town.id]._serverDeaths = (townTotals[town.id]._serverDeaths || 0) + actualDeaths;
+                  townTotals[town.id]._serverArrivals = (townTotals[town.id]._serverArrivals || 0) + actualArrivals;
+                  // Log successful death matches
+                  if (applyRes.applied.death_details?.length) {
+                    applyRes.applied.death_details.forEach(dd => {
+                      simLog('💀', `<strong>${town.name}</strong>: ${dd.name} — ${dd.reason}`, 'sim-log-death');
+                    });
+                  }
+                  // Log failed deaths
+                  if (applyRes.applied.deaths_failed?.length) {
+                    applyRes.applied.deaths_failed.forEach(f => {
+                      simLog('⚠️', `<strong>${town.name}</strong>: Death not applied — ${f}`, 'sim-log-error');
+                    });
+                  }
+                  // Log failed arrivals
+                  if (applyRes.applied.arrivals_failed?.length) {
+                    applyRes.applied.arrivals_failed.forEach(f => {
+                      simLog('⚠️', `<strong>${town.name}</strong>: Arrival not applied — ${f}`, 'sim-log-error');
+                    });
+                  }
+                }
+                // Debug: log calendar advancement info
+                if (applyRes?.debug_info) {
+                  console.log(`[WorldSim] Apply debug for ${town.name}:`, JSON.stringify(applyRes.debug_info));
+                }
+                if (applyRes?.applied?.calendar) {
+                  simLog('📅', `<strong>${town.name}</strong>: ${applyRes.applied.calendar}`);
                 }
               });
 
@@ -454,10 +498,12 @@ export default function WorldSimulateView(container) {
             if (statusEl) statusEl.innerHTML = `<span style="color:var(--warning);">🔄 Retrying M${month}...</span>`;
             await new Promise(r => setTimeout(r, 5000));
             try {
-              const retry = await apiRunSimulation(town.id, 1, rules, monthInstructions, 0);
+              const retry = await apiRunSimulation(town.id, 1, rules, monthInstructions, 0, selectedDays);
               if (retry.simulation) {
                 const ch = retry.simulation.changes || {};
-                await apiApplySimulation(town.id, ch, retry.simulation.new_history_entry || null, 1);
+                const retryApplyMonths = selectedDays > 0 ? 0 : 1;
+                const retryApplyDays = selectedDays > 0 ? selectedDays : 0;
+                await apiApplySimulation(town.id, ch, retry.simulation.new_history_entry || null, retryApplyMonths, retryApplyDays);
                 const births = (ch.births || []).map(b => ({ ...b, town: town.name, townId: town.id, month }));
                 const deaths = (ch.deaths || []).map(d => ({ ...d, town: town.name, townId: town.id, month }));
                 const arrivals = (ch.new_characters || []).map(a => ({ ...a, town: town.name, townId: town.id, month }));
@@ -560,7 +606,17 @@ export default function WorldSimulateView(container) {
 
     // Final log entries
     updateLogProgress(100);
-    const totalA = allArrivals.length, totalB = allBirths.length, totalD = allDeaths.length, totalE = allEvents.length, totalM = movements.length;
+    // Compute server-truth totals
+    let serverTotalArrivals = 0, serverTotalDeaths = 0;
+    Object.values(townTotals).forEach(t => {
+      serverTotalArrivals += (t._serverArrivals || 0);
+      serverTotalDeaths += (t._serverDeaths || 0);
+    });
+    const totalA = serverTotalArrivals || allArrivals.length;
+    const totalB = allBirths.length;
+    const totalD = serverTotalDeaths || allDeaths.length;
+    const totalE = allEvents.length;
+    const totalM = movements.length;
     simLog('🏁', `<strong>Simulation complete!</strong> Arrivals: ${totalA} | Births: ${totalB} | Deaths: ${totalD} | Events: ${totalE} | Moves: ${totalM}`, 'sim-log-success');
     if (Object.keys(townErrors).length > 0) {
       simLog('⚠️', `${Object.keys(townErrors).length} town(s) had errors — check results below.`);
@@ -575,6 +631,15 @@ export default function WorldSimulateView(container) {
     logOverlay.addEventListener('click', (e) => {
       if (e.target === logOverlay) logOverlay.remove();
     });
+
+    // Refresh sidebar calendar after simulation
+    try {
+      const calRefresh = await apiGetCalendar();
+      if (calRefresh?.calendar) {
+        setState({ calendar: calRefresh.calendar });
+        updateSidebarCalendar(calRefresh.calendar);
+      }
+    } catch (e) { /* non-fatal */ }
 
     // Render tabbed summary
     renderWorldResults(resultsEl, summaries, selectedMonths, allBirths, allDeaths, allArrivals, allEvents, movements, calMonthNames, calCurrentMonth, totalAutoLevelups, allLevelups);

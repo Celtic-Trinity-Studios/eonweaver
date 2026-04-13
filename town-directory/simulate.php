@@ -178,7 +178,7 @@ try {
     $uid = $userId;
 
     // Handle two-phase intake actions (defined in separate file)
-    if ($action === 'intake_roster' || $action === 'intake_flesh' || $action === 'intake_creature') {
+    if ($action === 'intake_roster' || $action === 'intake_flesh' || $action === 'intake_creature' || $action === 'intake_custom') {
         require __DIR__ . '/intake_actions.php';
         exit;
     }
@@ -761,6 +761,182 @@ PROMPT;
                 'assigned' => $assigned,
                 'characters' => $results,
                 'debug' => $debugAll ?? [],
+            ]);
+            break;
+
+        /* ═══════════════════════════════════════════════════════
+           GENERATE WEATHER — Full year weather via single AI call
+           Saved to town_meta key 'weather_year'
+           ═══════════════════════════════════════════════════════ */
+        case 'generate_weather':
+            $townId = (int) ($input['town_id'] ?? 0);
+            if (!$townId) throw new Exception('Missing town_id');
+            verifyTownOwnership($userId, $townId, $uid);
+
+            // Token budget check
+            $uTierRows = query('SELECT subscription_tier FROM users WHERE id = ?', [$userId], 0);
+            $uTier = $uTierRows ? ($uTierRows[0]['subscription_tier'] ?? 'free') : 'free';
+            if (checkTokenBudget($userId, $uTier)) {
+                throw new Exception('Token budget exceeded. Usage resets on the 1st.');
+            }
+
+            // API key
+            if (!defined('OPENROUTER_API_KEY') || !OPENROUTER_API_KEY) {
+                $keyRows = query("SELECT gemini_api_key FROM users WHERE id = ?", [$userId], 0);
+                $apiKey = $keyRows ? ($keyRows[0]['gemini_api_key'] ?? '') : '';
+                if (!$apiKey) throw new Exception('No OpenRouter API key set.');
+            } else {
+                $apiKey = OPENROUTER_API_KEY;
+            }
+
+            // Load town meta for biome
+            $metaRows = query('SELECT `key`, value FROM town_meta WHERE town_id = ?', [$townId], $uid);
+            $townMeta = [];
+            foreach ($metaRows as $m) $townMeta[$m['key']] = $m['value'];
+            $biome = trim($townMeta['biome'] ?? 'Temperate Forest');
+
+            // Load town info
+            $town = query('SELECT * FROM towns WHERE id = ?', [$townId], $uid);
+            if (!$town) throw new Exception('Town not found.');
+            $townName = $town[0]['name'];
+
+            // Load calendar
+            $campId = $town[0]['campaign_id'] ?? null;
+            if ($campId) {
+                $calRows = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id = ?', [$userId, $campId], $uid);
+            } else {
+                $calRows = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id IS NULL', [$userId], $uid);
+            }
+            $calData = $calRows ? $calRows[0] : null;
+
+            $curYear = 1490;
+            $eraName = 'DR';
+            $mpy = 12;
+            $daysPerMonthArr = array_fill(0, 12, 30);
+            $monthNamesList = ['Hammer', 'Alturiak', 'Ches', 'Tarsakh', 'Mirtul', 'Kythorn', 'Flamerule', 'Eleasis', 'Eleint', 'Marpenoth', 'Uktar', 'Nightal'];
+            if ($calData) {
+                $curYear = (int) ($calData['current_year'] ?? 1490);
+                $eraName = trim($calData['era_name'] ?? 'DR');
+                $mpy = (int) ($calData['months_per_year'] ?? 12);
+                // days_per_month: JSON array or legacy single int
+                $dpmRaw = $calData['days_per_month'] ?? '30';
+                $dpmDecoded = json_decode($dpmRaw, true);
+                if (is_array($dpmDecoded)) {
+                    $daysPerMonthArr = $dpmDecoded;
+                } else {
+                    $daysPerMonthArr = array_fill(0, $mpy, (int)($dpmRaw ?: 30));
+                }
+                $decoded = json_decode($calData['month_names'] ?? '[]', true);
+                if (!empty($decoded)) $monthNamesList = $decoded;
+            }
+
+            // Build month names JSON for the prompt
+            $monthNamesJson = [];
+            $monthInfoLines = [];
+            for ($mi = 0; $mi < $mpy; $mi++) {
+                $mName = $monthNamesList[$mi] ?? "Month " . ($mi + 1);
+                $mDays = $daysPerMonthArr[$mi] ?? 30;
+                $monthNamesJson[] = $mName;
+                $monthInfoLines[] = ($mi + 1) . ". {$mName} ({$mDays} days)";
+            }
+            $monthInfoStr = implode("\n", $monthInfoLines);
+
+            $weatherPrompt = <<<WPROMPT
+You are a D&D weather and climate expert. Generate a FULL YEAR of weather patterns for the settlement "{$townName}".
+
+## ENVIRONMENT:
+- Biome/Terrain: {$biome}
+- Calendar Year: {$curYear} {$eraName}
+- Calendar: {$mpy} months per year (each month may have different day counts)
+- Months:
+{$monthInfoStr}
+
+## RULES:
+- Weather MUST be consistent with the biome. A desert gets heat and sandstorms, not snow. An arctic tundra gets blizzards, not heatwaves.
+- Seasons should progress naturally through the year (winter → spring → summer → fall in temperate; wet/dry seasons in tropical, etc.)
+- Each month should feel distinct but connected to adjacent months.
+- Include 1-3 notable weather events per month (storms, unusual weather, etc.)
+- Temperature should be in both Fahrenheit and Celsius.
+- Make the weather feel LIVED IN — these are conditions that affect daily life, farming, trade, and combat.
+
+## OUTPUT (VALID JSON ONLY, no markdown, no code fences):
+{
+  "year": {$curYear},
+  "biome": "{$biome}",
+  "months": [
+    {
+      "month": 1,
+      "name": "Month Name",
+      "avg_temp": "45°F / 7°C",
+      "weather_pattern": "Cold rain with occasional sleet",
+      "precipitation": "moderate",
+      "wind": "gusty",
+      "description": "Narrative description of the month's weather and how it affects the settlement...",
+      "notable_events": ["Heavy frost (days 1-5)", "Thunderstorm (day 12)", "Clear spell (days 20-25)"]
+    }
+  ]
+}
+
+Generate EXACTLY {$mpy} months using the month names listed above, in order. Every month entry MUST have all fields shown.
+WPROMPT;
+
+            // Make AI call
+            $openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
+            $model = defined("OPENROUTER_MODEL_CHEAP") ? OPENROUTER_MODEL_CHEAP : (defined("OPENROUTER_MODEL") ? OPENROUTER_MODEL : "google/gemini-2.5-flash");
+            $payload = json_encode([
+                "model" => $model,
+                "messages" => [["role" => "user", "content" => $weatherPrompt]],
+                "temperature" => 0.8,
+                "max_tokens" => 8192,
+            ]);
+            $ch = curl_init($openRouterUrl);
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $payload,
+                CURLOPT_HTTPHEADER => [
+                    "Authorization: Bearer {$apiKey}",
+                    "HTTP-Referer: https://eonweaver.com",
+                    "X-Title: Eon Weaver",
+                    "Content-Type: application/json"
+                ],
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 60,
+                CURLOPT_SSL_VERIFYPEER => true
+            ]);
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            resetDB();
+
+            if ($httpCode !== 200 || !$response) {
+                throw new Exception("AI weather generation failed (HTTP {$httpCode})");
+            }
+
+            $data = json_decode($response, true);
+            if (!empty($data['usage'])) {
+                trackTokenUsage($userId, $data['usage']);
+            }
+            $respText = $data["choices"][0]["message"]["content"] ?? "";
+            $weatherData = robustJsonDecode($respText);
+
+            if (!$weatherData || empty($weatherData['months'])) {
+                throw new Exception('AI returned invalid weather data. Try again.');
+            }
+
+            // Save to town_meta
+            $weatherJson = json_encode($weatherData, JSON_UNESCAPED_UNICODE);
+            // Upsert
+            $existing = query('SELECT id FROM town_meta WHERE town_id = ? AND `key` = ?', [$townId, 'weather_year'], $uid);
+            if ($existing) {
+                query('UPDATE town_meta SET value = ? WHERE town_id = ? AND `key` = ?', [$weatherJson, $townId, 'weather_year'], $uid);
+            } else {
+                query('INSERT INTO town_meta (town_id, `key`, value) VALUES (?, ?, ?)', [$townId, 'weather_year', $weatherJson], $uid);
+            }
+
+            simRespond([
+                'ok' => true,
+                'weather' => $weatherData,
+                'months_generated' => count($weatherData['months']),
             ]);
             break;
 
