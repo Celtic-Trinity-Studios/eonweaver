@@ -123,7 +123,9 @@ function getFirstNames(string $race, string $gender): array
                 'Asha', 'Basha', 'Casha', 'Dasha', 'Fasha', 'Gasha', 'Hasha', 'Jasha', 'Kasha', 'Lasha', 'Masha', 'Nasha', 'Pasha', 'Rasha', 'Sasha', 'Tasha', 'Vasha', 'Washa', 'Yasha', 'Zasha',
             ],
         ],
-    ];\n\n    // Default fallback for unknown/custom races
+    ];
+
+    // Default fallback for unknown/custom races
     $raceKey = $race;
     if (!isset($pools[$raceKey])) {
         // Try to match partial names (e.g., "Wood Elf" → "Elf")
