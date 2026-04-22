@@ -371,11 +371,13 @@ try {
 
     // Migration: add feature_key
     try {
-        $pdo->exec("ALTER TABLE user_token_usage ADD COLUMN feature_key VARCHAR(100) DEFAULT 'global' AFTER year_month");
+        $pdo->exec("ALTER TABLE user_token_usage ADD COLUMN feature_key VARCHAR(100) DEFAULT 'global' AFTER `year_month`");
         $pdo->exec("ALTER TABLE user_token_usage DROP INDEX unique_user_month");
         $pdo->exec("ALTER TABLE user_token_usage ADD UNIQUE KEY unique_user_month_feature (user_id, `year_month`, feature_key)");
         $results[] = '✅ Added feature_key to user_token_usage';
-    } catch (Exception $e) { /* already exists or column modified */ }
+    } catch (Exception $e) { 
+        $results[] = '❌ Failed feature_key migration: ' . $e->getMessage();
+    }
 
     // Seed default token limits into site_settings (4-tier model)
     try {
