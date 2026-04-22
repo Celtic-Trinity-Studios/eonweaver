@@ -1398,11 +1398,68 @@ export default function AdminDashboardView(container) {
             let totalMonthCalls = 0;
             let usersHtml = '';
 
+            const FEATURE_MAP = {
+                'SIM_STORY': 'Story Simulation',
+                'SIM_STRUCTURED': 'Structured Data Extraction',
+                'SIM_SINGLE': 'Basic Town Simulation',
+                'SIM_WORLD': 'World Simulation',
+                'SIM_PLAN': 'Simulation Planning',
+                'SIM_RUN': 'Simulation Execution',
+                'LEVEL_UP': 'Level Up Wizard',
+                'INTAKE_ROSTER': 'Town Population Intake',
+                'INTAKE_FLESH': 'NPC Background Generation',
+                'INTAKE_CUSTOM': 'Custom NPC Intake',
+                'PORTRAIT': 'Character Portrait Generator',
+                'WEATHER': 'Weather Simulation',
+                'global': 'Legacy / Global Usage'
+            };
+
             for (const [username, featureRows] of Object.entries(users)) {
                 const userTokens = featureRows.reduce((sum, r) => sum + parseInt(r.tokens_used || 0), 0);
                 const userCalls = featureRows.reduce((sum, r) => sum + parseInt(r.call_count || 0), 0);
                 totalMonthTokens += userTokens;
                 totalMonthCalls += userCalls;
+
+                const usageByKey = {};
+                featureRows.forEach(r => {
+                    const key = r.feature_key || 'global';
+                    usageByKey[key] = {
+                        tokens: parseInt(r.tokens_used || 0),
+                        calls: parseInt(r.call_count || 0)
+                    };
+                });
+
+                let expandedRowsHtml = '';
+                for (const [fKey, label] of Object.entries(FEATURE_MAP)) {
+                    const used = usageByKey[fKey] || { tokens: 0, calls: 0 };
+                    // Optionally hide global if it's 0 to keep the list purely feature-focused for new data
+                    if (fKey === 'global' && used.tokens === 0) continue;
+                    
+                    expandedRowsHtml += `
+                        <tr>
+                            <td><span class="card-badge" style="display:inline-block; min-width: 220px;">${esc(label)}</span></td>
+                            <td style="${used.tokens === 0 ? 'opacity:0.3;' : ''}">${formatTokens(used.tokens)}</td>
+                            <td style="${used.calls === 0 ? 'opacity:0.3;' : ''}">${used.calls}</td>
+                            <td style="${used.tokens === 0 ? 'opacity:0.3;' : ''}">$${estimateCost(used.tokens)}</td>
+                        </tr>
+                    `;
+                }
+
+                // Add any unexpected/future keys that aren't in our master list yet
+                Object.keys(usageByKey).forEach(k => {
+                    if (!FEATURE_MAP[k]) {
+                        const used = usageByKey[k];
+                        expandedRowsHtml += `
+                            <tr>
+                                <td><span class="card-badge" style="display:inline-block; min-width: 220px;">Unknown: ${esc(k)}</span></td>
+                                <td>${formatTokens(used.tokens)}</td>
+                                <td>${used.calls}</td>
+                                <td>$${estimateCost(used.tokens)}</td>
+                            </tr>
+                        `;
+                    }
+                });
+
 
                 usersHtml += `
                   <tr class="usage-user-row clickable" style="cursor: pointer;" title="Click to expand breakdown">
@@ -1414,16 +1471,9 @@ export default function AdminDashboardView(container) {
                   <tr class="usage-features-row" style="display: none; background: rgba(0,0,0,0.2);">
                     <td colspan="4" style="padding: 10px 40px; border-left: 3px solid var(--accent);">
                         <table class="admin-table compact" style="margin: 0; background: transparent;">
-                            <thead><tr><th>Feature</th><th>Tokens</th><th>Calls</th><th>Est. Cost</th></tr></thead>
+                            <thead><tr><th style="min-width: 220px;">Feature</th><th>Tokens</th><th>Calls</th><th>Est. Cost</th></tr></thead>
                             <tbody>
-                                ${featureRows.map(r => `
-                                <tr>
-                                    <td><span class="card-badge">${esc(r.feature_key || 'global')}</span></td>
-                                    <td>${formatTokens(r.tokens_used)}</td>
-                                    <td>${r.call_count}</td>
-                                    <td>$${estimateCost(r.tokens_used)}</td>
-                                </tr>
-                                `).join('')}
+                                ${expandedRowsHtml}
                             </tbody>
                         </table>
                     </td>
