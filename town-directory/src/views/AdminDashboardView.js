@@ -1387,40 +1387,78 @@ export default function AdminDashboardView(container) {
 
         const byMonth = {};
         usage.forEach(row => {
-            if (!byMonth[row.year_month]) byMonth[row.year_month] = [];
-            byMonth[row.year_month].push(row);
+            if (!byMonth[row.year_month]) byMonth[row.year_month] = {};
+            if (!byMonth[row.year_month][row.username]) byMonth[row.year_month][row.username] = [];
+            byMonth[row.year_month][row.username].push(row);
         });
 
         let html = '<div class="admin-section-header"><h2>Token Usage by Month</h2></div>';
-        for (const [month, rows] of Object.entries(byMonth)) {
-            const totalTokens = rows.reduce((s, r) => s + parseInt(r.tokens_used || 0), 0);
-            const totalCalls = rows.reduce((s, r) => s + parseInt(r.call_count || 0), 0);
+        for (const [month, users] of Object.entries(byMonth)) {
+            let totalMonthTokens = 0;
+            let totalMonthCalls = 0;
+            let usersHtml = '';
+
+            for (const [username, featureRows] of Object.entries(users)) {
+                const userTokens = featureRows.reduce((sum, r) => sum + parseInt(r.tokens_used || 0), 0);
+                const userCalls = featureRows.reduce((sum, r) => sum + parseInt(r.call_count || 0), 0);
+                totalMonthTokens += userTokens;
+                totalMonthCalls += userCalls;
+
+                usersHtml += `
+                  <tr class="usage-user-row clickable" style="cursor: pointer;" title="Click to expand breakdown">
+                    <td><strong>${esc(username)}</strong> <span style="font-size: 0.8em; opacity: 0.7; margin-left: 8px;">(Click to expand)</span></td>
+                    <td>${formatTokens(userTokens)}</td>
+                    <td>${userCalls}</td>
+                    <td>$${estimateCost(userTokens)}</td>
+                  </tr>
+                  <tr class="usage-features-row" style="display: none; background: rgba(0,0,0,0.2);">
+                    <td colspan="4" style="padding: 10px 40px; border-left: 3px solid var(--accent);">
+                        <table class="admin-table compact" style="margin: 0; background: transparent;">
+                            <thead><tr><th>Feature</th><th>Tokens</th><th>Calls</th><th>Est. Cost</th></tr></thead>
+                            <tbody>
+                                ${featureRows.map(r => `
+                                <tr>
+                                    <td><span class="card-badge">${esc(r.feature_key || 'global')}</span></td>
+                                    <td>${formatTokens(r.tokens_used)}</td>
+                                    <td>${r.call_count}</td>
+                                    <td>$${estimateCost(r.tokens_used)}</td>
+                                </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </td>
+                  </tr>
+                `;
+            }
+
             html += `
             <div class="usage-month-block">
               <div class="usage-month-header">
                 <h3>📅 ${month}</h3>
-                <span class="usage-month-total">${formatTokens(totalTokens)} tokens · ${totalCalls} calls · ~$${estimateCost(totalTokens)}</span>
+                <span class="usage-month-total">${formatTokens(totalMonthTokens)} tokens · ${totalMonthCalls} calls · ~$${estimateCost(totalMonthTokens)}</span>
               </div>
               <table class="admin-table compact">
                 <thead>
-                  <tr><th>User</th><th>Feature</th><th>Tokens</th><th>Calls</th><th>Est. Cost</th></tr>
+                  <tr><th>User</th><th>Total Tokens</th><th>Total Calls</th><th>Est. Cost</th></tr>
                 </thead>
                 <tbody>
-                  ${rows.map(r => `
-                  <tr>
-                    <td>${esc(r.username)}</td>
-                    <td><span class="card-badge">${esc(r.feature_key || 'global')}</span></td>
-                    <td>${formatTokens(r.tokens_used)}</td>
-                    <td>${r.call_count}</td>
-                    <td>$${estimateCost(r.tokens_used)}</td>
-                  </tr>
-                  `).join('')}
+                  ${usersHtml}
                 </tbody>
               </table>
             </div>
             `;
         }
         contentEl.innerHTML = html;
+
+        // Add event listeners for toggling
+        contentEl.querySelectorAll('.usage-user-row').forEach(row => {
+            row.addEventListener('click', () => {
+                const featuresRow = row.nextElementSibling;
+                if (featuresRow && featuresRow.classList.contains('usage-features-row')) {
+                    featuresRow.style.display = featuresRow.style.display === 'none' ? 'table-row' : 'none';
+                }
+            });
+        });
     }
 
     // ═══════════════════════════════════════
