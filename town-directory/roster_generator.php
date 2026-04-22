@@ -193,7 +193,9 @@ function getSurnames(string $race): array
             'Aardvark', 'Barg', 'Carg', 'Darg', 'Farg', 'Garg', 'Harg', 'Jarg', 'Karg', 'Larg', 'Marg', 'Narg', 'Parg', 'Qarg', 'Rarg', 'Sarg', 'Targ', 'Varg', 'Warg', 'Xarg', 'Yarg', 'Zarg',
             'Brute', 'Crush', 'Destroyer', 'Executioner', 'Fierce', 'Grim', 'Harsh', 'Iron', 'Juggernaut', 'Killer', 'Lethal', 'Merciless', 'Nightmare', 'Ogre', 'Punisher', 'Quake', 'Rage', 'Savage', 'Terror', 'Ugly', 'Vicious', 'Wrath', 'Xtreme', 'Yell', 'Zealot',
         ],
-    ];\n\n    // Handle unknown races: try partial match or fallback to human/fantasy
+    ];
+
+    // Handle unknown races: try partial match or fallback to human/fantasy
     $raceKey = $race;
     if (!isset($pools[$raceKey])) {
         foreach (array_keys($pools) as $knownRace) {
