@@ -32,6 +32,21 @@ define('SRD_DBS', [
 
 // ── AI Simulation (OpenRouter API) ───────────────────────
 define('OPENROUTER_API_KEY', 'sk-or-v1-your-key-here');
+// ── Per-Feature API Keys (OpenRouter) ─────────────────────
+// Each can be a separate OpenRouter key with independent spend limits.
+define('OPENROUTER_KEY_SIM_STORY',       'sk-or-v1-your-key-here');
+define('OPENROUTER_KEY_SIM_STRUCTURED',  'sk-or-v1-your-key-here');
+define('OPENROUTER_KEY_SIM_SINGLE',      'sk-or-v1-your-key-here');
+define('OPENROUTER_KEY_SIM_WORLD',       'sk-or-v1-your-key-here');
+define('OPENROUTER_KEY_SIM_PLAN',        'sk-or-v1-your-key-here');
+define('OPENROUTER_KEY_SIM_RUN',         'sk-or-v1-your-key-here');
+define('OPENROUTER_KEY_LEVEL_UP',        'sk-or-v1-your-key-here');
+define('OPENROUTER_KEY_INTAKE_ROSTER',   'sk-or-v1-your-key-here');
+define('OPENROUTER_KEY_INTAKE_FLESH',    'sk-or-v1-your-key-here');
+define('OPENROUTER_KEY_INTAKE_CUSTOM',   'sk-or-v1-your-key-here');
+define('OPENROUTER_KEY_PORTRAIT',        'sk-or-v1-your-key-here');
+define('OPENROUTER_KEY_WEATHER',         'sk-or-v1-your-key-here');
+
 define('OPENROUTER_MODEL', 'google/gemini-2.5-flash');
 define('OPENROUTER_MODEL_SMART', 'google/gemini-2.5-flash');
 define('OPENROUTER_MODEL_CHEAP', 'google/gemini-2.5-flash-lite');

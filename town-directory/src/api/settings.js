@@ -12,6 +12,10 @@ export function apiSaveSetting(key, value) {
     return apiFetch('save_settings', { method: 'POST', body: { key, value } });
 }
 
+export function apiGetUsage() {
+    return apiFetch('get_usage');
+}
+
 /* ── Calendar ──────────────────────────────────────────── */
 export function apiGetCalendar() {
     return apiFetch('get_calendar');

@@ -221,8 +221,13 @@ function recalcCharStats($charId, $uid)
  * @param int $userId  The user's ID (from shared DB)
  * @param array $usage The 'usage' object from OpenRouter response
  */
-function trackTokenUsage($userId, $usage)
+function trackTokenUsage($userId, $usage, $featureKey = null)
 {
+    global $LAST_RESOLVED_FEATURE_KEY;
+    if (!$featureKey) {
+        $featureKey = $LAST_RESOLVED_FEATURE_KEY ?? 'global';
+    }
+
     if (!$userId || !$usage) return;
 
     $totalTokens = (int) ($usage['total_tokens'] ?? 0);
@@ -236,13 +241,13 @@ function trackTokenUsage($userId, $usage)
 
     try {
         execute(
-            "INSERT INTO user_token_usage (user_id, `year_month`, tokens_used, call_count, updated_at)
-             VALUES (?, ?, ?, 1, NOW())
+            "INSERT INTO user_token_usage (user_id, `year_month`, feature_key, tokens_used, call_count, updated_at)
+             VALUES (?, ?, ?, ?, 1, NOW())
              ON DUPLICATE KEY UPDATE
                 tokens_used = tokens_used + VALUES(tokens_used),
                 call_count = call_count + 1,
                 updated_at = NOW()",
-            [$userId, $yearMonth, $totalTokens],
+            [$userId, $yearMonth, $featureKey, $totalTokens],
             0 // shared DB
         );
     } catch (Exception $e) {
@@ -256,7 +261,7 @@ function trackTokenUsage($userId, $usage)
  * Returns true if they're OVER budget (should be blocked).
  *
  * @param int $userId  The user's ID
- * @param string $tier The user's subscription tier ('free' or 'subscriber')
+ * @param string $tier The user's subscription tier ('free', 'adventurer', 'guild_master', or 'world_builder')
  * @return bool True if over budget
  */
 function checkTokenBudget($userId, $tier = 'free')
@@ -266,7 +271,8 @@ function checkTokenBudget($userId, $tier = 'free')
     // Load limits from site_settings (admin-adjustable without code deploy)
     $limitKey = 'token_limit_' . $tier;
     $limitRows = query("SELECT value FROM site_settings WHERE `key` = ?", [$limitKey], 0);
-    $limit = $limitRows ? (int) $limitRows[0]['value'] : ($tier === 'subscriber' ? 5000000 : 500000);
+    $fallbacks = ['free' => 1500000, 'adventurer' => 6000000, 'guild_master' => 20000000, 'world_builder' => 60000000];
+    $limit = $limitRows ? (int) $limitRows[0]['value'] : ($fallbacks[$tier] ?? 1500000);
 
     // 0 or negative limit = unlimited (safety override)
     if ($limit <= 0) return false;
@@ -279,4 +285,78 @@ function checkTokenBudget($userId, $tier = 'free')
     $used = $usageRows ? (int) $usageRows[0]['tokens_used'] : 0;
 
     return $used >= $limit;
+}
+
+/**
+ * Roll a random level for a new NPC based on town gen_rules.
+ * If intake_level is set (> 0), returns that exact level.
+ * Otherwise rolls weighted: 60% L1, 25% L2, 10% L3, 5% L4+
+ * Result is always capped at max_level.
+ *
+ * @param array $genRules  Decoded gen_rules JSON from town_meta
+ * @return int The level to assign
+ */
+function rollIntakeLevel($genRules)
+{
+    $intakeLevel = isset($genRules['intake_level']) ? (int) $genRules['intake_level'] : 0;
+    $maxLevel = isset($genRules['max_level']) ? (int) $genRules['max_level'] : 20;
+    if ($maxLevel <= 0) $maxLevel = 20;
+
+    if ($intakeLevel > 0) {
+        return min($intakeLevel, $maxLevel);
+    }
+
+    // Weighted random roll
+    $roll = random_int(1, 100);
+    if ($roll <= 60) {
+        $level = 1;
+    } elseif ($roll <= 85) {
+        $level = 2;
+    } elseif ($roll <= 95) {
+        $level = 3;
+    } else {
+        $level = random_int(4, min(6, $maxLevel));
+    }
+
+    return min($level, $maxLevel);
+}
+
+/**
+ * Override the level in a class string (e.g. "Warrior 6" → "Warrior 2").
+ *
+ * @param string $classStr  The original class string like "Commoner 1"
+ * @param int    $newLevel  The level to set
+ * @return string The updated class string
+ */
+function applyLevelToClass($classStr, $newLevel)
+{
+    $classStr = trim($classStr);
+    if (preg_match('/^(.+?)\s+\d+$/', $classStr, $m)) {
+        return trim($m[1]) . ' ' . $newLevel;
+    }
+    // No level found in string — append
+    return $classStr . ' ' . $newLevel;
+}
+
+/**
+ * Resolve the API key for a specific feature.
+ * Falls back to OPENROUTER_API_KEY → user DB key.
+ */
+function resolveApiKey(string $featureKey, int $userId): string {
+    global $LAST_RESOLVED_FEATURE_KEY;
+    $LAST_RESOLVED_FEATURE_KEY = str_replace('OPENROUTER_KEY_', '', $featureKey);
+
+    // 1. Feature-specific key
+    if (defined($featureKey) && constant($featureKey)) {
+        return constant($featureKey);
+    }
+    // 2. Global fallback
+    if (defined('OPENROUTER_API_KEY') && OPENROUTER_API_KEY) {
+        return OPENROUTER_API_KEY;
+    }
+    // 3. User DB
+    $rows = query("SELECT gemini_api_key FROM users WHERE id = ?", [$userId], 0);
+    $key = $rows ? ($rows[0]['gemini_api_key'] ?? '') : '';
+    if (!$key) throw new Exception('No OpenRouter API key set. Go to ⚙️ Settings to add your key.');
+    return $key;
 }

@@ -61,9 +61,12 @@ try {
     // Check tier-based limits (tier from shared MySQL)
     $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
     $tier = $udata[0]['subscription_tier'] ?? 'free';
-    $maxFileSize = ($tier === 'subscriber') ? 10 * 1024 * 1024 : 2 * 1024 * 1024;
-    $maxFiles = ($tier === 'subscriber') ? 100 : 10;
-    $maxStorage = ($tier === 'subscriber') ? 500 * 1024 * 1024 : 20 * 1024 * 1024;
+    $maxFileSizes = ['free' => 2 * 1024 * 1024, 'adventurer' => 5 * 1024 * 1024, 'guild_master' => 10 * 1024 * 1024, 'world_builder' => 20 * 1024 * 1024];
+    $maxFilesCounts = ['free' => 10, 'adventurer' => 50, 'guild_master' => 200, 'world_builder' => 9999];
+    $maxStorages = ['free' => 20 * 1024 * 1024, 'adventurer' => 100 * 1024 * 1024, 'guild_master' => 500 * 1024 * 1024, 'world_builder' => 2048 * 1024 * 1024];
+    $maxFileSize = $maxFileSizes[$tier] ?? $maxFileSizes['free'];
+    $maxFiles = $maxFilesCounts[$tier] ?? $maxFilesCounts['free'];
+    $maxStorage = $maxStorages[$tier] ?? $maxStorages['free'];
 
     if ($file['size'] > $maxFileSize) {
         $limitMB = $maxFileSize / (1024 * 1024);

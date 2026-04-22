@@ -493,33 +493,51 @@ export default function WorldSimulateView(container) {
             simLog('⚠️', `<strong>${town.name}</strong> month ${month}: No simulation data returned`);
           }
         } catch (err) {
-          // Retry once on 503 (rate limit) after a delay
-          if (err.message?.includes('503')) {
-            if (statusEl) statusEl.innerHTML = `<span style="color:var(--warning);">🔄 Retrying M${month}...</span>`;
-            await new Promise(r => setTimeout(r, 5000));
+          // Retry up to 2 times on ANY error with exponential backoff
+          let retrySuccess = false;
+          const maxRetries = 2;
+          const retryDelays = [5000, 10000];
+          for (let attempt = 1; attempt <= maxRetries && !retrySuccess; attempt++) {
+            const delay = retryDelays[attempt - 1] || 10000;
+            if (statusEl) statusEl.innerHTML = `<span style="color:var(--warning);">🔄 Retry ${attempt}/${maxRetries} M${month}...</span>`;
+            simLog('🔄', `<strong>${town.name}</strong> M${month}: Retry ${attempt}/${maxRetries} after error: ${err.message.slice(0, 60)}...`);
+            await new Promise(r => setTimeout(r, delay));
             try {
               const retry = await apiRunSimulation(town.id, 1, rules, monthInstructions, 0, selectedDays);
               if (retry.simulation) {
                 const ch = retry.simulation.changes || {};
                 const retryApplyMonths = selectedDays > 0 ? 0 : 1;
                 const retryApplyDays = selectedDays > 0 ? selectedDays : 0;
-                await apiApplySimulation(town.id, ch, retry.simulation.new_history_entry || null, retryApplyMonths, retryApplyDays);
-                const births = (ch.births || []).map(b => ({ ...b, town: town.name, townId: town.id, month }));
-                const deaths = (ch.deaths || []).map(d => ({ ...d, town: town.name, townId: town.id, month }));
-                const arrivals = (ch.new_characters || []).map(a => ({ ...a, town: town.name, townId: town.id, month }));
-                const events = (ch.events || []).map(e => ({ ...e, town: town.name, townId: town.id, month }));
+                const retryApplyRes = await apiApplySimulation(town.id, ch, retry.simulation.new_history_entry || null, retryApplyMonths, retryApplyDays);
+                const births = (ch.births || retry.simulation.births || []).map(b => ({ ...b, town: town.name, townId: town.id, month }));
+                const deaths = (ch.deaths || retry.simulation.deaths || []).map(d => ({ ...d, town: town.name, townId: town.id, month }));
+                const arrivals = (ch.new_characters || retry.simulation.new_characters || []).map(a => ({ ...a, town: town.name, townId: town.id, month }));
+                const events = (ch.events || retry.simulation.events || []).map(e => ({ ...e, town: town.name, townId: town.id, month }));
                 allBirths.push(...births); allDeaths.push(...deaths); allArrivals.push(...arrivals); allEvents.push(...events);
                 townTotals[town.id].arrivals += arrivals.length;
                 townTotals[town.id].births += births.length;
                 townTotals[town.id].deaths += deaths.length;
                 townNarratives[town.id].push(retry.simulation.new_history_entry?.content || '');
-                if (statusEl) { const t = townTotals[town.id]; statusEl.innerHTML = `<span style="color:var(--success);">✅ ${month}/${selectedMonths}</span> <span style="font-size:0.7rem;color:var(--text-muted);margin-left:0.5rem;">+${t.arrivals} 👤  ${t.births} 👶  ${t.deaths} 💀</span>`; }
+                if (retryApplyRes?.applied?.auto_levelups) {
+                  totalAutoLevelups += retryApplyRes.applied.auto_levelups;
+                  townTotals[town.id].levelups = (townTotals[town.id].levelups || 0) + retryApplyRes.applied.auto_levelups;
+                }
+                if (retryApplyRes?.applied?.levelup_details?.length) {
+                  allLevelups.push(...retryApplyRes.applied.levelup_details.map(lu => ({ ...lu, town: town.name, townId: town.id, month })));
+                }
+                if (statusEl) { const t = townTotals[town.id]; const lvlText = t.levelups ? ` ⬆${t.levelups}` : ''; statusEl.innerHTML = `<span style="color:var(--success);">✅ ${month}/${selectedMonths}</span> <span style="font-size:0.7rem;color:var(--text-muted);margin-left:0.5rem;">+${t.arrivals} 👤  ${t.births} 👶  ${t.deaths} 💀${lvlText}</span>`; }
+                simLog('✅', `<strong>${town.name}</strong> M${month}: Retry ${attempt} succeeded!`, 'sim-log-success');
+                retrySuccess = true;
               }
             } catch (retryErr) {
-              townErrors[town.id] = (townErrors[town.id] || '') + ` Month ${month}: ${retryErr.message}`;
-              if (statusEl) statusEl.innerHTML = `<span style="color:var(--error);">❌ M${month}: ${retryErr.message.slice(0, 30)}</span>`;
+              if (attempt === maxRetries) {
+                townErrors[town.id] = (townErrors[town.id] || '') + ` Month ${month}: ${retryErr.message}`;
+                if (statusEl) statusEl.innerHTML = `<span style="color:var(--error);">❌ M${month}: Failed after ${maxRetries} retries</span>`;
+                simLog('❌', `<strong>${town.name}</strong> M${month}: Failed after ${maxRetries} retries — ${retryErr.message.slice(0, 60)}`, 'sim-log-error');
+              }
             }
-          } else {
+          }
+          if (!retrySuccess && maxRetries === 0) {
             townErrors[town.id] = (townErrors[town.id] || '') + ` Month ${month}: ${err.message}`;
             if (statusEl) statusEl.innerHTML = `<span style="color:var(--error);">❌ M${month}: ${err.message.slice(0, 30)}</span>`;
             simLog('❌', `<strong>${town.name}</strong> M${month}: ${err.message.slice(0, 80)}`, 'sim-log-error');

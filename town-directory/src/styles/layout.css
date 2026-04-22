@@ -1,4 +1,4 @@
-﻿/* Eon Weaver — Layout
+/* Eon Weaver — Layout
    Shell, sidebar, split panels, dashboard & settings grids. */
 
 /* app shell */
@@ -40,6 +40,52 @@
     font-size: .75rem;
     color: var(--text-muted);
     margin-top: 2px;
+}
+
+/* Sidebar usage meter */
+.sidebar-usage {
+    margin-top: .5rem;
+}
+
+.sidebar-usage-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: .3rem;
+}
+
+.sidebar-tier-badge {
+    padding: .1rem .45rem;
+    border-radius: 10px;
+    font-size: .6rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+}
+
+.sidebar-usage-pct {
+    font-size: .72rem;
+    font-weight: 700;
+}
+
+.sidebar-usage-track {
+    width: 100%;
+    height: 5px;
+    background: rgba(255, 255, 255, .08);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.sidebar-usage-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width .8s ease;
+}
+
+.sidebar-usage-label {
+    font-size: .6rem;
+    color: var(--text-muted);
+    margin-top: .2rem;
 }
 
 .sidebar-calendar {

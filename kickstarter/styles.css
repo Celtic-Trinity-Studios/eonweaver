@@ -1266,7 +1266,7 @@ ul {
 /* ── Reward Cards ─────────────────────────────────────────── */
 .rewards-grid {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(3, 1fr);
     gap: 24px;
     align-items: start;
 }
@@ -1301,6 +1301,16 @@ ul {
     background: linear-gradient(145deg, rgba(124, 92, 191, 0.08), var(--bg-card));
 }
 
+.reward-mythic {
+    border-color: #e74c3c;
+    background: linear-gradient(145deg, rgba(231, 76, 60, 0.08), rgba(124, 92, 191, 0.06), var(--bg-card));
+}
+
+.reward-mythic:hover {
+    border-color: #e74c3c;
+    box-shadow: 0 8px 40px rgba(231, 76, 60, 0.15), var(--shadow-elevated);
+}
+
 .reward-badge {
     position: absolute;
     top: -14px;
@@ -1317,6 +1327,11 @@ ul {
     white-space: nowrap;
 }
 
+.reward-badge-limited {
+    background: linear-gradient(135deg, var(--accent-purple), #e74c3c);
+    color: #fff;
+}
+
 .reward-tier {
     font-family: var(--font-display);
     font-size: 1.2rem;
@@ -1330,6 +1345,15 @@ ul {
     font-weight: 900;
     margin-bottom: 20px;
     color: var(--text-primary);
+}
+
+.reward-tagline {
+    font-family: var(--font-narrative);
+    font-style: italic;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+    margin-top: -12px;
 }
 
 .reward-desc {
@@ -1356,6 +1380,16 @@ ul {
     left: 0;
     color: var(--accent-gold);
     font-size: 0.7rem;
+}
+
+.reward-desc li.reward-physical {
+    color: var(--accent-gold);
+    font-weight: 500;
+}
+
+.reward-desc li.reward-physical::before {
+    content: '🎁';
+    font-size: 0.8rem;
 }
 
 .reward-backers {
@@ -1858,6 +1892,232 @@ ul {
     opacity: 0.6;
 }
 
+/* ── $1 Reward Card ──────────────────────────────────────── */
+.reward-dollar {
+    border-color: rgba(34, 197, 94, 0.3);
+    background: linear-gradient(145deg, rgba(34, 197, 94, 0.06), var(--bg-card));
+}
+
+.reward-dollar:hover {
+    border-color: var(--accent-green);
+    box-shadow: 0 8px 40px rgba(34, 197, 94, 0.12), var(--shadow-elevated);
+}
+
+/* ── Early Bird Reward Card ──────────────────────────────── */
+.reward-earlybird {
+    border-color: #f59e0b;
+    background: linear-gradient(145deg, rgba(245, 158, 11, 0.08), rgba(212, 168, 67, 0.04), var(--bg-card));
+}
+
+.reward-earlybird:hover {
+    border-color: #f59e0b;
+    box-shadow: 0 8px 40px rgba(245, 158, 11, 0.15), var(--shadow-elevated);
+}
+
+.reward-badge-earlybird {
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #0a0a12;
+}
+
+.reward-price-original {
+    font-family: var(--font-body);
+    font-size: 1rem;
+    color: var(--text-muted);
+    text-decoration: line-through;
+    margin-top: -16px;
+    margin-bottom: 12px;
+}
+
+.btn-earlybird {
+    background: linear-gradient(135deg, #f59e0b, #d97706) !important;
+    color: #0a0a12 !important;
+    font-weight: 700;
+}
+
+.btn-earlybird:hover {
+    box-shadow: 0 4px 20px rgba(245, 158, 11, 0.4);
+    transform: translateY(-2px);
+}
+
+/* ── Add-Ons Section ─────────────────────────────────────── */
+.addons-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+}
+
+.addon-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 28px 24px;
+    text-align: center;
+    transition: all 0.4s ease;
+    position: relative;
+}
+
+.addon-card:hover {
+    transform: translateY(-6px);
+    box-shadow: var(--shadow-elevated);
+    border-color: var(--accent-gold-dark);
+}
+
+.addon-icon {
+    font-size: 2.4rem;
+    margin-bottom: 16px;
+    filter: drop-shadow(0 2px 8px rgba(212, 168, 67, 0.2));
+}
+
+.addon-card h3 {
+    font-family: var(--font-display);
+    font-size: 1rem;
+    color: var(--accent-gold);
+    margin-bottom: 10px;
+}
+
+.addon-card p {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin-bottom: 16px;
+}
+
+.addon-price {
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 900;
+    color: var(--text-primary);
+    padding-top: 12px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+/* ── About the Creator Section ───────────────────────────── */
+.about-creator {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    gap: 48px;
+    align-items: start;
+    max-width: 1000px;
+    margin: 0 auto;
+}
+
+.about-shield {
+    text-align: center;
+    padding: 40px 24px;
+    background: var(--gradient-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    position: sticky;
+    top: 100px;
+}
+
+.about-shield-icon {
+    font-size: 4rem;
+    margin-bottom: 16px;
+    filter: drop-shadow(0 4px 12px rgba(212, 168, 67, 0.3));
+}
+
+.about-shield h3 {
+    font-family: var(--font-display);
+    font-size: 1.2rem;
+    color: var(--accent-gold);
+    margin-bottom: 8px;
+}
+
+.about-shield-tagline {
+    font-family: var(--font-narrative);
+    font-style: italic;
+    font-size: 0.9rem;
+    color: var(--text-muted);
+}
+
+.about-creator-content {
+    display: flex;
+    flex-direction: column;
+    gap: 28px;
+}
+
+.about-block h4 {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    color: var(--accent-gold);
+    margin-bottom: 12px;
+}
+
+.about-block p {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    line-height: 1.8;
+}
+
+.about-offerings h4 {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    color: var(--accent-gold);
+    margin-bottom: 16px;
+}
+
+.about-offerings ul {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    list-style: none;
+}
+
+.about-offerings li {
+    font-size: 0.9rem;
+    color: var(--text-secondary);
+    padding-left: 24px;
+    position: relative;
+    line-height: 1.6;
+}
+
+.about-offerings li::before {
+    content: '⚔';
+    position: absolute;
+    left: 0;
+    font-size: 0.8rem;
+    color: var(--accent-gold);
+}
+
+.about-join {
+    padding-top: 24px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.about-join p {
+    font-size: 0.95rem;
+    color: var(--text-secondary);
+    line-height: 1.8;
+    margin-bottom: 24px;
+}
+
+.btn-discord {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 32px;
+    background: linear-gradient(135deg, #5865F2, #7289DA);
+    color: #fff;
+    border: none;
+    border-radius: var(--radius-md);
+    font-family: var(--font-body);
+    font-size: 1rem;
+    font-weight: 600;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    cursor: pointer;
+}
+
+.btn-discord:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 30px rgba(88, 101, 242, 0.4);
+}
+
+.btn-discord span {
+    font-size: 1.2rem;
+}
+
 /* ═══════════════════════════════════════════════════════════
    RESPONSIVE
    ═══════════════════════════════════════════════════════════ */
@@ -1868,6 +2128,18 @@ ul {
 
     .rewards-grid {
         grid-template-columns: repeat(2, 1fr);
+    }
+
+    .addons-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .reward-popular {
+        transform: none;
+    }
+
+    .reward-popular:hover {
+        transform: translateY(-8px);
     }
 
     .steps-timeline {
@@ -1919,20 +2191,24 @@ ul {
         grid-template-columns: 1fr;
     }
 
+    .addons-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .about-creator {
+        grid-template-columns: 1fr;
+    }
+
+    .about-shield {
+        position: static;
+    }
+
     .steps-timeline {
         grid-template-columns: 1fr;
     }
 
     .footer-grid {
         grid-template-columns: 1fr;
-    }
-
-    .reward-popular {
-        transform: none;
-    }
-
-    .reward-popular:hover {
-        transform: translateY(-8px);
     }
 
     .char-stats-grid {

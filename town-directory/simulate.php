@@ -56,8 +56,8 @@ function simRespond(array $data): void
 /* ── Robust JSON decode with multi-stage sanitization ── */
 function robustJsonDecode(string $text): ?array {
     // Strip markdown code fences
-    $text = preg_replace('/^\s*```json\s*/i', '', $text);
-    $text = preg_replace('/\s*```\s*$/', '', $text);
+    $text = preg_replace('/^\s*`+\w*\s*/i', '', $text);
+    $text = preg_replace('/\s*`+\s*$/', '', $text);
     $text = trim($text);
 
     // Stage 1: Replace control chars inside JSON string values
@@ -190,13 +190,11 @@ try {
             // Check OpenRouter API key
             $apiKey = '';
             $keySource = 'none';
-            if (defined('OPENROUTER_API_KEY') && OPENROUTER_API_KEY) {
-                $apiKey = OPENROUTER_API_KEY;
-                $keySource = 'config.php (global)';
-            } else {
-                $keyRows = query("SELECT gemini_api_key FROM users WHERE id = ?", [$userId], 0);
-                $apiKey = $keyRows ? ($keyRows[0]['gemini_api_key'] ?? '') : '';
-                $keySource = $apiKey ? 'user DB (gemini_api_key)' : 'NOT FOUND';
+            try {
+                $apiKey = resolveApiKey('OPENROUTER_API_KEY', $userId);
+                $keySource = 'resolved successfully';
+            } catch (Exception $e) {
+                $keySource = 'NOT FOUND';
             }
 
             $model = defined('OPENROUTER_MODEL') ? OPENROUTER_MODEL : '(not set)';
@@ -264,20 +262,15 @@ try {
                 throw new Exception("Unknown category: $category");
 
             // API key
-            if (!defined('OPENROUTER_API_KEY') || !OPENROUTER_API_KEY) {
-                $keyRows = query("SELECT gemini_api_key FROM users WHERE id = ?", [$userId], 0);
-                $apiKey = $keyRows ? ($keyRows[0]['gemini_api_key'] ?? '') : '';
-                if (!$apiKey)
-                    throw new Exception('No OpenRouter API key set.');
-            } else {
-                $apiKey = OPENROUTER_API_KEY;
-            }
+            $featureKey = ($category === 'story') ? 'OPENROUTER_KEY_SIM_STORY' : 'OPENROUTER_KEY_SIM_STRUCTURED';
+            $apiKey = resolveApiKey($featureKey, $userId);
 
             // Town & user settings
-            $townRow = query('SELECT id, name FROM towns WHERE id = ? AND user_id = ?', [$tId, $userId], $uid);
+            $townRow = query('SELECT id, name, campaign_id FROM towns WHERE id = ? AND user_id = ?', [$tId, $userId], $uid);
             if (empty($townRow))
                 throw new Exception('Town not found.');
             $tName = $townRow[0]['name'];
+            $townCampIdC = $townRow[0]['campaign_id'] ?? null;
 
             $metaRows = query('SELECT `key`, value FROM town_meta WHERE town_id = ?', [$tId], $uid);
             $townMeta = [];
@@ -285,13 +278,24 @@ try {
                 $townMeta[$m['key']] = $m['value'];
             $demographics = trim($townMeta['demographics'] ?? '');
             $biome = trim($townMeta['biome'] ?? '');
-            $us = query('SELECT dnd_edition, xp_speed, relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency FROM users WHERE id = ?', [$userId], 0);
-            $dndEdition = $us[0]['dnd_edition'] ?? '3.5e';
-            $xpSpeed = $us[0]['xp_speed'] ?? 'normal';
-            $relSpeed = $us[0]['relationship_speed'] ?? 'normal';
-            $birthRate = $us[0]['birth_rate'] ?? 'normal';
-            $deathThreshold = $us[0]['death_threshold'] ?? '50';
-            $conflictFreq = $us[0]['conflict_frequency'] ?? 'occasional';
+
+            // Edition from campaign, sim settings from campaign_rules
+            $dndEdition = '3.5e';
+            if ($townCampIdC) {
+                $campRowC = query('SELECT dnd_edition FROM campaigns WHERE id = ?', [$townCampIdC], 0);
+                if ($campRowC) $dndEdition = $campRowC[0]['dnd_edition'] ?? '3.5e';
+            }
+            if ($townCampIdC) {
+                $crC = query('SELECT relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency FROM campaign_rules WHERE user_id = ? AND campaign_id = ?', [$userId, $townCampIdC], 0);
+            } else {
+                $crC = query('SELECT relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency FROM campaign_rules WHERE user_id = ? AND campaign_id IS NULL', [$userId], 0);
+            }
+            $crc = $crC ? $crC[0] : [];
+            $xpSpeed = 'normal';
+            $relSpeed = $crc['relationship_speed'] ?? 'normal';
+            $birthRate = $crc['birth_rate'] ?? 'normal';
+            $deathThreshold = $crc['death_threshold'] ?? '50';
+            $conflictFreq = $crc['conflict_frequency'] ?? 'occasional';
             $xpCaps = ['very slow' => 25, 'slow' => 50, 'normal' => 100, 'fast' => 200, 'very fast' => 500];
             $xpMax = $xpCaps[$xpSpeed] ?? 50;
             $popText = $deathThreshold === 'unlimited' ? 'No population cap.' : "Pop over {$deathThreshold} increases death rate.";
@@ -512,14 +516,7 @@ Respond ONLY with valid JSON:
                 throw new Exception('No character description provided.');
 
             // API key
-            if (!defined('OPENROUTER_API_KEY') || !OPENROUTER_API_KEY) {
-                $keyRows = query("SELECT gemini_api_key FROM users WHERE id = ?", [$userId], 0);
-                $apiKey = $keyRows ? ($keyRows[0]['gemini_api_key'] ?? '') : '';
-                if (!$apiKey)
-                    throw new Exception('No OpenRouter API key set. Go to ⚙️ Settings to add your key.');
-            } else {
-                $apiKey = OPENROUTER_API_KEY;
-            }
+            $apiKey = resolveApiKey('OPENROUTER_KEY_PORTRAIT', $userId);
 
             $prompt = <<<PROMPT
 You are an expert AI art prompt engineer specializing in D&D fantasy character portraits.
@@ -781,13 +778,7 @@ PROMPT;
             }
 
             // API key
-            if (!defined('OPENROUTER_API_KEY') || !OPENROUTER_API_KEY) {
-                $keyRows = query("SELECT gemini_api_key FROM users WHERE id = ?", [$userId], 0);
-                $apiKey = $keyRows ? ($keyRows[0]['gemini_api_key'] ?? '') : '';
-                if (!$apiKey) throw new Exception('No OpenRouter API key set.');
-            } else {
-                $apiKey = OPENROUTER_API_KEY;
-            }
+            $apiKey = resolveApiKey('OPENROUTER_KEY_WEATHER', $userId);
 
             // Load town meta for biome
             $metaRows = query('SELECT `key`, value FROM town_meta WHERE town_id = ?', [$townId], $uid);

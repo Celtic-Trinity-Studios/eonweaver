@@ -4,7 +4,7 @@
  */
 import { navigate } from '../router.js';
 import { getState, setState, subscribe } from '../stores/appState.js';
-import { calendarToString } from '../api/settings.js';
+import { calendarToString, apiGetUsage } from '../api/settings.js';
 import { apiSwitchCampaign, apiGetCampaigns } from '../api/campaigns.js';
 import { setCurrentEdition, clearSrdCache } from '../api/srd.js';
 import { openBugReportModal } from './BugReportModal.js';
@@ -39,6 +39,7 @@ export function renderSidebar(container) {
       <div class="sidebar-brand">
         <h1 class="sidebar-title">Eon Weaver</h1>
         <p class="sidebar-subtitle">Campaign Manager</p>
+        <div class="sidebar-usage" id="sidebar-usage"></div>
       </div>
 
       ${hasCampaign ? `
@@ -83,6 +84,9 @@ export function renderSidebar(container) {
       </div>
     </div>
   `;
+
+  // Load usage meter into sidebar
+  loadSidebarUsage();
 
   // Bind navigation clicks
   container.querySelectorAll('.nav-item').forEach(btn => {
@@ -201,3 +205,29 @@ subscribe((state) => {
     }
   }
 });
+
+/**
+ * Load and display compact usage meter in sidebar brand area.
+ */
+async function loadSidebarUsage() {
+  const el = document.getElementById('sidebar-usage');
+  if (!el) return;
+  try {
+    const res = await apiGetUsage();
+    if (!res.ok) return;
+    const { tier_label, percentage, tokens_used, token_limit } = res;
+    const pct = percentage || 0;
+    const barColor = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : pct >= 40 ? '#eab308' : '#22c55e';
+    const fmt = (n) => n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(0) + 'K' : n;
+    el.innerHTML = `
+      <div class="sidebar-usage-row">
+        <span class="sidebar-tier-badge tier-${res.tier}">${tier_label}</span>
+        <span class="sidebar-usage-pct" style="color:${barColor}">${pct}%</span>
+      </div>
+      <div class="sidebar-usage-track">
+        <div class="sidebar-usage-fill" style="width:${Math.min(pct, 100)}%;background:${barColor}"></div>
+      </div>
+      <div class="sidebar-usage-label">${fmt(tokens_used)} / ${fmt(token_limit)} tokens</div>
+    `;
+  } catch (e) { /* silent */ }
+}

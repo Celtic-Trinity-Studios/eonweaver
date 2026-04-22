@@ -172,7 +172,7 @@ function showAdminApp() {
     const state = getState();
     const sidebarEl = document.getElementById('sidebar-container');
 
-    // Render admin sidebar
+    // Render admin sidebar with all section nav items
     sidebarEl.innerHTML = `
     <div class="sidebar admin-mode">
       <div class="sidebar-brand">
@@ -180,9 +180,29 @@ function showAdminApp() {
         <p class="sidebar-subtitle">Administration</p>
       </div>
       <nav class="sidebar-nav">
-        <button class="nav-item active" data-route="admin">
+        <button class="nav-item active" data-admin-tab="overview">
           <span class="nav-icon">📊</span>
-          <span class="nav-label">Dashboard</span>
+          <span class="nav-label">Overview</span>
+        </button>
+        <button class="nav-item" data-admin-tab="members">
+          <span class="nav-icon">👥</span>
+          <span class="nav-label">Accounts</span>
+        </button>
+        <button class="nav-item" data-admin-tab="campaigns">
+          <span class="nav-icon">📜</span>
+          <span class="nav-label">Campaigns</span>
+        </button>
+        <button class="nav-item" data-admin-tab="towns">
+          <span class="nav-icon">🏰</span>
+          <span class="nav-label">Towns</span>
+        </button>
+        <button class="nav-item" data-admin-tab="usage">
+          <span class="nav-icon">📈</span>
+          <span class="nav-label">Token Usage</span>
+        </button>
+        <button class="nav-item" data-admin-tab="settings">
+          <span class="nav-icon">⚙️</span>
+          <span class="nav-label">Site Settings</span>
         </button>
       </nav>
       <div class="sidebar-footer">
@@ -197,6 +217,17 @@ function showAdminApp() {
         await apiLogout();
         resetState();
         showAuth();
+    });
+
+    // Admin sidebar nav → triggers tab switching inside AdminDashboardView
+    sidebarEl.querySelectorAll('[data-admin-tab]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            sidebarEl.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            // Click the corresponding tab inside the view
+            const tabBtn = document.querySelector(`.admin-tab[data-tab="${btn.dataset.adminTab}"]`);
+            if (tabBtn) tabBtn.click();
+        });
     });
 
     // Register admin routes

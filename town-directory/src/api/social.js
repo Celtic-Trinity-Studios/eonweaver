@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Eon Weaver — Social Systems API
  * CRUD operations for relationships, factions, incidents, memories, and reputation.
  */
@@ -111,3 +111,18 @@ export async function apiSaveReputation(data) {
 export async function apiDeleteReputation(id) {
     return apiFetch('delete_reputation', { method: 'POST', body: { id } });
 }
+
+/* ── Family Tree ────────────────────────────────────────── */
+
+export async function apiGetFamilyTree(characterId) {
+    return apiFetch('get_family_tree', { params: { character_id: characterId } });
+}
+
+export async function apiSaveFamilyLink(data) {
+    return apiFetch('save_family_link', { method: 'POST', body: data });
+}
+
+export async function apiDeleteFamilyLink(id) {
+    return apiFetch('delete_family_link', { method: 'POST', body: { id } });
+}
+

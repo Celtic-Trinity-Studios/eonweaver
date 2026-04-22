@@ -262,6 +262,7 @@ export function renderCharacterSheet(el, c, { onListRefresh, onDelete, container
       <button class="cs-tab active" data-tab="page1">📋 Page 1</button>
       <button class="cs-tab" data-tab="page2">🎒 Page 2</button>
       <button class="cs-tab" data-tab="social">🤝 Social</button>
+      <button class="cs-tab" data-tab="family">🌳 Family</button>
       <button class="cs-tab" data-tab="background">📖 Background</button>
     </div>
 
@@ -286,6 +287,9 @@ export function renderCharacterSheet(el, c, { onListRefresh, onDelete, container
         </div>
       </div>
     </div>
+    <div class="cs-tab-content" id="cs-tab-family" style="display:none;">
+      <div id="cs-family-tree-root"><div class="cs-loading">Loading family tree...</div></div>
+    </div>
     <div class="cs-tab-content" id="cs-tab-background" style="display:none;">
       ${buildBackgroundTab(c)}
     </div>
@@ -301,6 +305,7 @@ export function renderCharacterSheet(el, c, { onListRefresh, onDelete, container
   let equipLoaded = false;
   let socialLoaded = false;
   let spellsLoaded = false;
+  let familyLoaded = false;
   el.querySelectorAll('.cs-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       el.querySelectorAll('.cs-tab').forEach(t => t.classList.remove('active'));
@@ -321,6 +326,11 @@ export function renderCharacterSheet(el, c, { onListRefresh, onDelete, container
       if (tab.dataset.tab === 'page2' && !spellsLoaded && c.id) {
         spellsLoaded = true;
         loadAndRenderSpells(el, c.id, c);
+      }
+      // Load family tree when family tab is first opened
+      if (tab.dataset.tab === 'family' && !familyLoaded && c.id) {
+        familyLoaded = true;
+        loadAndRenderFamilyTree(el, c.id, c, { onListRefresh, containerRef });
       }
     });
   });
@@ -2820,6 +2830,328 @@ function wireSpellSearch(el, caster, className, charId, character) {
   [levelFilter, classFilter, schoolFilter].forEach(sel => {
     if (sel) sel.addEventListener('change', doSearch);
   });
+}
+
+/* ── Family Tree ──────────────────────────────────────────── */
+async function loadAndRenderFamilyTree(el, charId, character, options) {
+  const { apiGetFamilyTree, apiSaveFamilyLink, apiDeleteFamilyLink } = await import('../api/social.js');
+  const { getState } = await import('../stores/appState.js');
+
+  const root = el.querySelector('#cs-family-tree-root');
+  if (!root) return;
+
+  async function renderTree() {
+    root.innerHTML = '<div class="cs-loading">Loading family tree...</div>';
+
+    try {
+      const data = await apiGetFamilyTree(charId);
+      const links = data.links || [];
+      const members = {};
+      (data.members || []).forEach(m => { members[m.id] = m; });
+
+      // Ensure root character is in members
+      if (!members[charId]) {
+        members[charId] = { id: charId, name: character.name, race: character.race, class: character.class, level: character.level, gender: character.gender, age: character.age, status: character.status, portrait_url: character.portrait_url, alignment: character.alignment, role: character.role, title: character.title };
+      }
+
+      // Build adjacency from links
+      // parent links: char1 is PARENT of char2
+      const parentOf = []; // { parentId, childId, linkId }
+      const spouseOf = []; // { id1, id2, linkId }
+      const siblingOf = []; // { id1, id2, linkId }
+
+      for (const link of links) {
+        const role = link.family_role;
+        if (role === 'parent') {
+          parentOf.push({ parentId: link.char1_id, childId: link.char2_id, linkId: link.id });
+        } else if (role === 'spouse') {
+          spouseOf.push({ id1: link.char1_id, id2: link.char2_id, linkId: link.id });
+        } else if (role === 'sibling') {
+          siblingOf.push({ id1: link.char1_id, id2: link.char2_id, linkId: link.id });
+        }
+      }
+
+      // Find parents of root
+      const rootParents = parentOf.filter(p => p.childId == charId).map(p => ({ ...members[p.parentId], linkId: p.linkId })).filter(p => p.id);
+      // Find grandparents (parents of each parent)
+      const grandparentsMap = {};
+      for (const parent of rootParents) {
+        const gps = parentOf.filter(p => p.childId == parent.id).map(p => ({ ...members[p.parentId], linkId: p.linkId })).filter(gp => gp.id);
+        grandparentsMap[parent.id] = gps;
+      }
+
+      // Find spouse of root
+      const rootSpouse = spouseOf.filter(s => s.id1 == charId || s.id2 == charId).map(s => {
+        const otherId = s.id1 == charId ? s.id2 : s.id1;
+        return { ...members[otherId], linkId: s.linkId };
+      }).filter(s => s.id)[0] || null;
+
+      // Find siblings of root
+      const rootSiblings = siblingOf.filter(s => s.id1 == charId || s.id2 == charId).map(s => {
+        const otherId = s.id1 == charId ? s.id2 : s.id1;
+        return { ...members[otherId], linkId: s.linkId };
+      }).filter(s => s.id);
+
+      // Find children of root
+      const rootChildren = parentOf.filter(p => p.parentId == charId).map(p => ({ ...members[p.childId], linkId: p.linkId })).filter(ch => ch.id);
+
+      // Find grandchildren (children of each child)
+      const grandchildrenMap = {};
+      for (const child of rootChildren) {
+        const gcs = parentOf.filter(p => p.parentId == child.id).map(p => ({ ...members[p.childId], linkId: p.linkId })).filter(gc => gc.id);
+        grandchildrenMap[child.id] = gcs;
+      }
+
+      const isEmpty = !rootParents.length && !rootSpouse && !rootSiblings.length && !rootChildren.length;
+
+      // Person card builder
+      function personCard(m, isRoot = false, linkId = null) {
+        if (!m || !m.id) return '';
+        const portrait = m.portrait_url
+          ? `<img class="ft-portrait" src="${m.portrait_url}" alt="${m.name}" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">`
+          : '';
+        const fallbackIcon = m.gender === 'F' ? '👩' : m.gender === 'M' ? '👨' : '🧑';
+        const classLvl = m.class ? (m.class.match(/\d/) ? m.class : `${m.class} ${m.level || ''}`.trim()) : '';
+        const deceased = m.status === 'Deceased' ? ' ft-deceased' : '';
+        const rootClass = isRoot ? ' ft-root' : '';
+        const navigate = !isRoot ? `data-ft-nav="${m.id}"` : '';
+        const deleteBtn = linkId && !isRoot ? `<button class="ft-delete-btn" data-ft-del="${linkId}" title="Remove link">✕</button>` : '';
+        return `<div class="ft-person${rootClass}${deceased}" ${navigate}>
+          ${deleteBtn}
+          <div class="ft-portrait-wrap">
+            ${portrait}
+            <div class="ft-portrait-fallback" ${portrait ? 'style="display:none"' : ''}>${fallbackIcon}</div>
+          </div>
+          <div class="ft-name">${m.name}</div>
+          <div class="ft-meta">${m.race || ''} ${classLvl}</div>
+          ${m.age ? `<div class="ft-age">Age ${m.age}</div>` : ''}
+          ${m.status === 'Deceased' ? '<div class="ft-status">☠ Deceased</div>' : ''}
+        </div>`;
+      }
+
+      // Build HTML — Horizontal Ancestry layout (left → right)
+      let html = '<div class="ft-container">';
+
+      // ── Grandparents (leftmost) ──
+      const hasGrandparents = Object.values(grandparentsMap).some(gps => gps.length > 0);
+      if (hasGrandparents) {
+        html += '<div class="ft-generation ft-gen-grandparents">';
+        html += '<div class="ft-gen-label">Grandparents</div>';
+        html += '<div class="ft-gen-row">';
+        for (const parent of rootParents) {
+          const gps = grandparentsMap[parent.id] || [];
+          if (gps.length) {
+            html += '<div class="ft-couple-group">';
+            for (const gp of gps) {
+              html += personCard(gp, false, gp.linkId);
+            }
+            html += '</div>';
+          }
+        }
+        html += '</div></div>';
+        html += '<div class="ft-connector ft-connector-horizontal"></div>';
+      }
+
+      // ── Parents ──
+      if (rootParents.length) {
+        html += '<div class="ft-generation ft-gen-parents">';
+        html += '<div class="ft-gen-label">Parents</div>';
+        html += '<div class="ft-gen-row">';
+        for (const parent of rootParents) {
+          html += personCard(parent, false, parent.linkId);
+        }
+        html += '</div></div>';
+        html += '<div class="ft-connector ft-connector-horizontal"></div>';
+      }
+
+      // ── Siblings (stacked before root) ──
+      if (rootSiblings.length) {
+        html += '<div class="ft-generation">';
+        html += '<div class="ft-gen-label ft-gen-label-sm">Siblings</div>';
+        html += '<div class="ft-gen-row">';
+        for (const sib of rootSiblings) {
+          html += personCard(sib, false, sib.linkId);
+        }
+        html += '</div></div>';
+        html += '<div class="ft-connector ft-connector-horizontal"></div>';
+      }
+
+      // ── Root + Spouse (center column) ──
+      html += '<div class="ft-generation ft-gen-root">';
+      html += '<div class="ft-gen-row ft-root-row">';
+      html += personCard(members[charId], true);
+      if (rootSpouse) {
+        html += '<div class="ft-connector ft-connector-vertical ft-connector-heart">❤️</div>';
+        html += personCard(rootSpouse, false, rootSpouse.linkId);
+      }
+      html += '</div></div>';
+
+      // ── Children ──
+      if (rootChildren.length) {
+        html += '<div class="ft-connector ft-connector-horizontal"></div>';
+        html += '<div class="ft-generation ft-gen-children">';
+        html += '<div class="ft-gen-label">Children</div>';
+        html += '<div class="ft-gen-row">';
+        for (const child of rootChildren) {
+          html += personCard(child, false, child.linkId);
+        }
+        html += '</div></div>';
+
+        // ── Grandchildren ──
+        const hasGrandchildren = Object.values(grandchildrenMap).some(gcs => gcs.length > 0);
+        if (hasGrandchildren) {
+          html += '<div class="ft-connector ft-connector-horizontal"></div>';
+          html += '<div class="ft-generation ft-gen-grandchildren">';
+          html += '<div class="ft-gen-label">Grandchildren</div>';
+          html += '<div class="ft-gen-row">';
+          for (const child of rootChildren) {
+            const gcs = grandchildrenMap[child.id] || [];
+            if (gcs.length) {
+              html += '<div class="ft-couple-group">';
+              for (const gc of gcs) {
+                html += personCard(gc, false, gc.linkId);
+              }
+              html += '</div>';
+            }
+          }
+          html += '</div></div>';
+        }
+      }
+
+      html += '</div>';
+
+      // ── Empty state ──
+      if (isEmpty) {
+        html = `<div class="ft-container">
+          <div class="ft-empty">
+            <div class="ft-empty-icon">🌳</div>
+            <div class="ft-empty-title">No Family Connections Yet</div>
+            <div class="ft-empty-text">Add parents, children, siblings, or a spouse to build ${character.name}'s family tree.</div>
+          </div>
+          <div class="ft-generation ft-gen-root">
+            <div class="ft-gen-row ft-root-row">
+              ${personCard(members[charId], true)}
+            </div>
+          </div>
+        </div>`;
+      }
+
+      // ── Add Family Link button ──
+      html += `<div class="ft-actions">
+        <button class="btn-primary ft-add-btn" id="ft-add-link-btn">🌳 Add Family Member</button>
+      </div>`;
+
+      root.innerHTML = html;
+
+      // ── Wire navigation (click person card → open their sheet) ──
+      root.querySelectorAll('[data-ft-nav]').forEach(card => {
+        card.style.cursor = 'pointer';
+        card.addEventListener('click', (e) => {
+          if (e.target.closest('.ft-delete-btn')) return; // Don't navigate when deleting
+          const navId = parseInt(card.dataset.ftNav);
+          const navChar = members[navId];
+          if (navChar) {
+            // Navigate to that character's sheet (re-render the sheet with the target character)
+            import('../api/characters.js').then(({ apiGetCharacters, normalizeCharacter }) => {
+              apiGetCharacters(navChar.town_id).then(res => {
+                const found = (res.characters || []).find(ch => ch.id == navId);
+                if (found) {
+                  const norm = normalizeCharacter(found);
+                  // If different town, update state
+                  const state = getState();
+                  if (navChar.town_id != state.currentTownId) {
+                    import('../stores/appState.js').then(({ setState }) => {
+                      setState({ currentTownId: navChar.town_id });
+                    });
+                  }
+                  if (options.onListRefresh) options.onListRefresh();
+                  // Find the outer el (the sheet container) - reuse same container
+                  const sheetEl = el.closest('.cs-sheet')?.parentElement || el;
+                  renderCharacterSheet(sheetEl, norm, options);
+                }
+              });
+            });
+          }
+        });
+      });
+
+      // ── Wire delete buttons ──
+      root.querySelectorAll('[data-ft-del]').forEach(btn => {
+        btn.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          const linkId = parseInt(btn.dataset.ftDel);
+          if (!confirm('Remove this family connection?')) return;
+          try {
+            await apiDeleteFamilyLink(linkId);
+            await renderTree();
+          } catch (err) { console.error('Delete family link failed:', err); }
+        });
+      });
+
+      // ── Wire Add Family Link button ──
+      root.querySelector('#ft-add-link-btn')?.addEventListener('click', async () => {
+        const { showModal } = await import('../components/Modal.js');
+        const { apiGetCharacters } = await import('../api/characters.js');
+
+        // Get characters from ALL towns for this user
+        const townId = getState().currentTownId;
+        if (!townId) return;
+        const res = await apiGetCharacters(townId);
+        const others = (res.characters || []).filter(ch => ch.id != charId);
+
+        const { el: m, close } = showModal({
+          title: '🌳 Add Family Member', width: 'narrow',
+          content: `<div class="modal-form">
+            <label>Family Member</label>
+            <select id="ft-target-char" class="form-select">
+              ${others.map(ch => `<option value="${ch.id}">${ch.name} (${ch.race || ''} ${ch.class || ''})</option>`).join('')}
+            </select>
+            <label>Relationship</label>
+            <select id="ft-link-type" class="form-select">
+              <option value="parent-of">This person is ${character.name}'s Parent</option>
+              <option value="child-of">This person is ${character.name}'s Child</option>
+              <option value="sibling">This person is ${character.name}'s Sibling</option>
+              <option value="spouse">This person is ${character.name}'s Spouse</option>
+            </select>
+            <button class="btn-primary" id="ft-save-btn" style="margin-top:0.75rem;width:100%">Add to Family Tree</button>
+          </div>`
+        });
+
+        m.querySelector('#ft-save-btn')?.addEventListener('click', async () => {
+          const targetId = parseInt(m.querySelector('#ft-target-char').value);
+          const linkType = m.querySelector('#ft-link-type').value;
+
+          let saveData = {};
+          if (linkType === 'parent-of') {
+            // target is parent of root: char1=target(parent), char2=root(child)
+            saveData = { char1_id: targetId, char2_id: charId, family_role: 'parent' };
+          } else if (linkType === 'child-of') {
+            // target is child of root: char1=root(parent), char2=target(child)
+            saveData = { char1_id: charId, char2_id: targetId, family_role: 'parent' };
+          } else if (linkType === 'sibling') {
+            saveData = { char1_id: charId, char2_id: targetId, family_role: 'sibling' };
+          } else if (linkType === 'spouse') {
+            saveData = { char1_id: charId, char2_id: targetId, family_role: 'spouse' };
+          }
+
+          try {
+            await apiSaveFamilyLink(saveData);
+            close();
+            await renderTree();
+          } catch (err) {
+            console.error('Save family link failed:', err);
+            alert('Failed to save: ' + err.message);
+          }
+        });
+      });
+
+    } catch (err) {
+      root.innerHTML = `<div class="ft-container"><div class="ft-empty"><div class="ft-empty-icon">❌</div><div class="ft-empty-text">Failed to load family tree: ${err.message}</div></div></div>`;
+      console.error('Family tree error:', err);
+    }
+  }
+
+  await renderTree();
 }
 
 /* ── Tab Builder: Background ─────────────────────────────── */

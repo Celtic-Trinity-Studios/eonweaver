@@ -22,22 +22,20 @@ if ($action === 'intake_roster') {
     verifyTownOwnership($userId, $townId, $uid);
 
     // Resolve API key
-    if (!defined('OPENROUTER_API_KEY') || !OPENROUTER_API_KEY) {
-        $keyRows = query("SELECT gemini_api_key FROM users WHERE id = ?", [$userId], 0);
-        $apiKey = $keyRows ? ($keyRows[0]['gemini_api_key'] ?? '') : '';
-        if (!$apiKey)
-            throw new Exception('No OpenRouter API key set. Go to ⚙️ Settings to add your key.');
-    } else {
-        $apiKey = OPENROUTER_API_KEY;
-    }
+    $apiKey = resolveApiKey('OPENROUTER_KEY_INTAKE_ROSTER', $userId);
 
     $town = query('SELECT * FROM towns WHERE id = ?', [$townId], $uid);
     if (!$town)
         throw new Exception('Town not found.');
     $townName = $town[0]['name'];
+    $intakeCampId = $town[0]['campaign_id'] ?? null;
 
-    $userSettings = query('SELECT dnd_edition FROM users WHERE id = ?', [$userId], 0);
-    $dndEdition = $userSettings ? ($userSettings[0]['dnd_edition'] ?? '3.5e') : '3.5e';
+    // Edition from campaign
+    $dndEdition = '3.5e';
+    if ($intakeCampId) {
+        $campRowI = query('SELECT dnd_edition FROM campaigns WHERE id = ?', [$intakeCampId], 0);
+        if ($campRowI) $dndEdition = $campRowI[0]['dnd_edition'] ?? '3.5e';
+    }
 
     $characters = query('SELECT name, race, class, gender, role FROM characters WHERE town_id = ? ORDER BY name', [$townId], $uid);
     $existingNames = array_map(function ($c) {
@@ -87,7 +85,27 @@ if ($action === 'intake_roster') {
     if ($settlementType)
         $demoSnap .= "\nSettlement Type: {$settlementType}\n";
 
-    $campaignRulesRows = query('SELECT rules_text, campaign_description FROM campaign_rules WHERE user_id = ?', [$userId], $uid);
+    // Campaign rules scoped by campaign
+    // Load gen_rules for level constraints
+    $genRulesIA = json_decode($townMeta['gen_rules'] ?? '{}', true) ?: [];
+    $iaIntakeLevel = isset($genRulesIA['intake_level']) ? (int) $genRulesIA['intake_level'] : 0;
+    $iaMaxLevel = isset($genRulesIA['max_level']) ? (int) $genRulesIA['max_level'] : 20;
+    $iaExampleLevel = $iaIntakeLevel > 0 ? $iaIntakeLevel : 1;
+    if ($iaIntakeLevel > 0) {
+        $iaLevelRule = "⚠️ MANDATORY: ALL new characters MUST be Level {$iaIntakeLevel}. Every class field MUST end with ' {$iaIntakeLevel}'. Do NOT generate any character at a different level.";
+    } else {
+        $iaLevelRule = "Most new arrivals are low-level (1-3), but occasional higher-level characters (4-6) add variety.";
+    }
+    if ($iaMaxLevel > 0 && $iaMaxLevel < 20) {
+        $iaLevelRule .= " ⚠️ MAX LEVEL: {$iaMaxLevel}. No character may exceed this level.";
+    }
+
+    // Campaign rules scoped by campaign
+    if ($intakeCampId) {
+        $campaignRulesRows = query('SELECT rules_text, campaign_description FROM campaign_rules WHERE user_id = ? AND campaign_id = ?', [$userId, $intakeCampId], 0);
+    } else {
+        $campaignRulesRows = query('SELECT rules_text, campaign_description FROM campaign_rules WHERE user_id = ? AND campaign_id IS NULL', [$userId], 0);
+    }
     $campaignRules = $campaignRulesRows ? trim($campaignRulesRows[0]['rules_text'] ?? '') : '';
     $campaignDesc = $campaignRulesRows ? trim($campaignRulesRows[0]['campaign_description'] ?? '') : '';
 
@@ -398,10 +416,10 @@ For each character provide ONLY: name, race, class, gender, age, role, alignment
 - VARY names: {$nameRule}
 - VARY gender: Roughly 50/50 split (unless the race/creature type has a different norm).
 - VARY ages: Mix young adults, middle-aged, and elderly. Include 1-2 children if appropriate.
-- class format: \"ClassName Level\" e.g. \"Expert 1\", \"Commoner 1\", \"Fighter 3\". Most new arrivals are low-level (1-3), but occasional higher-level characters (4-6) add variety.
+- class format: \"ClassName Level\" e.g. \"Expert 1\", \"Commoner 1\". {$iaLevelRule}
 
 ## OUTPUT (VALID JSON ONLY — no markdown, no code fences, JUST the raw JSON array):
-[{\"name\":\"Full Name\",\"race\":\"{$exampleRace}\",\"class\":\"Warrior 1\",\"gender\":\"M\",\"age\":34,\"role\":\"Guard\",\"alignment\":\"NG\"},...]";
+[{\"name\":\"Full Name\",\"race\":\"{$exampleRace}\",\"class\":\"Warrior {$iaExampleLevel}\",\"gender\":\"M\",\"age\":34,\"role\":\"Guard\",\"alignment\":\"NG\"},...]";
     }
 
     $openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
@@ -444,8 +462,8 @@ For each character provide ONLY: name, race, class, gender, age, role, alignment
         trackTokenUsage($userId, $data['usage']);
     }
     $respText = $data["choices"][0]["message"]["content"] ?? "";
-    $respText = preg_replace('/^\s*```json\s*/i', '', $respText);
-    $respText = preg_replace('/\s*```\s*$/', '', $respText);
+    $respText = preg_replace('/^\s*`+\w*\s*/i', '', $respText);
+    $respText = preg_replace('/\s*`+\s*$/', '', $respText);
     $respText = trim($respText);
 
     $roster = json_decode($respText, true);
@@ -525,6 +543,16 @@ For each character provide ONLY: name, race, class, gender, age, role, alignment
         }
     }
 
+    // ── Enforce level from gen_rules: server-side level assignment ──
+    // Roll a weighted-random level per character BEFORE sending to Phase 2 AI,
+    // so the AI generates the correct number of feats/skills for the assigned level.
+    if (!$isCreatureIntake) {
+        for ($li = 0; $li < count($validRoster); $li++) {
+            $rolledLevel = rollIntakeLevel($genRulesIA);
+            $validRoster[$li]['class'] = applyLevelToClass($validRoster[$li]['class'], $rolledLevel);
+        }
+    }
+
     simRespond(['ok' => true, 'roster' => $validRoster, 'town_id' => $townId, 'is_creature_intake' => $isCreatureIntake]);
 }
 
@@ -541,14 +569,7 @@ elseif ($action === 'intake_flesh') {
     if (empty($stubs))
         throw new Exception('No character stubs provided.');
 
-    if (!defined('OPENROUTER_API_KEY') || !OPENROUTER_API_KEY) {
-        $keyRows = query("SELECT gemini_api_key FROM users WHERE id = ?", [$userId], 0);
-        $apiKey = $keyRows ? ($keyRows[0]['gemini_api_key'] ?? '') : '';
-        if (!$apiKey)
-            throw new Exception('No API key set.');
-    } else {
-        $apiKey = OPENROUTER_API_KEY;
-    }
+    $apiKey = resolveApiKey('OPENROUTER_KEY_INTAKE_FLESH', $userId);
 
     $town = query('SELECT * FROM towns WHERE id = ?', [$townId], $uid);
     $townName = $town ? $town[0]['name'] : 'Unknown';
@@ -573,7 +594,12 @@ elseif ($action === 'intake_flesh') {
         }
     }
 
-    $campaignRulesRows = query('SELECT rules_text, campaign_description FROM campaign_rules WHERE user_id = ?', [$userId], $uid);
+    // Campaign rules scoped by campaign
+    if ($intakeCampId) {
+        $campaignRulesRows = query('SELECT rules_text, campaign_description FROM campaign_rules WHERE user_id = ? AND campaign_id = ?', [$userId, $intakeCampId], 0);
+    } else {
+        $campaignRulesRows = query('SELECT rules_text, campaign_description FROM campaign_rules WHERE user_id = ? AND campaign_id IS NULL', [$userId], 0);
+    }
     $campaignRules = $campaignRulesRows ? trim($campaignRulesRows[0]['rules_text'] ?? '') : '';
     $campaignDesc = $campaignRulesRows ? trim($campaignRulesRows[0]['campaign_description'] ?? '') : '';
 
@@ -671,8 +697,8 @@ OUTPUT (VALID JSON ONLY, no markdown):
         if (!empty($d2['usage'])) {
             trackTokenUsage($userId, $d2['usage']);
         }
-        $t2 = preg_replace('/^\s*```json\s*/i', '', $t2);
-        $t2 = preg_replace('/\s*```\s*$/', '', $t2);
+        $t2 = preg_replace('/^\s*`+\w*\s*/i', '', $t2);
+        $t2 = preg_replace('/\s*`+\s*$/', '', $t2);
         $t2 = trim($t2);
 
         $parsed = json_decode($t2, true);
@@ -1051,26 +1077,29 @@ elseif ($action === 'intake_custom') {
     if (!$prompt)
         throw new Exception('Character description is required.');
 
-    if (!defined('OPENROUTER_API_KEY') || !OPENROUTER_API_KEY) {
-        $keyRows = query("SELECT gemini_api_key FROM users WHERE id = ?", [$userId], 0);
-        $apiKey = $keyRows ? ($keyRows[0]['gemini_api_key'] ?? '') : '';
-        if (!$apiKey)
-            throw new Exception('No OpenRouter API key set. Go to Settings to add your key.');
-    } else {
-        $apiKey = OPENROUTER_API_KEY;
-    }
+    $apiKey = resolveApiKey('OPENROUTER_KEY_INTAKE_CUSTOM', $userId);
 
     $town = query('SELECT * FROM towns WHERE id = ?', [$townId], $uid);
     $townName = $town ? $town[0]['name'] : 'Unknown';
+    $intakeCampId = $town ? ($town[0]['campaign_id'] ?? null) : null;
 
-    $userSettings = query('SELECT dnd_edition FROM users WHERE id = ?', [$userId], 0);
-    $dndEdition = $userSettings ? ($userSettings[0]['dnd_edition'] ?? '3.5e') : '3.5e';
+    // Edition from campaign
+    $dndEdition = '3.5e';
+    if ($intakeCampId) {
+        $campRowI = query('SELECT dnd_edition FROM campaigns WHERE id = ?', [$intakeCampId], 0);
+        if ($campRowI) $dndEdition = $campRowI[0]['dnd_edition'] ?? '3.5e';
+    }
 
     $characters = query('SELECT name FROM characters WHERE town_id = ? ORDER BY name', [$townId], $uid);
     $existingNames = array_map(function ($c) { return $c['name']; }, $characters ?: []);
     $existingNamesList = !empty($existingNames) ? implode(', ', $existingNames) : '(none)';
 
-    $campaignRulesRows = query('SELECT rules_text, campaign_description FROM campaign_rules WHERE user_id = ?', [$userId], $uid);
+    // Campaign rules scoped by campaign
+    if ($intakeCampId) {
+        $campaignRulesRows = query('SELECT rules_text, campaign_description FROM campaign_rules WHERE user_id = ? AND campaign_id = ?', [$userId, $intakeCampId], 0);
+    } else {
+        $campaignRulesRows = query('SELECT rules_text, campaign_description FROM campaign_rules WHERE user_id = ? AND campaign_id IS NULL', [$userId], 0);
+    }
     $campaignRules = $campaignRulesRows ? trim($campaignRulesRows[0]['rules_text'] ?? '') : '';
     $campaignDesc = $campaignRulesRows ? trim($campaignRulesRows[0]['campaign_description'] ?? '') : '';
 
@@ -1159,8 +1188,8 @@ Town: \"{$townName}\"
         trackTokenUsage($userId, $data['usage']);
     }
     $respText = $data["choices"][0]["message"]["content"] ?? "";
-    $respText = preg_replace('/^\s*`json\s*/i', '', $respText);
-    $respText = preg_replace('/\s*`\s*$/', '', $respText);
+    $respText = preg_replace('/^\s*`+\w*\s*/i', '', $respText);
+    $respText = preg_replace('/\s*`+\s*$/', '', $respText);
     $respText = trim($respText);
 
     $parsed = json_decode($respText, true);

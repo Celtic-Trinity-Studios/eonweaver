@@ -15,16 +15,7 @@
                 throw new Exception('You\'ve used a lot of AI this month. Usage resets on the 1st. Consider subscribing for higher limits.');
             }
 
-            if (!defined('OPENROUTER_API_KEY') || !OPENROUTER_API_KEY) {
-                // Read from user's own API key — in shared DB
-                $keyRows = query("SELECT gemini_api_key FROM users WHERE id = ?", [$userId], 0);
-                $apiKey = $keyRows ? ($keyRows[0]['gemini_api_key'] ?? '') : '';
-                if (!$apiKey) {
-                    throw new Exception('No OpenRouter API key set. Go to ⚙️ Settings to add your key.');
-                }
-            } else {
-                $apiKey = OPENROUTER_API_KEY;
-            }
+            $apiKey = resolveApiKey('OPENROUTER_KEY_SIM_RUN', $userId);
 
             // Gather town data (per-user DB)
             $town = query('SELECT * FROM towns WHERE id = ?', [$townId], $uid);
@@ -32,15 +23,29 @@
                 throw new Exception('Town not found.');
             $townName = $town[0]['name'];
 
-            // Read user's simulation settings (shared DB)
-            $userSettings = query('SELECT dnd_edition, xp_speed, relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency FROM users WHERE id = ?', [$userId], 0);
-            $dndEdition = $userSettings ? ($userSettings[0]['dnd_edition'] ?? '3.5e') : '3.5e';
-            $xpSpeed = $userSettings ? ($userSettings[0]['xp_speed'] ?? 'normal') : 'normal';
-            $relSpeed = $userSettings ? ($userSettings[0]['relationship_speed'] ?? 'normal') : 'normal';
-            $birthRate = $userSettings ? ($userSettings[0]['birth_rate'] ?? 'normal') : 'normal';
-            $deathThreshold = $userSettings ? ($userSettings[0]['death_threshold'] ?? '50') : '50';
-            $childGrowth = $userSettings ? ($userSettings[0]['child_growth'] ?? 'realistic') : 'realistic';
-            $conflictFreq = $userSettings ? ($userSettings[0]['conflict_frequency'] ?? 'occasional') : 'occasional';
+            // Read user's simulation settings — edition from campaign, world sim from campaign_rules
+            $townCampId = $town[0]['campaign_id'] ?? null;
+            $dndEdition = '3.5e';
+            if ($townCampId) {
+                $campRow = query('SELECT dnd_edition FROM campaigns WHERE id = ?', [$townCampId], 0);
+                if ($campRow) $dndEdition = $campRow[0]['dnd_edition'] ?? '3.5e';
+            } else {
+                $userEdRow = query('SELECT dnd_edition FROM users WHERE id = ?', [$userId], 0);
+                $dndEdition = $userEdRow ? ($userEdRow[0]['dnd_edition'] ?? '3.5e') : '3.5e';
+            }
+            $xpSpeed = 'normal';
+            // Load campaign-scoped world sim settings
+            if ($townCampId) {
+                $crRows = query('SELECT relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency FROM campaign_rules WHERE user_id = ? AND campaign_id = ?', [$userId, $townCampId], 0);
+            } else {
+                $crRows = query('SELECT relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency FROM campaign_rules WHERE user_id = ? AND campaign_id IS NULL', [$userId], 0);
+            }
+            $cr = $crRows ? $crRows[0] : [];
+            $relSpeed = $cr['relationship_speed'] ?? 'normal';
+            $birthRate = $cr['birth_rate'] ?? 'normal';
+            $deathThreshold = $cr['death_threshold'] ?? '50';
+            $childGrowth = $cr['child_growth'] ?? 'realistic';
+            $conflictFreq = $cr['conflict_frequency'] ?? 'occasional';
 
             $characters = query('SELECT * FROM characters WHERE town_id = ? ORDER BY name', [$townId], $uid);
             $history = query('SELECT heading, content FROM history WHERE town_id = ? ORDER BY sort_order', [$townId], $uid);
@@ -191,6 +196,26 @@
                 ? 'There is no population cap — death rate stays natural regardless of population size.'
                 : "When population exceeds {$deathThreshold} residents, increase death rate — overpopulation attracts larger predators, brings plagues, and strains resources.";
 
+            // Birth rate math — calculate realistic limits based on eligible population
+            $birthRatePcts = ['rare' => 0.01, 'low' => 0.025, 'normal' => 0.05, 'high' => 0.08];
+            $birthPct = $birthRatePcts[$birthRate] ?? 0.05;
+            $birthRateGuides = [
+                'rare' => 'Births are almost nonexistent (~1% of eligible women per year). Plague, famine, cursed land, or similar.',
+                'low' => 'Births are uncommon (~2-3% of eligible women per year). Harsh frontier or struggling village.',
+                'normal' => 'Births are occasional (~4-6% of eligible women per year). Healthy, stable town.',
+                'high' => 'Births are frequent (~7-10% of eligible women per year). Post-war recovery, blessed land, strong church.'
+            ];
+            $birthRateGuide = $birthRateGuides[$birthRate] ?? $birthRateGuides['normal'];
+            $totalPop = count($characters);
+            // ~25% are women of childbearing age, ~50% of those in relationships
+            $eligibleMothers = max(0, (int) round($totalPop * 0.25 * 0.5));
+            $maxBirthsPerMonth = max(0, (int) round($eligibleMothers * $birthPct));
+            $maxBirths = max(0, $maxBirthsPerMonth * max(1, $months));
+            // Sanity cap: no more than 1 birth per 20 population per month
+            $absoluteMax = max(1, (int) ceil($totalPop / 20)) * max(1, $months);
+            if ($maxBirths > $absoluteMax) $maxBirths = $absoluteMax;
+            if ($maxBirths < 1 && $birthRate !== 'rare') $maxBirths = 1; // At least allow 1
+
             // Town difficulty level (from town_meta)
             $difficultyMeta = query('SELECT value FROM town_meta WHERE town_id = ? AND `key` = ?', [$townId, 'difficulty_level'], $uid);
             $difficultyLevel = $difficultyMeta ? trim($difficultyMeta[0]['value']) : 'struggling';
@@ -221,8 +246,26 @@
                     $townMeta[$m['key']] = $m['value'];
                 $demographics = trim($townMeta['demographics'] ?? '');
 
-                // Load campaign rules
-                $campaignRulesRows = query('SELECT rules_text FROM campaign_rules WHERE user_id = ?', [$userId], $uid);
+                // Load gen_rules for intake level and max level enforcement
+                $genRulesIntake = json_decode($townMeta['gen_rules'] ?? '{}', true) ?: [];
+                $intakeLevel = isset($genRulesIntake['intake_level']) ? (int) $genRulesIntake['intake_level'] : 0;
+                $maxLevel = isset($genRulesIntake['max_level']) ? (int) $genRulesIntake['max_level'] : 20;
+                $intakeLevelBlock = '';
+                if ($intakeLevel > 0) {
+                    $intakeLevelBlock = "- ⚠️ MANDATORY: ALL new NPCs MUST be Level {$intakeLevel}. Their class field MUST end with ' {$intakeLevel}' (e.g., 'Commoner {$intakeLevel}', 'Warrior {$intakeLevel}'). Do NOT generate any character at a different level.\n";
+                } else {
+                    $intakeLevelBlock = "- New characters default to Level 1, UNLESS the DM explicitly states a higher level in the instructions below.\n";
+                }
+                if ($maxLevel > 0 && $maxLevel < 20) {
+                    $intakeLevelBlock .= "- ⚠️ MAX LEVEL CAP: No character may exceed Level {$maxLevel}. If you would generate a higher level, cap it at {$maxLevel}.\n";
+                }
+
+                // Load campaign rules (per-campaign)
+                if ($townCampId) {
+                    $campaignRulesRows = query('SELECT rules_text, campaign_description FROM campaign_rules WHERE user_id = ? AND campaign_id = ?', [$userId, $townCampId], 0);
+                } else {
+                    $campaignRulesRows = query('SELECT rules_text, campaign_description FROM campaign_rules WHERE user_id = ? AND campaign_id IS NULL', [$userId], 0);
+                }
                 $campaignRules = $campaignRulesRows ? trim($campaignRulesRows[0]['rules_text'] ?? '') : '';
 
                 // Build racial demographics snapshot
@@ -329,8 +372,7 @@ This is character #{$charNum} of {$numArrivals} being added.
 - Maintain gender balance. If there are more M than F, lean toward F, and vice versa.
 - If the DM set demographic targets above, try to match them.
 - MOST townspeople: NPC classes (Commoner, Expert, Warrior, Adept, Aristocrat). Player classes RARE (1 in 10 max).
-- New characters default to Level 1, UNLESS the DM explicitly states a higher level in the instructions below.
-- VARY the race! Do NOT make every character the same race. Mix Humans, Elves, Dwarves, Halflings, Gnomes, Half-Elves, Half-Orcs.{$customRaceRef}
+{$intakeLevelBlock}- VARY the race! Do NOT make every character the same race. Mix Humans, Elves, Dwarves, Halflings, Gnomes, Half-Elves, Half-Orcs.{$customRaceRef}
 - VARY the class! A town needs farmers, merchants, blacksmiths, bakers, tavern keepers, priests — not just fighters.{$customClassRef}{$namePatternWarning}
 
 ## NAME DIVERSITY (CRITICAL):
@@ -338,6 +380,7 @@ This is character #{$charNum} of {$numArrivals} being added.
 - Do NOT use the same naming conventions repeatedly (e.g., not all "Stone-" or "Iron-" prefixed dwarven names).
 - Mix naming cultures: some names simple and common (Tom, Mary), some exotic, some with titles or nicknames.
 - NEVER repeat a surname pattern. If there's already a "Stonefist", do NOT create "Stonehand" or "Stonebrow".
+- BANNED NAME SUFFIXES: NEVER use dynasty-style suffixes like II, III, IV, Jr., Sr., "the Younger", "the Elder", "the Bold", "the Fair", "the Red". Every character must have their OWN unique name.
 
 ## D&D {$dndEdition} CHARACTER RULES:
 - Do NOT generate ability scores (str/dex/con/int_/wis/cha), HP, AC, atk, or gear — the system calculates these automatically.
@@ -395,8 +438,8 @@ SPROMPT;
                         trackTokenUsage($userId, $data['usage']);
                     }
                     $respText = $data["choices"][0]["message"]["content"] ?? "";
-                    $respText = preg_replace('/^\s*```json\s*/i', '', $respText);
-                    $respText = preg_replace('/\s*```\s*$/', '', $respText);
+                    $respText = preg_replace('/^\s*`+\w*\s*/i', '', $respText);
+                    $respText = preg_replace('/\s*`+\s*$/', '', $respText);
                     $respText = trim($respText);
 
                     // Parse with control-char sanitization
@@ -446,6 +489,11 @@ SPROMPT;
                         if ($failures >= $maxFailures)
                             break;
                         continue;
+                    }
+                    // ── Server-side level assignment from gen_rules ──
+                    if (empty($newChar['is_creature'])) {
+                        $rolledLevel = rollIntakeLevel($genRulesIntake);
+                        $newChar['class'] = applyLevelToClass($newChar['class'] ?? 'Commoner 1', $rolledLevel);
                     }
                     $newCharacters[] = $newChar;
                     $failures = 0;
@@ -519,6 +567,18 @@ SPROMPT;
                 // Check for closed borders setting
                 $genRulesJson = json_decode($townMeta2['gen_rules'] ?? '{}', true) ?: [];
                 $closedBorders = !empty($genRulesJson['closed_borders']);
+                // Build level restriction block for simulation new arrivals
+                $simIntakeLevel = isset($genRulesJson['intake_level']) ? (int) $genRulesJson['intake_level'] : 0;
+                $simMaxLevel = isset($genRulesJson['max_level']) ? (int) $genRulesJson['max_level'] : 20;
+                $simIntakeLevelBlock = '';
+                if ($simIntakeLevel > 0) {
+                    $simIntakeLevelBlock = "ALL new arrivals MUST be Level {$simIntakeLevel}. ";
+                } else {
+                    $simIntakeLevelBlock = "Default Level 1 unless DM instructions specify otherwise. ";
+                }
+                if ($simMaxLevel > 0 && $simMaxLevel < 20) {
+                    $simIntakeLevelBlock .= "MAX LEVEL CAP: {$simMaxLevel}. No new character may exceed this level. ";
+                }
                 $closedBordersBlock = '';
                 if ($closedBorders) {
                     $closedBordersBlock = "\n## CLOSED BORDERS — NO NEW ARRIVALS\nThis town has CLOSED BORDERS. You MUST NOT generate any new arrivals in the new_characters array.\nThe ONLY exception is BIRTHS from existing romantic couples — newborn children are allowed.\nDo NOT add travelers, refugees, merchants, or any outsiders. The new_characters array should be EMPTY unless a birth occurs.\n";
@@ -704,17 +764,22 @@ DM Override: If the DM's instructions below specify exact XP for a character, ho
 
 ## BRIEF CHARACTER GENERATION RULES (for any new arrivals/births):
 - Do NOT generate ability scores (str/dex/con/int_/wis/cha), HP, AC, atk, or gear — the system auto-generates these.
-- Most NPCs: NPC classes (Commoner, Expert, Warrior, Adept). Player classes RARE. Default Level 1 unless DM instructions specify otherwise.{$customClassRef}
+- Most NPCs: NPC classes (Commoner, Expert, Warrior, Adept). Player classes RARE. {$simIntakeLevelBlock}{$customClassRef}
 - Available races: Human, Elf, Dwarf, Halfling, Gnome, Half-Elf, Half-Orc.{$customRaceRef}
 - Feats: 1 at L1 (Humans 2). Use common SRD feats (Alertness, Toughness, Skill Focus, Dodge, Weapon Focus, Power Attack, etc).
 - Skills: pick appropriate class skills. The system will calculate bonuses.
 - NAMING: Use WILDLY diverse naming styles. Mix Anglo, Celtic, Norse, Mediterranean, Slavic, Arabic, East Asian, African, Polynesian, invented fantasy, and archaic names. NO two new characters should share the same first syllable. Every character MUST have a completely unique first AND last name not seen in the roster.
-- BANNED FIRST NAMES (AI over-uses these — NEVER use): Elara, Lyra, Lyria, Theron, Seraphina, Kael, Aelara, Elowen, Rowan, Thorne, Astra, Kaelen, Isolde, Alaric, Lysander, Cassian, Aurelia, Selene, Eldric, Zephyr, Nyx, Orion, Sylas, Briar, Ember, Vesper, Corvus, Liora, Thalion, Arianne, Caelum, Ravenna, Fenris, Seren, Astrid, Mira, Vex, Kira, Caspian, Faelar, Cerys, Brynjar, Caladwen, Eamon, Rhiannon, Galen, Torin, Eira, Lirael, Aldric, Iris, Wren, Sage, Luna, Celeste, Sorrel, Ash, Raven, Dusk, Storm, Frost, Vale, Wilder, Fern, Ivy, Hazel, Cedar, Linden, Birch.
-- BANNED SURNAMES (AI recycles these constantly — NEVER use): Meadowlight, Thornvale, Greenleaf, Fairfax, Brightwood, Darkhollow, Ironforge, Stormwind, Blackthorn, Silverbrook, Goldleaf, Moonshadow, Starweaver, Dawnfire, Nightshade, Willowmere, Oakenshield, Stoneheart, Frostborne, Flamecrest, Sunblade, Shadowmere, Ravenwood, Wolfbane, Hawthorne, Whitmore, Ashford, Blackwood, Redcliffe, Holloway, Dunbar, Reed, Windwalker.
+- BANNED NAME SUFFIXES: NEVER use dynasty-style suffixes like II, III, IV, Jr., Sr., "the Younger", "the Elder", "the Bold", "the Fair", "the Red". Every character must have their OWN unique name — they are NOT descended from existing characters.
+- BANNED FIRST NAMES (AI over-uses these — NEVER use): Elara, Lyra, Lyria, Theron, Seraphina, Kael, Aelara, Elowen, Rowan, Thorne, Astra, Kaelen, Isolde, Alaric, Lysander, Cassian, Aurelia, Selene, Eldric, Zephyr, Nyx, Orion, Sylas, Briar, Ember, Vesper, Corvus, Liora, Thalion, Arianne, Caelum, Ravenna, Fenris, Seren, Astrid, Mira, Vex, Kira, Caspian, Faelar, Cerys, Brynjar, Caladwen, Eamon, Rhiannon, Galen, Torin, Eira, Lirael, Aldric, Iris, Wren, Sage, Luna, Celeste, Sorrel, Ash, Raven, Dusk, Storm, Frost, Vale, Wilder, Fern, Ivy, Hazel, Cedar, Linden, Birch, Ignatius, Ilphas, Ielenia, Marden, Gunnar, Katya, Kethra, Glimmer, Godfrey, Lada.
+- BANNED SURNAMES (AI recycles these constantly — NEVER use): Meadowlight, Thornvale, Greenleaf, Fairfax, Brightwood, Darkhollow, Ironforge, Stormwind, Blackthorn, Silverbrook, Goldleaf, Moonshadow, Starweaver, Dawnfire, Nightshade, Willowmere, Oakenshield, Stoneheart, Frostborne, Flamecrest, Sunblade, Shadowmere, Ravenwood, Wolfbane, Hawthorne, Whitmore, Ashford, Blackwood, Redcliffe, Holloway, Dunbar, Reed, Windwalker, Oakshade, Mithrilheart, Sparklefingers, Galanodel, Yarborough, Brooking, Chandler, Thorne, Mossfoot, Holloway.
+- BANNED SURNAME PATTERNS: Do NOT create compound "fantasy" surnames by combining two English words (e.g., Stone+heart, Iron+forge, Moon+shadow, Oak+shade, Bright+wood). These are overused AI clichés. Instead use real-world inspired surnames: al-Rashid, Kowalski, Tanaka, O'Brien, Desrochers, Ngomo, Vasquez, Hjelm, Papadopoulos, etc.
 - BETTER NAME EXAMPLES: Mabari Tcheko, Idris al-Fadl, Suki Tanabe, Bogdan Kreshnik, Njeri Oduya, Piotr Skaraborg, Ximena Cuervo, Tahani zo Nkosi, Dragan Vulic, Umeko Hashi, Fiachna mac Dara, Kalindi Deshpande, Oskar Hulgaard.
 ## WORLD SIMULATION SETTINGS:
 - Relationship Formation Speed: {$relSpeed}. Characters forge relationships over time — romantic, friendly, AND hostile.
-- Birth Rate: {$birthRate}. Births require an ESTABLISHED romantic relationship of at least 9 months PLUS race-appropriate gestation (Human ~9mo, Elf ~12mo, Dwarf ~12mo, Halfling ~8mo). Do NOT generate births unless a couple clearly had enough time together. One-night stands producing fatherless children are uncommon but possible. For new settlements or short simulations, births should be VERY rare.
+- Birth Rate: {$birthRate}. {$birthRateGuide}
+  CRITICAL BIRTH MATH: The birth rate percentage applies ONLY to women of childbearing age (roughly 15-45 for humans, 100-400 for elves, 40-200 for dwarves) who are IN an established romantic relationship of at least 9 months. NOT the total population.
+  For a town of {$charCount}: estimate ~25% are childbearing-age women, of those maybe ~40-60% are in relationships = roughly {$eligibleMothers} eligible mothers. At {$birthRate} rate, expect at most {$maxBirths} birth(s) across {$months} month(s) of simulation.
+  Gestation: Human ~9mo, Elf ~12mo, Dwarf ~12mo, Halfling ~8mo. Do NOT generate births unless a couple has been together long enough. One-night-stand births are extremely rare (1 in 100 simulations at most).
 - Child Growth: {$childGrowth}.
 - Population & Death: {$popText} Current population: {$charCount}.
 - Conflict & Events Frequency: {$conflictFreq}. This controls how often dangerous and dramatic events occur.

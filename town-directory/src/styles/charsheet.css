@@ -1961,3 +1961,366 @@
     border-bottom: 1px solid #1A0E2E;
     margin-bottom: .1rem;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   FAMILY TREE TAB — Horizontal Ancestry-style (left → right)
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── Container — horizontal scrolling ─────────────────── */
+.ft-container {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0;
+    padding: 1.5rem 1rem;
+    min-height: 300px;
+    overflow-x: auto;
+    overflow-y: visible;
+    scroll-behavior: smooth;
+}
+
+/* ── Generation Columns (vertical stack within each gen) ── */
+.ft-generation {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    position: relative;
+    flex-shrink: 0;
+}
+
+.ft-gen-label {
+    font-size: 0.55rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #A89BB8;
+    padding: 0.2rem 0.8rem;
+    background: rgba(78, 58, 120, 0.25);
+    border-radius: 10px;
+    border: 1px solid rgba(78, 58, 120, 0.3);
+    white-space: nowrap;
+}
+
+.ft-gen-label-sm {
+    font-size: 0.5rem;
+    padding: 0.15rem 0.5rem;
+    margin-bottom: 0.25rem;
+}
+
+/* Cards within a generation stack vertically */
+.ft-gen-row {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+}
+
+.ft-root-row {
+    gap: 0.5rem;
+}
+
+.ft-couple-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    align-items: center;
+    padding: 0.25rem;
+    border: 1px dashed rgba(78, 58, 120, 0.2);
+    border-radius: 8px;
+    background: rgba(78, 58, 120, 0.06);
+}
+
+.ft-siblings-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.ft-siblings-group > .ft-person {
+    transform: scale(0.9);
+}
+
+/* ── Connectors — horizontal lines between generations ── */
+.ft-connector {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+/* The main horizontal connector between generation columns */
+.ft-connector-horizontal {
+    width: 32px;
+    height: 2px;
+    background: linear-gradient(to right, rgba(184, 115, 51, 0.15), rgba(184, 115, 51, 0.5), rgba(184, 115, 51, 0.15));
+    border-radius: 1px;
+}
+
+/* Small vertical connector within a column (between spouse/child) */
+.ft-connector-vertical {
+    width: 2px;
+    height: 16px;
+    background: linear-gradient(to bottom, rgba(184, 115, 51, 0.5), rgba(184, 115, 51, 0.15));
+    border-radius: 1px;
+    flex-shrink: 0;
+}
+
+.ft-connector-heart {
+    width: auto;
+    height: auto;
+    background: none;
+    font-size: 0.9rem;
+    padding: 0.15rem 0;
+    animation: heartbeat 2s ease-in-out infinite;
+}
+
+@keyframes heartbeat {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+}
+
+/* ── Person Card ───────────────────────────────────────── */
+.ft-person {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.6rem 0.5rem 0.45rem;
+    background: linear-gradient(135deg, rgba(26, 14, 46, 0.9), rgba(45, 27, 78, 0.7));
+    border: 1px solid rgba(78, 58, 120, 0.35);
+    border-radius: 10px;
+    min-width: 100px;
+    max-width: 130px;
+    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.ft-person:hover {
+    border-color: rgba(184, 115, 51, 0.5);
+    box-shadow: 0 4px 16px rgba(184, 115, 51, 0.15);
+    transform: translateY(-2px);
+}
+
+.ft-person[data-ft-nav]:hover {
+    border-color: rgba(184, 115, 51, 0.6);
+}
+
+/* ── Root Character (Gold Glow) ────────────────────────── */
+.ft-person.ft-root {
+    border-color: rgba(184, 115, 51, 0.6);
+    background: linear-gradient(135deg, rgba(46, 30, 15, 0.9), rgba(78, 54, 27, 0.5));
+    box-shadow:
+        0 0 20px rgba(184, 115, 51, 0.15),
+        0 4px 12px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(184, 115, 51, 0.15);
+    min-width: 120px;
+    max-width: 150px;
+    padding: 0.75rem 0.6rem 0.55rem;
+}
+
+.ft-person.ft-root::before {
+    content: '⭐';
+    position: absolute;
+    top: -8px;
+    right: -4px;
+    font-size: 0.7rem;
+    filter: drop-shadow(0 1px 3px rgba(184, 115, 51, 0.5));
+}
+
+.ft-person.ft-root .ft-name {
+    color: hsl(35, 85%, 70%);
+    font-size: 0.75rem;
+}
+
+/* ── Deceased Overlay ──────────────────────────────────── */
+.ft-person.ft-deceased {
+    opacity: 0.6;
+    filter: grayscale(40%);
+}
+
+.ft-person.ft-deceased:hover {
+    opacity: 0.85;
+}
+
+/* ── Portrait ──────────────────────────────────────────── */
+.ft-portrait-wrap {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    overflow: hidden;
+    border: 2px solid rgba(78, 58, 120, 0.5);
+    background: rgba(0, 0, 0, 0.3);
+    flex-shrink: 0;
+}
+
+.ft-root .ft-portrait-wrap {
+    width: 56px;
+    height: 56px;
+    border-color: rgba(184, 115, 51, 0.45);
+}
+
+.ft-portrait {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.ft-portrait-fallback {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    background: linear-gradient(135deg, rgba(78, 58, 120, 0.3), rgba(45, 27, 78, 0.5));
+}
+
+/* ── Text Info ─────────────────────────────────────────── */
+.ft-name {
+    font-size: 0.7rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-align: center;
+    line-height: 1.2;
+    word-break: break-word;
+}
+
+.ft-meta {
+    font-size: 0.56rem;
+    color: #A89BB8;
+    text-align: center;
+    line-height: 1.2;
+}
+
+.ft-age {
+    font-size: 0.5rem;
+    color: var(--text-muted);
+}
+
+.ft-status {
+    font-size: 0.5rem;
+    color: #cc4444;
+    font-weight: 600;
+}
+
+/* ── Delete Button ─────────────────────────────────────── */
+.ft-delete-btn {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    border: 1px solid rgba(239, 68, 68, 0.2);
+    background: rgba(239, 68, 68, 0.1);
+    color: rgba(239, 68, 68, 0.5);
+    font-size: 0.55rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: all 0.15s;
+    padding: 0;
+    line-height: 1;
+}
+
+.ft-person:hover .ft-delete-btn {
+    opacity: 1;
+}
+
+.ft-delete-btn:hover {
+    background: rgba(239, 68, 68, 0.3);
+    border-color: rgba(239, 68, 68, 0.5);
+    color: #ef4444;
+}
+
+/* ── Actions Bar ───────────────────────────────────────── */
+.ft-actions {
+    display: flex;
+    justify-content: center;
+    padding: 1rem 0 0.5rem;
+}
+
+.ft-add-btn {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.5rem 1.2rem;
+    font-size: 0.78rem;
+    font-weight: 600;
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.ft-add-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(184, 115, 51, 0.25);
+}
+
+/* ── Empty State ───────────────────────────────────────── */
+.ft-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 2rem;
+    text-align: center;
+}
+
+.ft-empty-icon {
+    font-size: 3rem;
+    opacity: 0.3;
+    animation: treeSway 4s ease-in-out infinite;
+}
+
+@keyframes treeSway {
+    0%, 100% { transform: rotate(-2deg); }
+    50% { transform: rotate(2deg); }
+}
+
+.ft-empty-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.ft-empty-text {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    max-width: 320px;
+    line-height: 1.5;
+}
+
+/* ── Responsive ────────────────────────────────────────── */
+@media (max-width: 600px) {
+    .ft-container {
+        padding: 1rem 0.5rem;
+    }
+    .ft-gen-row {
+        gap: 0.4rem;
+    }
+    .ft-person {
+        min-width: 85px;
+        max-width: 110px;
+        padding: 0.4rem 0.35rem 0.35rem;
+    }
+    .ft-portrait-wrap {
+        width: 38px;
+        height: 38px;
+    }
+    .ft-root .ft-portrait-wrap {
+        width: 46px;
+        height: 46px;
+    }
+    .ft-name {
+        font-size: 0.6rem;
+    }
+    .ft-connector-horizontal {
+        width: 20px;
+    }
+}

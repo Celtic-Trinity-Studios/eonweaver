@@ -4,26 +4,27 @@
             $instructions = trim($input['instructions'] ?? '');
 
             // Get API key
-            if (!defined('OPENROUTER_API_KEY') || !OPENROUTER_API_KEY) {
-                $keyRows = query("SELECT gemini_api_key FROM users WHERE id = ?", [$userId], 0);
-                $apiKey = $keyRows ? ($keyRows[0]['gemini_api_key'] ?? '') : '';
-                if (!$apiKey)
-                    throw new Exception('No OpenRouter API key set. Go to ⚙️ Settings to add your key.');
+            $apiKey = resolveApiKey('OPENROUTER_KEY_SIM_WORLD', $userId);
+
+            // Get user settings — edition from active campaign, world sim from campaign_rules
+            $activeCampW = query('SELECT id, dnd_edition FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$userId], 0);
+            $dndEdition = $activeCampW ? ($activeCampW[0]['dnd_edition'] ?? '3.5e') : '3.5e';
+            $activeCampIdW = $activeCampW ? (int) $activeCampW[0]['id'] : null;
+            // Load campaign-scoped world sim settings from campaign_rules
+            if ($activeCampIdW) {
+                $crRowsW = query('SELECT relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency FROM campaign_rules WHERE user_id = ? AND campaign_id = ?', [$userId, $activeCampIdW], 0);
             } else {
-                $apiKey = OPENROUTER_API_KEY;
+                $crRowsW = query('SELECT relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency FROM campaign_rules WHERE user_id = ? AND campaign_id IS NULL', [$userId], 0);
             }
+            $crW = $crRowsW ? $crRowsW[0] : [];
+            $relSpeed = $crW['relationship_speed'] ?? 'normal';
+            $birthRate = $crW['birth_rate'] ?? 'normal';
+            $deathThreshold = $crW['death_threshold'] ?? '50';
+            $childGrowth = $crW['child_growth'] ?? 'realistic';
+            $conflictFreq = $crW['conflict_frequency'] ?? 'occasional';
 
-            // Get user settings (shared DB)
-            $userSettings = query('SELECT dnd_edition, xp_speed, relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency FROM users WHERE id = ?', [$userId], 0);
-            $dndEdition = $userSettings[0]['dnd_edition'] ?? '3.5e';
-            $relSpeed = $userSettings[0]['relationship_speed'] ?? 'normal';
-            $birthRate = $userSettings[0]['birth_rate'] ?? 'normal';
-            $deathThreshold = $userSettings[0]['death_threshold'] ?? '50';
-            $childGrowth = $userSettings[0]['child_growth'] ?? 'realistic';
-            $conflictFreq = $userSettings[0]['conflict_frequency'] ?? 'occasional';
-
-            // Loop all user towns
-            $allTowns = query('SELECT id, name FROM towns WHERE user_id = ? AND (is_party_base = 0 OR is_party_base IS NULL)', [$userId], $uid);
+            // Loop all user towns (filter by active campaign if available)
+            $allTowns = query('SELECT id, name FROM towns WHERE user_id = ? AND (is_party_base = 0 OR is_party_base IS NULL)' . ($activeCampIdW ? ' AND campaign_id = ?' : ''), $activeCampIdW ? [$userId, $activeCampIdW] : [$userId], $uid);
             if (empty($allTowns))
                 throw new Exception('No towns found to simulate.');
 

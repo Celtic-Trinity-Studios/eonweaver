@@ -7,29 +7,32 @@
                 throw new Exception('Missing town_id');
 
             // Get API key
-            if (!defined('OPENROUTER_API_KEY') || !OPENROUTER_API_KEY) {
-                $keyRows = query("SELECT gemini_api_key FROM users WHERE id = ?", [$userId], 0);
-                $apiKey = $keyRows ? ($keyRows[0]['gemini_api_key'] ?? '') : '';
-                if (!$apiKey)
-                    throw new Exception('No OpenRouter API key set.');
-            } else {
-                $apiKey = OPENROUTER_API_KEY;
-            }
+            $apiKey = resolveApiKey('OPENROUTER_KEY_SIM_SINGLE', $userId);
 
             // Verify town belongs to user
-            $townRow = query('SELECT id, name FROM towns WHERE id = ? AND user_id = ?', [$tId, $userId], $uid);
+            $townRow = query('SELECT id, name, campaign_id FROM towns WHERE id = ? AND user_id = ?', [$tId, $userId], $uid);
             if (empty($townRow))
                 throw new Exception('Town not found.');
             $tName = $townRow[0]['name'];
 
-            // User settings
-            $us = query('SELECT dnd_edition, xp_speed, relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency FROM users WHERE id = ?', [$userId], 0);
-            $dndEdition = $us[0]['dnd_edition'] ?? '3.5e';
-            $relSpeed = $us[0]['relationship_speed'] ?? 'normal';
-            $birthRate = $us[0]['birth_rate'] ?? 'normal';
-            $deathThreshold = $us[0]['death_threshold'] ?? '50';
-            $childGrowth = $us[0]['child_growth'] ?? 'realistic';
-            $conflictFreq = $us[0]['conflict_frequency'] ?? 'occasional';
+            // User settings — edition from campaign, world sim from campaign_rules
+            $townCampIdSt = $townRow[0]['campaign_id'] ?? null;
+            $dndEdition = '3.5e';
+            if ($townCampIdSt) {
+                $campRowSt = query('SELECT dnd_edition FROM campaigns WHERE id = ?', [$townCampIdSt], 0);
+                if ($campRowSt) $dndEdition = $campRowSt[0]['dnd_edition'] ?? '3.5e';
+            }
+            if ($townCampIdSt) {
+                $crSt = query('SELECT relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency FROM campaign_rules WHERE user_id = ? AND campaign_id = ?', [$userId, $townCampIdSt], 0);
+            } else {
+                $crSt = query('SELECT relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency FROM campaign_rules WHERE user_id = ? AND campaign_id IS NULL', [$userId], 0);
+            }
+            $crs = $crSt ? $crSt[0] : [];
+            $relSpeed = $crs['relationship_speed'] ?? 'normal';
+            $birthRate = $crs['birth_rate'] ?? 'normal';
+            $deathThreshold = $crs['death_threshold'] ?? '50';
+            $childGrowth = $crs['child_growth'] ?? 'realistic';
+            $conflictFreq = $crs['conflict_frequency'] ?? 'occasional';
             $popText = $deathThreshold === 'unlimited' ? 'No population cap.' : "Population over {$deathThreshold} increases death rate.";
 
             // Town difficulty level

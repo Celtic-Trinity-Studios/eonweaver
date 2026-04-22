@@ -141,24 +141,15 @@
                     $charName = trim($nc['name'] ?? 'Unknown');
                     if (!$charName || $charName === 'Unknown')
                         continue;
-                    // Dedup: if name exists, make it unique instead of rejecting
+                    // Strip dynasty-style suffixes the AI might still generate
+                    $charName = preg_replace('/\s+(II|III|IV|V|VI|VII|VIII|IX|X|Jr\.|Sr\.|the Younger|the Elder|the Bold|the Quiet|the Red|the Fair)\s*$/i', '', $charName);
+                    $charName = trim($charName);
+
+                    // Dedup: reject duplicates — AI must generate unique names
                     $existing = query('SELECT id FROM characters WHERE town_id = ? AND name = ? LIMIT 1', [$townId, $charName], $uid);
                     if (!empty($existing)) {
-                        $suffixes = ['the Younger', 'II', 'III', 'IV', 'the Elder', 'Jr.', 'the Bold', 'the Quiet', 'the Red', 'the Fair'];
-                        $uniquified = false;
-                        foreach ($suffixes as $suffix) {
-                            $tryName = $charName . ' ' . $suffix;
-                            $check = query('SELECT id FROM characters WHERE town_id = ? AND name = ? LIMIT 1', [$townId, $tryName], $uid);
-                            if (empty($check)) {
-                                $charName = $tryName;
-                                $uniquified = true;
-                                break;
-                            }
-                        }
-                        if (!$uniquified) {
-                            $applied['arrivals_failed'][] = $charName . ' (duplicate name — all suffix variants exhausted)';
-                            continue;
-                        }
+                        $applied['arrivals_failed'][] = $charName . ' (duplicate name — skipped)';
+                        continue;
                     }
 
                     $aiRawData = json_encode($nc, JSON_UNESCAPED_UNICODE);
@@ -170,6 +161,20 @@
                     $level = $clsMatch ? (int) $clsMatch[2] : 1;
                     if ($isCreature && isset($nc['level'])) {
                         $level = (int) $nc['level'];
+                    }
+
+                    // ── Server-side Level Enforcement from gen_rules ──
+                    if (!$isCreature) {
+                        $intakeLvl = isset($genRulesCB['intake_level']) ? (int) $genRulesCB['intake_level'] : 0;
+                        $maxLvl = isset($genRulesCB['max_level']) ? (int) $genRulesCB['max_level'] : 20;
+                        // If intake_level is set, override the level
+                        if ($intakeLvl > 0) {
+                            $level = $intakeLvl;
+                        }
+                        // Cap at max_level
+                        if ($maxLvl > 0 && $level > $maxLvl) {
+                            $level = $maxLvl;
+                        }
                     }
 
                     $race = $nc['race'] ?? 'Human';
@@ -319,6 +324,57 @@
                     }
                     if ($charInserted) {
                         $applied['new_characters']++;
+
+                        // ── Auto-add Birth to Family Tree ──
+                        // If this is a birth (age 0 or reason mentions born/birth),
+                        // try to find parents and create family links
+                        $charAge = (int) ($nc['age'] ?? 99);
+                        $arrivalReason = strtolower($nc['reason'] ?? $nc['reason_for_arrival'] ?? $nc['history'] ?? '');
+                        $isBirth = ($charAge === 0 || strpos($arrivalReason, 'born') !== false || strpos($arrivalReason, 'birth') !== false);
+                        if ($isBirth) {
+                            // Get the new character's ID
+                            $newBornRows = query('SELECT id FROM characters WHERE town_id = ? AND name = ? ORDER BY id DESC LIMIT 1', [$townId, $charName], $uid);
+                            if (!empty($newBornRows)) {
+                                $newBornId = (int) $newBornRows[0]['id'];
+                                // Try to find parents from spouse field, parent names in reason, or married couples
+                                $parentNames = [];
+                                // Check if reason mentions parent names (e.g. "Born to Gareth and Elara")
+                                if (preg_match('/born\s+to\s+([\w\s]+?)\s+and\s+([\w\s]+?)(?:\.|,|$)/i', $arrivalReason, $parentMatch)) {
+                                    $parentNames[] = trim($parentMatch[1]);
+                                    $parentNames[] = trim($parentMatch[2]);
+                                }
+                                // Also check parent_names field if AI provides it
+                                if (!empty($nc['parent_names'])) {
+                                    $pNames = is_array($nc['parent_names']) ? $nc['parent_names'] : explode(',', $nc['parent_names']);
+                                    foreach ($pNames as $pn) {
+                                        $pn = trim($pn);
+                                        if ($pn && !in_array($pn, $parentNames)) $parentNames[] = $pn;
+                                    }
+                                }
+                                // Also check parents field
+                                if (!empty($nc['parents'])) {
+                                    $pNames = is_array($nc['parents']) ? $nc['parents'] : explode(',', $nc['parents']);
+                                    foreach ($pNames as $pn) {
+                                        $pn = trim($pn);
+                                        if ($pn && !in_array($pn, $parentNames)) $parentNames[] = $pn;
+                                    }
+                                }
+                                foreach ($parentNames as $pName) {
+                                    $pRows = query('SELECT id FROM characters WHERE town_id = ? AND LOWER(name) = LOWER(?) LIMIT 1', [$townId, $pName], $uid);
+                                    if (!empty($pRows)) {
+                                        $parentId = (int) $pRows[0]['id'];
+                                        try {
+                                            execute(
+                                                'INSERT INTO character_relationships (char1_id, char2_id, rel_type, disposition, reason) VALUES (?,?,?,?,?)
+                                                 ON DUPLICATE KEY UPDATE rel_type=VALUES(rel_type), reason=VALUES(reason)',
+                                                [$parentId, $newBornId, 'family', 10, 'parent'],
+                                                $uid
+                                            );
+                                        } catch (Exception $e) { /* non-fatal */ }
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // Skip equipment/spells/skills for creatures
@@ -1028,6 +1084,19 @@
                             $uid
                         );
                         $applied['relationships']++;
+
+                        // ── Auto-add to Family Tree ──
+                        // Create a family link (spouse) so the family tree tab shows it
+                        if ($cid1 && $cid2) {
+                            try {
+                                execute(
+                                    'INSERT INTO character_relationships (char1_id, char2_id, rel_type, disposition, reason) VALUES (?,?,?,?,?)
+                                     ON DUPLICATE KEY UPDATE rel_type=VALUES(rel_type), reason=VALUES(reason)',
+                                    [$cid1, $cid2, 'family', 10, 'spouse'],
+                                    $uid
+                                );
+                            } catch (Exception $e) { /* non-fatal, may already exist */ }
+                        }
                     }
 
                     // Also store in character_relationships table for all types

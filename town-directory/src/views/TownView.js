@@ -26,7 +26,21 @@ const ne = (fn) => fn();
 // This file was auto-reconstructed from the production bundle.
 // The code is fully functional with minified local variable names.
 
-const Bi={Human:"var(--race-human, #c9a84c)",Dwarf:"var(--race-dwarf, #a0522d)",Elf:"var(--race-elf, #4fc978)",Halfling:"var(--race-halfling, #e6a040)",Gnome:"var(--race-gnome, #c97fbf)","Half-Elf":"var(--race-half-elf, #5fb8a0)","Half-Orc":"var(--race-half-orc, #8b4513)",Tiefling:"var(--race-tiefling, #c0392b)",Orc:"var(--race-orc, #556b2f)",Goblin:"var(--race-goblin, #6b8e23)",Drow:"var(--race-drow, #8a2be2)"};function Fi(e,t){const s=Z(),a=t.id?parseInt(t.id):s.currentTownId;if(!a){e.innerHTML=`
+const Bi={Human:"var(--race-human, #c9a84c)",Dwarf:"var(--race-dwarf, #a0522d)",Elf:"var(--race-elf, #4fc978)",Halfling:"var(--race-halfling, #e6a040)",Gnome:"var(--race-gnome, #c97fbf)","Half-Elf":"var(--race-half-elf, #5fb8a0)","Half-Orc":"var(--race-half-orc, #8b4513)",Tiefling:"var(--race-tiefling, #c0392b)",Orc:"var(--race-orc, #556b2f)",Goblin:"var(--race-goblin, #6b8e23)",Drow:"var(--race-drow, #8a2be2)"};
+
+// Class name → 3-letter abbreviation map
+const ClassAbbr={barbarian:"Bar",bard:"Brd",cleric:"Clr",druid:"Drd",fighter:"Ftr",monk:"Mnk",paladin:"Pal",ranger:"Rgr",rogue:"Rog",sorcerer:"Sor",wizard:"Wiz",commoner:"Com",expert:"Exp",warrior:"War",adept:"Adp",aristocrat:"Ari","arcane archer":"AAt","arcane trickster":"ATk",assassin:"Asn",blackguard:"Blk","dragon disciple":"DDi",duelist:"Dlt","dwarven defender":"DwD","eldritch knight":"EKn",hierophant:"Hie","horizon walker":"HWk",loremaster:"Lor","mystic theurge":"MTh",shadowdancer:"Shd",thaumaturgist:"Thg"};
+function abbrClass(cls){if(!cls)return"";const c=cls.replace(/\s+\d+$/,"").trim();const k=c.toLowerCase();if(ClassAbbr[k])return ClassAbbr[k];const w=k.split(/\s+/)[0];if(ClassAbbr[w])return ClassAbbr[w];return c.substring(0,3).charAt(0).toUpperCase()+c.substring(1,3);}
+
+// Race name → 3-letter abbreviation map
+const RaceAbbr={human:"Hum",dwarf:"Dwf",elf:"Elf",halfling:"Hlf",gnome:"Gnm","half-elf":"H-E","half-orc":"H-O",tiefling:"Tfl",dragonborn:"Drg",aasimar:"Asm",orc:"Orc",goblin:"Gob",drow:"Drw",hobgoblin:"Hob",bugbear:"Bug",kobold:"Kob",lizardfolk:"Lzf",gnoll:"Gnl",ogre:"Ogr",troll:"Trl",minotaur:"Min",centaur:"Cen",satyr:"Sat",changeling:"Chg",shifter:"Shf",warforged:"Wfg",kenku:"Ken",tabaxi:"Tab",firbolg:"Fir",goliath:"Gol",genasi:"Gen",tortle:"Trt","yuan-ti":"Y-T",githyanki:"Gyk",githzerai:"Gzr"};
+function abbrRace(race){if(!race)return"";const k=race.toLowerCase().trim();if(RaceAbbr[k])return RaceAbbr[k];return race.substring(0,3).charAt(0).toUpperCase()+race.substring(1,3);}
+
+// Alignment → 2-letter abbreviation map
+const AlignAbbr={"lawful good":"LG","neutral good":"NG","chaotic good":"CG","lawful neutral":"LN","true neutral":"TN","neutral":"TN","chaotic neutral":"CN","lawful evil":"LE","neutral evil":"NE","chaotic evil":"CE"};
+function abbrAlign(a){if(!a)return"";const k=a.toLowerCase().trim();if(AlignAbbr[k])return AlignAbbr[k];if(k.length<=3)return a;return a.split(/\s+/).map(w=>w[0]).join("").toUpperCase();}
+
+function Fi(e,t){const s=Z(),a=t.id?parseInt(t.id):s.currentTownId;if(!a){e.innerHTML=`
       <div class="view-empty">
         <h2> No Town Selected</h2>
         <p>Select a town from the <a href="/dev/dashboard">Dashboard</a> or create a new one.</p>
@@ -206,22 +220,24 @@ Type the town name to confirm:`);if(A&&A.trim().toLowerCase()===w.toLowerCase())
     `,(c=p.querySelector("#filter-race"))==null||c.addEventListener("change",f=>{ee({activeRaceFilter:f.target.value||null}),ke(e,t),xe(e,t)}),(d=p.querySelector("#filter-class"))==null||d.addEventListener("change",f=>{ee({activeClassFilter:f.target.value||null}),ke(e,t),xe(e,t)}),(u=p.querySelector("#filter-building"))==null||u.addEventListener("change",f=>{ee({activeBuildingFilter:f.target.value||null}),ke(e,t),xe(e,t)})}}function et(e,t){const s=e.querySelector("#roster-tabs");if(!s)return;const a=Z(),n=t.filter(r=>r.status!=="Deceased").length,l=t.filter(r=>r.status==="Deceased").length,i=a.activeStatusFilter==="Deceased";s.innerHTML='<button class="roster-tab'+(i?"":" active")+'" data-tab="living">Living <span class="roster-tab-count">'+n+'</span></button><button class="roster-tab'+(i?" active":"")+'" data-tab="graveyard">Graveyard <span class="roster-tab-count">'+l+"</span></button>",s.addEventListener("click",r=>{const p=r.target.closest(".roster-tab");if(!p)return;const o=p.dataset.tab;ee({activeStatusFilter:o==="graveyard"?"Deceased":null}),et(e,t),ke(e,t),xe(e,t)})}function Ra(e){const t=Z(),s=e.querySelector("#list-header");if(!s)return;const a=n=>t.sortCol===n?(t.sortDir==="asc"," "):"";s.innerHTML=`
     <div class="list-header-row">
       <span class="sort-col col-name" data-sort="name">Name${a("name")}</span>
-      <span class="sort-col col-race" data-sort="race">Race${a("race")}</span>
-      <span class="sort-col col-class" data-sort="class">Class${a("class")}</span>
-      <span class="sort-col col-lvl" data-sort="level">Lvl${a("level")}</span>
+      <span class="sort-col col-race" data-sort="race">Rac${a("race")}</span>
+      <span class="sort-col col-age" data-sort="age">Age${a("age")}</span>
+      <span class="sort-col col-class" data-sort="class">Cls${a("class")}</span>
+      <span class="sort-col col-lvl" data-sort="level">Lv${a("level")}</span>
       <span class="sort-col col-hp" data-sort="hp">HP${a("hp")}</span>
       <span class="sort-col col-ac" data-sort="ac">AC${a("ac")}</span>
-      <span class="sort-col col-align" data-sort="alignment">Align${a("alignment")}</span>
+      <span class="sort-col col-align" data-sort="alignment">AL${a("alignment")}</span>
     </div>
   `,s.addEventListener("click",n=>{var r;const l=n.target.closest(".sort-col");if(!(l!=null&&l.dataset.sort))return;const i=l.dataset.sort;t.sortCol===i?ee({sortDir:t.sortDir==="asc"?"desc":"asc"}):ee({sortCol:i,sortDir:"asc"}),Ra(e),ke(e,((r=Z().currentTown)==null?void 0:r.characters)||[])})}function Ha(e){const t=Z();let s=[...e];if(t.activeRaceFilter&&(s=s.filter(n=>n.race===t.activeRaceFilter)),t.activeClassFilter&&(s=s.filter(n=>n.class===t.activeClassFilter)),t.activeBuildingFilter&&(t.activeBuildingFilter==="_unassigned"?s=s.filter(n=>!n.building_id):s=s.filter(n=>String(n.building_id)===t.activeBuildingFilter)),t.activeStatusFilter==="Deceased"?s=s.filter(n=>n.status==="Deceased"):s=s.filter(n=>n.status!=="Deceased"),t.searchQuery){const n=t.searchQuery.toLowerCase();s=s.filter(l=>(l.name||"").toLowerCase().includes(n)||(l.race||"").toLowerCase().includes(n)||(l.class||"").toLowerCase().includes(n)||(l.role||"").toLowerCase().includes(n))}s.sort((n,l)=>{let i,r;return t.sortCol==="level"?(i=parseInt(n.level)||0,r=parseInt(l.level)||0):["hp","ac","xp","age"].includes(t.sortCol)?(i=parseInt(n[t.sortCol])||0,r=parseInt(l[t.sortCol])||0):(i=String(n[t.sortCol]||"").toLowerCase(),r=String(l[t.sortCol]||"").toLowerCase()),i<r?t.sortDir==="asc"?-1:1:i>r?t.sortDir==="asc"?1:-1:0});const a=s.findIndex(n=>(n.role||"").toLowerCase().includes("mayor"));if(a>0){const[n]=s.splice(a,1);s.unshift(n)}return s}function ke(e,t){const s=e.querySelector("#list-body");if(!s)return;const a=Z(),n=Ha(t);s.innerHTML=n.map(l=>{const i=Bi[l.race]||"var(--text-muted)",r=l.id==a.selectedCharId||l.dbId==a.selectedCharId?" active":"",p=l.status==="Deceased"?" deceased":"",o=String(l.ac||"").split(",")[0].trim()||"";return`
       <div class="char-row${r}${p}${(l.role||"").toLowerCase().includes("mayor")?" mayor-row":""}" data-id="${l.id}">
-        <span class="col-name">${(l.role||"").toLowerCase().includes("mayor")?'<span class="mayor-badge">&#9813;</span> ':""}${l.name}</span>
-        <span class="col-race" style="color:${i}">${l.race}</span>
-        <span class="col-class">${(l.class||"").replace(/\s+\d+$/,"")}</span>
+        <span class="col-name" title="${l.name}${l.role?' — '+l.role:''}">${(l.role||"").toLowerCase().includes("mayor")?'<span class="mayor-badge">&#9813;</span> ':""}${l.name}</span>
+        <span class="col-race" style="color:${i}" title="${l.race}">${abbrRace(l.race)}</span>
+        <span class="col-age">${l.age||""}</span>
+        <span class="col-class" title="${(l.class||"").replace(/\s+\d+$/,"")}">${abbrClass(l.class)}</span>
         <span class="col-lvl">${l.level||0}</span>
         <span class="col-hp">${l.hp||""}</span>
         <span class="col-ac">${o}</span>
-        <span class="col-align">${l.alignment||""}</span>
+        <span class="col-align" title="${l.alignment||''}">${abbrAlign(l.alignment)}</span>
       </div>
     `}).join("")}function xe(e,t){const s=e.querySelector("#stats-bar");if(!s)return;const a=Z(),n=Ha(t);a.activeStatusFilter==="Deceased"?s.textContent=n.length+" departed soul"+(n.length!==1?"s":""):s.textContent=n.length+" living resident"+(n.length!==1?"s":"")+"  |  "+t.length+" total"}async function ji(e,t,s){const{showModal:a}=await ne(async()=>{const{showModal:r}=await Promise.resolve().then(()=>Pe);return{showModal:r}},void 0);let n=null;const{el:l,close:i}=a({title:" Import Character from Statblock",width:"wide",content:`
             <div class="import-modal-body">

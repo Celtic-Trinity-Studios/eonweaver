@@ -64,6 +64,41 @@ try {
             respond($user ? ['ok' => true, 'user' => $user] : ['ok' => false, 'user' => null]);
             break;
 
+        case 'get_usage':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
+            $tier = $udata[0]['subscription_tier'] ?? 'free';
+            $yearMonth = date('Y-m');
+
+            // Get limit for this tier
+            $limitKey = 'token_limit_' . $tier;
+            $limitRows = query("SELECT value FROM site_settings WHERE `key` = ?", [$limitKey], 0);
+            $fallbacks = ['free' => 1500000, 'adventurer' => 6000000, 'guild_master' => 20000000, 'world_builder' => 60000000];
+            $limit = $limitRows ? (int) $limitRows[0]['value'] : ($fallbacks[$tier] ?? 1500000);
+
+            // Get usage this month
+            $usageRows = query(
+                "SELECT tokens_used, call_count FROM user_token_usage WHERE user_id = ? AND `year_month` = ?",
+                [$uid, $yearMonth], 0
+            );
+            $tokensUsed = $usageRows ? (int) $usageRows[0]['tokens_used'] : 0;
+            $callCount = $usageRows ? (int) $usageRows[0]['call_count'] : 0;
+            $percentage = $limit > 0 ? round(($tokensUsed / $limit) * 100, 1) : 0;
+
+            $tierLabels = ['free' => 'Free', 'adventurer' => 'Adventurer', 'guild_master' => 'Guild Master', 'world_builder' => 'World Builder'];
+            respond([
+                'ok' => true,
+                'tier' => $tier,
+                'tier_label' => $tierLabels[$tier] ?? $tier,
+                'tokens_used' => $tokensUsed,
+                'token_limit' => $limit,
+                'percentage' => $percentage,
+                'call_count' => $callCount,
+                'year_month' => $yearMonth,
+            ]);
+            break;
+
         /* ═══════════════════════════════════════════════════
            CAMPAIGNS — multi-campaign support
            ═══════════════════════════════════════════════════ */
@@ -76,11 +111,11 @@ try {
                 $cnt = query('SELECT COUNT(*) as c FROM towns WHERE campaign_id = ? AND (is_party_base = 0 OR is_party_base IS NULL)', [(int) $c['id']], $uid);
                 $c['town_count'] = (int) ($cnt[0]['c'] ?? 0);
             }
-            // Tier info — two tiers: free (1 campaign, 3 towns) and subscriber (unlimited)
+            // Tier info — four tiers: free, adventurer, guild_master, world_builder
             $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
             $tier = $udata[0]['subscription_tier'] ?? 'free';
-            $limits = ['free' => 1, 'subscriber' => 999];
-            $townLimits = ['free' => 3, 'subscriber' => 999];
+            $limits = ['free' => 1, 'adventurer' => 3, 'guild_master' => 10, 'world_builder' => 999];
+            $townLimits = ['free' => 3, 'adventurer' => 5, 'guild_master' => 10, 'world_builder' => 999];
             respond(['ok' => true, 'campaigns' => $camps, 'tier' => $tier, 'max_campaigns' => $limits[$tier] ?? 1, 'max_towns' => $townLimits[$tier] ?? 3]);
             break;
 
@@ -94,10 +129,10 @@ try {
                 throw new Exception('Campaign name is required.');
             if (!in_array($edition, ['3.5e', '5e', '5e2024']))
                 $edition = '3.5e';
-            // Check tier limit — two tiers: free and subscriber
+            // Check tier limit — four tiers: free, adventurer, guild_master, world_builder
             $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
             $tier = $udata[0]['subscription_tier'] ?? 'free';
-            $limits = ['free' => 1, 'subscriber' => 999];
+            $limits = ['free' => 1, 'adventurer' => 3, 'guild_master' => 10, 'world_builder' => 999];
             $maxCamps = $limits[$tier] ?? 1;
             $existing = query('SELECT COUNT(*) as c FROM campaigns WHERE user_id = ?', [$uid], 0);
             $currentCount = (int) ($existing[0]['c'] ?? 0);
@@ -218,16 +253,16 @@ try {
             // Link to active campaign
             $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
             $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
-            // Check town limit per tier (free = 3, subscriber = unlimited)
+            // Check town limit per tier
             if ($campId) {
                 $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
                 $tier = $udata[0]['subscription_tier'] ?? 'free';
-                $townLimits = ['free' => 3, 'subscriber' => 999];
+                $townLimits = ['free' => 3, 'adventurer' => 5, 'guild_master' => 10, 'world_builder' => 999];
                 $maxTowns = $townLimits[$tier] ?? 3;
                 $existingTowns = query('SELECT COUNT(*) as c FROM towns WHERE campaign_id = ? AND (is_party_base = 0 OR is_party_base IS NULL)', [$campId], $uid);
                 $currentTownCount = (int) ($existingTowns[0]['c'] ?? 0);
                 if ($currentTownCount >= $maxTowns)
-                    throw new Exception("Free accounts can have up to $maxTowns towns per campaign. Subscribe to create unlimited towns.");
+                    throw new Exception("Your plan allows up to $maxTowns towns per campaign. Upgrade to create more.");
             }
             $id = insertAndGetId(
                 'INSERT INTO towns (user_id, campaign_id, name, subtitle) VALUES (?, ?, ?, ?)',
@@ -1045,40 +1080,119 @@ try {
             }
             break;
 
-        /* ── Campaign Rules & Description — per-user ────────────────────── */
+        /* ── Campaign Rules & Description — per-campaign ────────────────────── */
         case 'get_campaign_rules':
             $user = requireAuth();
             $uid = (int) $user['id'];
-            $rows = query('SELECT rules_text, campaign_description, homebrew_settings FROM campaign_rules WHERE user_id = ?', [$uid], $uid);
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+            if ($campId) {
+                $rows = query('SELECT rules_text, campaign_description, homebrew_settings, relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency, sell_rate FROM campaign_rules WHERE user_id = ? AND campaign_id = ? ORDER BY updated_at DESC LIMIT 1', [$uid, $campId], $uid);
+                // Fallback: check for legacy rows with NULL campaign_id
+                if (empty($rows)) {
+                    $rows = query('SELECT rules_text, campaign_description, homebrew_settings, relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency, sell_rate FROM campaign_rules WHERE user_id = ? AND campaign_id IS NULL ORDER BY updated_at DESC LIMIT 1', [$uid], $uid);
+                }
+            } else {
+                $rows = query('SELECT rules_text, campaign_description, homebrew_settings, relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency, sell_rate FROM campaign_rules WHERE user_id = ? AND campaign_id IS NULL ORDER BY updated_at DESC LIMIT 1', [$uid], $uid);
+            }
+            $r = $rows ? $rows[0] : [];
             respond([
                 'ok' => true,
-                'rules_text' => $rows ? ($rows[0]['rules_text'] ?? '') : '',
-                'campaign_description' => $rows ? ($rows[0]['campaign_description'] ?? '') : '',
-                'homebrew_settings' => $rows ? json_decode($rows[0]['homebrew_settings'] ?? '{}', true) : new \stdClass()
+                'rules_text' => $r['rules_text'] ?? '',
+                'campaign_description' => $r['campaign_description'] ?? '',
+                'homebrew_settings' => $r ? json_decode($r['homebrew_settings'] ?? '{}', true) : new \stdClass(),
+                'relationship_speed' => $r['relationship_speed'] ?? 'normal',
+                'birth_rate' => $r['birth_rate'] ?? 'normal',
+                'death_threshold' => $r['death_threshold'] ?? '50',
+                'child_growth' => $r['child_growth'] ?? 'realistic',
+                'conflict_frequency' => $r['conflict_frequency'] ?? 'occasional',
+                'sell_rate' => $r['sell_rate'] ?? '50',
             ]);
             break;
 
         case 'save_campaign_rules':
             $user = requireAuth();
             $uid = (int) $user['id'];
-            $text = $input['rules_text'] ?? '';
-            $desc = $input['campaign_description'] ?? '';
-            $homebrew = isset($input['homebrew_settings']) ? json_encode($input['homebrew_settings']) : '{}';
-            execute(
-                'INSERT INTO campaign_rules (user_id, rules_text, campaign_description, homebrew_settings, updated_at) VALUES (?, ?, ?, ?, NOW())
-                 ON DUPLICATE KEY UPDATE rules_text = VALUES(rules_text), campaign_description = VALUES(campaign_description), homebrew_settings = VALUES(homebrew_settings), updated_at = NOW()',
-                [$uid, $text, $desc, $homebrew],
-                $uid
-            );
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+            $text = trim($input['rules_text'] ?? '');
+            $desc = trim($input['campaign_description'] ?? '');
+            $homebrew = isset($input['homebrew_settings']) ? json_encode($input['homebrew_settings'], JSON_UNESCAPED_UNICODE) : '{}';
+            $relSpeed = $input['relationship_speed'] ?? 'normal';
+            $birthRate = $input['birth_rate'] ?? 'normal';
+            $deathThreshold = $input['death_threshold'] ?? '50';
+            $childGrowth = $input['child_growth'] ?? 'realistic';
+            $conflictFreq = $input['conflict_frequency'] ?? 'occasional';
+            $sellRate = $input['sell_rate'] ?? '50';
+
+            // Upsert by (user_id, campaign_id) — must handle NULL campaign_id explicitly
+            // Also handles legacy rows where campaign_id is NULL but should be updated
+            if ($campId) {
+                $existing = query('SELECT id FROM campaign_rules WHERE user_id = ? AND campaign_id = ?', [$uid, $campId], 0);
+                // Fallback: check for legacy rows with NULL campaign_id
+                if (empty($existing)) {
+                    $existing = query('SELECT id FROM campaign_rules WHERE user_id = ? AND campaign_id IS NULL', [$uid], 0);
+                    // If found, migrate: update the row AND set campaign_id
+                    if ($existing) {
+                        $primaryId = (int) $existing[0]['id'];
+                        execute(
+                            'UPDATE campaign_rules SET campaign_id = ?, rules_text = ?, campaign_description = ?, homebrew_settings = ?, relationship_speed = ?, birth_rate = ?, death_threshold = ?, child_growth = ?, conflict_frequency = ?, sell_rate = ?, updated_at = NOW() WHERE id = ?',
+                            [$campId, $text, $desc, $homebrew, $relSpeed, $birthRate, $deathThreshold, $childGrowth, $conflictFreq, $sellRate, $primaryId],
+                            $uid
+                        );
+                        // Clean up any duplicates
+                        if (count($existing) > 1) {
+                            $dupeIds = array_map(function ($r) { return (int) $r['id']; }, array_slice($existing, 1));
+                            $placeholders = implode(',', array_fill(0, count($dupeIds), '?'));
+                            execute("DELETE FROM campaign_rules WHERE id IN ($placeholders)", $dupeIds, $uid);
+                        }
+                        respond(['ok' => true]);
+                        break;
+                    }
+                }
+            } else {
+                $existing = query('SELECT id FROM campaign_rules WHERE user_id = ? AND campaign_id IS NULL', [$uid], 0);
+            }
+            if ($existing) {
+                // Update the first matching row
+                $primaryId = (int) $existing[0]['id'];
+                execute(
+                    'UPDATE campaign_rules SET rules_text = ?, campaign_description = ?, homebrew_settings = ?, relationship_speed = ?, birth_rate = ?, death_threshold = ?, child_growth = ?, conflict_frequency = ?, sell_rate = ?, updated_at = NOW() WHERE id = ?',
+                    [$text, $desc, $homebrew, $relSpeed, $birthRate, $deathThreshold, $childGrowth, $conflictFreq, $sellRate, $primaryId],
+                    $uid
+                );
+                // Clean up any duplicate rows
+                if (count($existing) > 1) {
+                    $dupeIds = array_map(function ($r) { return (int) $r['id']; }, array_slice($existing, 1));
+                    $placeholders = implode(',', array_fill(0, count($dupeIds), '?'));
+                    execute("DELETE FROM campaign_rules WHERE id IN ($placeholders)", $dupeIds, $uid);
+                }
+            } else {
+                // No row exists at all — insert fresh
+                try {
+                    execute(
+                        'INSERT INTO campaign_rules (user_id, campaign_id, rules_text, campaign_description, homebrew_settings, relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency, sell_rate, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
+                        [$uid, $campId, $text, $desc, $homebrew, $relSpeed, $birthRate, $deathThreshold, $childGrowth, $conflictFreq, $sellRate],
+                        $uid
+                    );
+                } catch (Exception $insertErr) {
+                    // If INSERT fails (old unique_user key), fall back to UPDATE any existing row for this user
+                    execute(
+                        'UPDATE campaign_rules SET campaign_id = ?, rules_text = ?, campaign_description = ?, homebrew_settings = ?, relationship_speed = ?, birth_rate = ?, death_threshold = ?, child_growth = ?, conflict_frequency = ?, sell_rate = ?, updated_at = NOW() WHERE user_id = ? LIMIT 1',
+                        [$campId, $text, $desc, $homebrew, $relSpeed, $birthRate, $deathThreshold, $childGrowth, $conflictFreq, $sellRate, $uid],
+                        $uid
+                    );
+                }
+            }
             respond(['ok' => true]);
             break;
 
-        /* ── Site Settings (per-user) — in shared users table ── */
+        /* ── Site Settings (per-user) — global user prefs only ── */
         case 'get_settings':
             $user = requireAuth();
             $uid = (int) $user['id'];
             $rows = query(
-                'SELECT dnd_edition, xp_speed, npc_xp_speed, relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency FROM users WHERE id = ?',
+                'SELECT dnd_edition, xp_speed, npc_xp_speed FROM users WHERE id = ?',
                 [$uid],
                 0
             );
@@ -1088,11 +1202,6 @@ try {
                     'dnd_edition' => $rows[0]['dnd_edition'] ?? '3.5e',
                     'xp_speed' => $rows[0]['xp_speed'] ?? 'normal',
                     'npc_xp_speed' => $rows[0]['npc_xp_speed'] ?? 'normal',
-                    'relationship_speed' => $rows[0]['relationship_speed'] ?? 'normal',
-                    'birth_rate' => $rows[0]['birth_rate'] ?? 'normal',
-                    'death_threshold' => $rows[0]['death_threshold'] ?? '50',
-                    'child_growth' => $rows[0]['child_growth'] ?? 'realistic',
-                    'conflict_frequency' => $rows[0]['conflict_frequency'] ?? 'occasional'
                 ]
             ]);
             break;
@@ -1102,7 +1211,7 @@ try {
             $uid = (int) $user['id'];
             $settingKey = $input['key'] ?? '';
             $value = $input['value'] ?? '';
-            $allowed = ['dnd_edition', 'xp_speed', 'npc_xp_speed', 'relationship_speed', 'birth_rate', 'death_threshold', 'child_growth', 'conflict_frequency'];
+            $allowed = ['dnd_edition', 'xp_speed', 'npc_xp_speed'];
             if (!in_array($settingKey, $allowed))
                 throw new Exception("Invalid setting: $settingKey");
             execute("UPDATE users SET {$settingKey} = ? WHERE id = ?", [$value, $uid], 0);
@@ -1480,6 +1589,126 @@ try {
             if (!$relId)
                 throw new Exception('Relationship ID required.');
             execute('DELETE FROM character_relationships WHERE id = ?', [$relId], $uid);
+            respond(['ok' => true]);
+            break;
+
+        // ── Family Tree ───────────────────────────────────────
+        case 'get_family_tree':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $charId = (int) ($_GET['character_id'] ?? 0);
+            if (!$charId)
+                throw new Exception('character_id required.');
+
+            // Verify character ownership
+            $charCheck = query(
+                'SELECT c.id FROM characters c JOIN towns t ON t.id = c.town_id WHERE c.id = ? AND t.user_id = ?',
+                [$charId, $uid], $uid
+            );
+            if (!$charCheck)
+                throw new Exception('Character not found or access denied.');
+
+            // Get ALL family-type relationships for this user's characters (cross-town)
+            $allUserCharIds = array_column(
+                query('SELECT c.id FROM characters c JOIN towns t ON t.id = c.town_id WHERE t.user_id = ?', [$uid], $uid),
+                'id'
+            );
+            if (empty($allUserCharIds)) {
+                respond(['ok' => true, 'links' => [], 'members' => []]);
+                break;
+            }
+
+            $ph = implode(',', array_fill(0, count($allUserCharIds), '?'));
+            $familyRels = query(
+                "SELECT cr.id, cr.char1_id, cr.char2_id, cr.rel_type, cr.reason, cr.disposition
+                 FROM character_relationships cr
+                 WHERE cr.rel_type = 'family'
+                   AND (cr.char1_id IN ($ph) OR cr.char2_id IN ($ph))",
+                array_merge($allUserCharIds, $allUserCharIds),
+                $uid
+            );
+
+            // Collect unique character IDs from family links
+            $memberIds = [$charId];
+            foreach ($familyRels as $rel) {
+                $memberIds[] = (int) $rel['char1_id'];
+                $memberIds[] = (int) $rel['char2_id'];
+            }
+            $memberIds = array_values(array_unique($memberIds));
+            $mph = implode(',', array_fill(0, count($memberIds), '?'));
+
+            // Fetch character data for all family members
+            $members = query(
+                "SELECT c.id, c.name, c.race, c.class, c.level, c.gender, c.age,
+                        c.status, c.portrait_url, c.alignment, c.role, c.title, c.town_id,
+                        t.name as town_name
+                 FROM characters c
+                 JOIN towns t ON t.id = c.town_id
+                 WHERE c.id IN ($mph)",
+                $memberIds,
+                $uid
+            );
+
+            // Build links array (using reason field for family_role)
+            $links = [];
+            foreach ($familyRels as $rel) {
+                $links[] = [
+                    'id' => (int) $rel['id'],
+                    'char1_id' => (int) $rel['char1_id'],
+                    'char2_id' => (int) $rel['char2_id'],
+                    'family_role' => $rel['reason'] ?: 'family',
+                ];
+            }
+
+            respond([
+                'ok' => true,
+                'root_id' => $charId,
+                'links' => $links,
+                'members' => $members,
+            ]);
+            break;
+
+        case 'save_family_link':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $char1 = (int) ($input['char1_id'] ?? 0);
+            $char2 = (int) ($input['char2_id'] ?? 0);
+            $familyRole = trim($input['family_role'] ?? 'parent');
+
+            if (!$char1 || !$char2)
+                throw new Exception('Both character IDs required.');
+            if ($char1 === $char2)
+                throw new Exception('Cannot create family link with self.');
+
+            $allowed = ['parent', 'sibling', 'spouse'];
+            if (!in_array($familyRole, $allowed))
+                throw new Exception('Invalid family_role. Use: parent, sibling, or spouse.');
+
+            // Verify both characters belong to user
+            $check = query(
+                'SELECT c.id FROM characters c JOIN towns t ON t.id = c.town_id WHERE c.id IN (?,?) AND t.user_id = ?',
+                [$char1, $char2, $uid], $uid
+            );
+            if (count($check) < 2)
+                throw new Exception('One or both characters not found or access denied.');
+
+            $newId = insertAndGetId(
+                'INSERT INTO character_relationships (char1_id, char2_id, rel_type, disposition, public_rel, reason)
+                 VALUES (?,?,?,?,?,?)
+                 ON DUPLICATE KEY UPDATE reason=VALUES(reason), disposition=VALUES(disposition)',
+                [$char1, $char2, 'family', 10, 1, $familyRole],
+                $uid
+            );
+            respond(['ok' => true, 'id' => $newId]);
+            break;
+
+        case 'delete_family_link':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $relId = (int) ($input['id'] ?? 0);
+            if (!$relId)
+                throw new Exception('Link ID required.');
+            execute('DELETE FROM character_relationships WHERE id = ? AND rel_type = ?', [$relId, 'family'], $uid);
             respond(['ok' => true]);
             break;
 
@@ -2449,6 +2678,7 @@ try {
                 ['admin'], 0
             );
             $ym = date('Y-m');
+            $fallbacks = ['free' => 1500000, 'adventurer' => 6000000, 'guild_master' => 20000000, 'world_builder' => 60000000];
             foreach ($members as &$m) {
                 try {
                     $usage = query('SELECT tokens_used, call_count FROM user_token_usage WHERE user_id = ? AND `year_month` = ?', [(int) $m['id'], $ym], 0);
@@ -2463,6 +2693,16 @@ try {
                 }
                 $campCount = query('SELECT COUNT(*) as c FROM campaigns WHERE user_id = ?', [(int) $m['id']], 0);
                 $m['campaign_count'] = (int) ($campCount[0]['c'] ?? 0);
+                // Town count
+                $townCount = query('SELECT COUNT(*) as c FROM towns WHERE user_id = ? AND (is_party_base = 0 OR is_party_base IS NULL)', [(int) $m['id']], 0);
+                $m['town_count'] = (int) ($townCount[0]['c'] ?? 0);
+                // Token limit and usage percentage
+                $tier = $m['subscription_tier'] ?? 'free';
+                $limitKey = 'token_limit_' . $tier;
+                $limitRows = query("SELECT value FROM site_settings WHERE `key` = ?", [$limitKey], 0);
+                $limit = $limitRows ? (int) $limitRows[0]['value'] : ($fallbacks[$tier] ?? 1500000);
+                $m['token_limit'] = $limit;
+                $m['usage_pct'] = $limit > 0 ? round(($m['tokens_this_month'] / $limit) * 100, 1) : 0;
             }
             unset($m);
             respond(['ok' => true, 'members' => $members]);
@@ -2472,7 +2712,7 @@ try {
             requireAdmin();
             try {
                 $rows = query(
-                    'SELECT u.username, t.user_id, t.`year_month`, t.tokens_used, t.call_count
+                    'SELECT u.username, t.user_id, t.`year_month`, t.feature_key, t.tokens_used, t.call_count
                      FROM user_token_usage t
                      JOIN users u ON u.id = t.user_id
                      ORDER BY t.`year_month` DESC, t.tokens_used DESC',
@@ -2487,52 +2727,67 @@ try {
             break;
 
         /* ═══════════════════════════════════════════════════
-           CAMPAIGN RULES — World Context for AI
+           CAMPAIGN RULES — World Context for AI (per-campaign)
            ═══════════════════════════════════════════════════ */
         case 'get_campaign_rules':
             $user = requireAuth();
             $uid = (int) $user['id'];
-            $rows = query('SELECT rules_text, campaign_description, homebrew_settings FROM campaign_rules WHERE user_id = ?', [$uid], 0);
-            if ($rows) {
-                $r = $rows[0];
-                $hb = $r['homebrew_settings'] ?? '{}';
-                $hbDecoded = json_decode($hb, true) ?: [];
-                respond([
-                    'ok' => true,
-                    'rules_text' => $r['rules_text'] ?? '',
-                    'campaign_description' => $r['campaign_description'] ?? '',
-                    'homebrew_settings' => $hbDecoded,
-                ]);
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+            if ($campId) {
+                $rows = query('SELECT rules_text, campaign_description, homebrew_settings, relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency, sell_rate FROM campaign_rules WHERE user_id = ? AND campaign_id = ?', [$uid, $campId], 0);
             } else {
-                respond([
-                    'ok' => true,
-                    'rules_text' => '',
-                    'campaign_description' => '',
-                    'homebrew_settings' => (object) [],
-                ]);
+                $rows = query('SELECT rules_text, campaign_description, homebrew_settings, relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency, sell_rate FROM campaign_rules WHERE user_id = ? AND campaign_id IS NULL', [$uid], 0);
             }
+            $r = $rows ? $rows[0] : [];
+            $hb = $r['homebrew_settings'] ?? '{}';
+            $hbDecoded = json_decode($hb, true) ?: [];
+            respond([
+                'ok' => true,
+                'rules_text' => $r['rules_text'] ?? '',
+                'campaign_description' => $r['campaign_description'] ?? '',
+                'homebrew_settings' => $hbDecoded ?: (object) [],
+                'relationship_speed' => $r['relationship_speed'] ?? 'normal',
+                'birth_rate' => $r['birth_rate'] ?? 'normal',
+                'death_threshold' => $r['death_threshold'] ?? '50',
+                'child_growth' => $r['child_growth'] ?? 'realistic',
+                'conflict_frequency' => $r['conflict_frequency'] ?? 'occasional',
+                'sell_rate' => $r['sell_rate'] ?? '50',
+            ]);
             break;
 
         case 'save_campaign_rules':
             $user = requireAuth();
             $uid = (int) $user['id'];
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
             $rulesText = trim($input['rules_text'] ?? '');
             $campDesc = trim($input['campaign_description'] ?? '');
             $hbSettings = $input['homebrew_settings'] ?? [];
             $hbJson = json_encode($hbSettings, JSON_UNESCAPED_UNICODE);
+            $relSpeed = $input['relationship_speed'] ?? 'normal';
+            $birthRate = $input['birth_rate'] ?? 'normal';
+            $deathThreshold = $input['death_threshold'] ?? '50';
+            $childGrowth = $input['child_growth'] ?? 'realistic';
+            $conflictFreq = $input['conflict_frequency'] ?? 'occasional';
+            $sellRate = $input['sell_rate'] ?? '50';
 
-            // Upsert: insert or update
-            $existing = query('SELECT id FROM campaign_rules WHERE user_id = ?', [$uid], 0);
+            // Upsert by (user_id, campaign_id)
+            if ($campId) {
+                $existing = query('SELECT id FROM campaign_rules WHERE user_id = ? AND campaign_id = ?', [$uid, $campId], 0);
+            } else {
+                $existing = query('SELECT id FROM campaign_rules WHERE user_id = ? AND campaign_id IS NULL', [$uid], 0);
+            }
             if ($existing) {
                 execute(
-                    'UPDATE campaign_rules SET rules_text = ?, campaign_description = ?, homebrew_settings = ?, updated_at = NOW() WHERE user_id = ?',
-                    [$rulesText, $campDesc, $hbJson, $uid],
+                    'UPDATE campaign_rules SET rules_text = ?, campaign_description = ?, homebrew_settings = ?, relationship_speed = ?, birth_rate = ?, death_threshold = ?, child_growth = ?, conflict_frequency = ?, sell_rate = ?, updated_at = NOW() WHERE id = ?',
+                    [$rulesText, $campDesc, $hbJson, $relSpeed, $birthRate, $deathThreshold, $childGrowth, $conflictFreq, $sellRate, (int) $existing[0]['id']],
                     0
                 );
             } else {
                 execute(
-                    'INSERT INTO campaign_rules (user_id, rules_text, campaign_description, homebrew_settings, updated_at) VALUES (?, ?, ?, ?, NOW())',
-                    [$uid, $rulesText, $campDesc, $hbJson],
+                    'INSERT INTO campaign_rules (user_id, campaign_id, rules_text, campaign_description, homebrew_settings, relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency, sell_rate, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
+                    [$uid, $campId, $rulesText, $campDesc, $hbJson, $relSpeed, $birthRate, $deathThreshold, $childGrowth, $conflictFreq, $sellRate],
                     0
                 );
             }
@@ -2754,8 +3009,8 @@ try {
             foreach ($files as $f) $totalSize += (int) ($f['file_size'] ?? 0);
             $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
             $tier = $udata[0]['subscription_tier'] ?? 'free';
-            $storageLimits = ['free' => 20 * 1024 * 1024, 'subscriber' => 500 * 1024 * 1024];
-            $fileLimits = ['free' => 10, 'subscriber' => 100];
+            $storageLimits = ['free' => 20 * 1024 * 1024, 'adventurer' => 100 * 1024 * 1024, 'guild_master' => 500 * 1024 * 1024, 'world_builder' => 2048 * 1024 * 1024];
+            $fileLimits = ['free' => 10, 'adventurer' => 50, 'guild_master' => 200, 'world_builder' => 9999];
             respond([
                 'ok' => true,
                 'files' => $files,
@@ -2778,6 +3033,367 @@ try {
                 if (file_exists($filepath)) @unlink($filepath);
             }
             userExecute($uid, 'DELETE FROM user_files WHERE id = ?', [$fileId]);
+            respond(['ok' => true]);
+            break;
+
+        /* ═══════════════════════════════════════════════════
+           ADMIN — cross-account database management
+           ═══════════════════════════════════════════════════ */
+
+        case 'admin_overview':
+            requireAdmin();
+            $totalUsers = query('SELECT COUNT(*) as c FROM users', [], 0)[0]['c'] ?? 0;
+            $totalTowns = query('SELECT COUNT(*) as c FROM towns', [], 0)[0]['c'] ?? 0;
+            $totalChars = query('SELECT COUNT(*) as c FROM characters', [], 0)[0]['c'] ?? 0;
+            $totalCamps = query('SELECT COUNT(*) as c FROM campaigns', [], 0)[0]['c'] ?? 0;
+            $ym = date('Y-m');
+            $monthlyTokens = query("SELECT COALESCE(SUM(tokens_used),0) as t FROM user_token_usage WHERE `year_month` = ?", [$ym], 0)[0]['t'] ?? 0;
+            $monthlyCalls = query("SELECT COALESCE(SUM(call_count),0) as c FROM user_token_usage WHERE `year_month` = ?", [$ym], 0)[0]['c'] ?? 0;
+            $activeUsers = query("SELECT COUNT(DISTINCT user_id) as c FROM user_token_usage WHERE `year_month` = ?", [$ym], 0)[0]['c'] ?? 0;
+            respond([
+                'ok' => true,
+                'total_users' => (int) $totalUsers,
+                'total_towns' => (int) $totalTowns,
+                'total_characters' => (int) $totalChars,
+                'total_campaigns' => (int) $totalCamps,
+                'monthly_tokens' => (int) $monthlyTokens,
+                'monthly_calls' => (int) $monthlyCalls,
+                'active_users' => (int) $activeUsers,
+                'month' => $ym,
+            ]);
+            break;
+
+        case 'admin_members':
+            requireAdmin();
+            $members = query(
+                "SELECT u.id, u.username, u.email, u.subscription_tier, u.role, u.created_at,
+                    (SELECT COUNT(*) FROM campaigns WHERE user_id = u.id) as campaign_count,
+                    (SELECT COUNT(*) FROM towns WHERE user_id = u.id) as town_count,
+                    COALESCE((SELECT SUM(tokens_used) FROM user_token_usage WHERE user_id = u.id AND `year_month` = ?), 0) as tokens_this_month,
+                    COALESCE((SELECT SUM(call_count) FROM user_token_usage WHERE user_id = u.id AND `year_month` = ?), 0) as calls_this_month
+                 FROM users u ORDER BY u.created_at DESC",
+                [date('Y-m'), date('Y-m')],
+                0
+            );
+            respond(['ok' => true, 'members' => $members]);
+            break;
+
+        case 'admin_update_member':
+            requireAdmin();
+            $targetId = (int) ($input['user_id'] ?? 0);
+            if (!$targetId) throw new Exception('Missing user_id');
+            $updates = [];
+            $params = [];
+            if (isset($input['subscription_tier'])) {
+                $updates[] = 'subscription_tier = ?';
+                $params[] = $input['subscription_tier'];
+            }
+            if (isset($input['role'])) {
+                $updates[] = 'role = ?';
+                $params[] = $input['role'];
+            }
+            if (isset($input['username'])) {
+                $updates[] = 'username = ?';
+                $params[] = trim($input['username']);
+            }
+            if (isset($input['email'])) {
+                $updates[] = 'email = ?';
+                $params[] = trim($input['email']);
+            }
+            if (empty($updates)) throw new Exception('No fields to update');
+            $params[] = $targetId;
+            execute('UPDATE users SET ' . implode(', ', $updates) . ' WHERE id = ?', $params, 0);
+            respond(['ok' => true]);
+            break;
+
+        case 'admin_delete_member':
+            requireAdmin();
+            $targetId = (int) ($input['user_id'] ?? 0);
+            if (!$targetId) throw new Exception('Missing user_id');
+            // Prevent self-delete
+            $adminUser = currentUser();
+            if ((int) $adminUser['id'] === $targetId)
+                throw new Exception('Cannot delete your own account.');
+            // CASCADE deletes handle campaigns, towns, characters, etc.
+            execute('DELETE FROM users WHERE id = ?', [$targetId], 0);
+            respond(['ok' => true]);
+            break;
+
+        case 'admin_user_campaigns':
+            requireAdmin();
+            $targetId = (int) ($_GET['user_id'] ?? 0);
+            if (!$targetId) throw new Exception('Missing user_id');
+            $camps = query(
+                'SELECT c.*, (SELECT COUNT(*) FROM towns WHERE campaign_id = c.id) as town_count FROM campaigns c WHERE c.user_id = ? ORDER BY c.created_at',
+                [$targetId],
+                0
+            );
+            respond(['ok' => true, 'campaigns' => $camps]);
+            break;
+
+        case 'admin_user_towns':
+            requireAdmin();
+            $targetId = (int) ($_GET['user_id'] ?? 0);
+            $campId = (int) ($_GET['campaign_id'] ?? 0);
+            if (!$targetId) throw new Exception('Missing user_id');
+            $sql = 'SELECT t.*, (SELECT COUNT(*) FROM characters WHERE town_id = t.id) as character_count FROM towns t WHERE t.user_id = ?';
+            $params = [$targetId];
+            if ($campId) {
+                $sql .= ' AND t.campaign_id = ?';
+                $params[] = $campId;
+            }
+            $sql .= ' ORDER BY t.name';
+            $towns = query($sql, $params, 0);
+            respond(['ok' => true, 'towns' => $towns]);
+            break;
+
+        case 'admin_town_characters':
+            requireAdmin();
+            $townId = (int) ($_GET['town_id'] ?? 0);
+            if (!$townId) throw new Exception('Missing town_id');
+            $chars = query('SELECT * FROM characters WHERE town_id = ? ORDER BY name', [$townId], 0);
+            respond(['ok' => true, 'characters' => $chars]);
+            break;
+
+        case 'admin_update_character':
+            requireAdmin();
+            $charId = (int) ($input['character_id'] ?? 0);
+            if (!$charId) throw new Exception('Missing character_id');
+            $d = $input['data'] ?? [];
+            $fields = [
+                'name','race','class','level','status','title','gender','spouse','spouse_label',
+                'age','xp','cr','ecl','hp','hd','ac','init','spd','grapple','atk','alignment',
+                'saves','str','dex','con','int_','wis','cha','languages','skills_feats','feats',
+                'domains','gear','role','history','portrait_url','portrait_prompt','building_id'
+            ];
+            $sets = [];
+            $vals = [];
+            foreach ($fields as $f) {
+                if (array_key_exists($f, $d)) {
+                    $sets[] = "`$f` = ?";
+                    $vals[] = $d[$f];
+                }
+            }
+            if (empty($sets)) throw new Exception('No fields to update');
+            $vals[] = $charId;
+            execute('UPDATE characters SET ' . implode(', ', $sets) . ' WHERE id = ?', $vals, 0);
+            respond(['ok' => true]);
+            break;
+
+        case 'admin_delete_character':
+            requireAdmin();
+            $charId = (int) ($input['character_id'] ?? 0);
+            if (!$charId) throw new Exception('Missing character_id');
+            execute('DELETE FROM characters WHERE id = ?', [$charId], 0);
+            respond(['ok' => true]);
+            break;
+
+        case 'admin_update_town':
+            requireAdmin();
+            $townId = (int) ($input['town_id'] ?? 0);
+            if (!$townId) throw new Exception('Missing town_id');
+            $d = $input['data'] ?? [];
+            $sets = [];
+            $vals = [];
+            if (isset($d['name'])) { $sets[] = 'name = ?'; $vals[] = trim($d['name']); }
+            if (isset($d['subtitle'])) { $sets[] = 'subtitle = ?'; $vals[] = trim($d['subtitle']); }
+            if (isset($d['is_party_base'])) { $sets[] = 'is_party_base = ?'; $vals[] = (int) $d['is_party_base']; }
+            if (empty($sets)) throw new Exception('No fields to update');
+            $sets[] = 'updated_at = NOW()';
+            $vals[] = $townId;
+            execute('UPDATE towns SET ' . implode(', ', $sets) . ' WHERE id = ?', $vals, 0);
+            respond(['ok' => true]);
+            break;
+
+        case 'admin_delete_town':
+            requireAdmin();
+            $townId = (int) ($input['town_id'] ?? 0);
+            if (!$townId) throw new Exception('Missing town_id');
+            execute('DELETE FROM characters WHERE town_id = ?', [$townId], 0);
+            execute('DELETE FROM history WHERE town_id = ?', [$townId], 0);
+            execute('DELETE FROM town_meta WHERE town_id = ?', [$townId], 0);
+            execute('DELETE FROM town_buildings WHERE town_id = ?', [$townId], 0);
+            execute('DELETE FROM towns WHERE id = ?', [$townId], 0);
+            respond(['ok' => true]);
+            break;
+
+        case 'admin_update_campaign':
+            requireAdmin();
+            $campId = (int) ($input['campaign_id'] ?? 0);
+            if (!$campId) throw new Exception('Missing campaign_id');
+            $d = $input['data'] ?? [];
+            $sets = [];
+            $vals = [];
+            if (isset($d['name'])) { $sets[] = 'name = ?'; $vals[] = trim($d['name']); }
+            if (isset($d['dnd_edition'])) { $sets[] = 'dnd_edition = ?'; $vals[] = trim($d['dnd_edition']); }
+            if (isset($d['description'])) { $sets[] = 'description = ?'; $vals[] = trim($d['description']); }
+            if (isset($d['is_active'])) { $sets[] = 'is_active = ?'; $vals[] = (int) $d['is_active']; }
+            if (empty($sets)) throw new Exception('No fields to update');
+            $sets[] = 'updated_at = NOW()';
+            $vals[] = $campId;
+            execute('UPDATE campaigns SET ' . implode(', ', $sets) . ' WHERE id = ?', $vals, 0);
+            respond(['ok' => true]);
+            break;
+
+        case 'admin_token_usage':
+            requireAdmin();
+            $usage = query(
+                "SELECT u.username, t.user_id, t.year_month, t.feature_key, t.tokens_used, t.call_count
+                 FROM user_token_usage t
+                 JOIN users u ON u.id = t.user_id
+                 ORDER BY t.year_month DESC, t.tokens_used DESC",
+                [],
+                0
+            );
+            respond(['ok' => true, 'usage' => $usage]);
+            break;
+
+        case 'admin_site_settings':
+            requireAdmin();
+            $settings = query('SELECT * FROM site_settings ORDER BY `key`', [], 0);
+            respond(['ok' => true, 'settings' => $settings]);
+            break;
+
+        case 'admin_update_site_setting':
+            requireAdmin();
+            $key = trim($input['key'] ?? '');
+            $value = $input['value'] ?? '';
+            if (!$key) throw new Exception('Missing key');
+            execute(
+                "INSERT INTO site_settings (`key`, value, updated_at) VALUES (?, ?, NOW())
+                 ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = NOW()",
+                [$key, $value],
+                0
+            );
+            respond(['ok' => true]);
+            break;
+
+        case 'admin_town_meta':
+            requireAdmin();
+            $townId = (int) ($_GET['town_id'] ?? 0);
+            if (!$townId) throw new Exception('Missing town_id');
+            $meta = query('SELECT * FROM town_meta WHERE town_id = ?', [$townId], 0);
+            respond(['ok' => true, 'meta' => $meta]);
+            break;
+
+        case 'admin_town_buildings':
+            requireAdmin();
+            $townId = (int) ($_GET['town_id'] ?? 0);
+            if (!$townId) throw new Exception('Missing town_id');
+            $buildings = query('SELECT * FROM town_buildings WHERE town_id = ? ORDER BY sort_order, name', [$townId], 0);
+            respond(['ok' => true, 'buildings' => $buildings]);
+            break;
+
+        case 'admin_town_history':
+            requireAdmin();
+            $townId = (int) ($_GET['town_id'] ?? 0);
+            if (!$townId) throw new Exception('Missing town_id');
+            $history = query('SELECT * FROM history WHERE town_id = ? ORDER BY sort_order', [$townId], 0);
+            respond(['ok' => true, 'history' => $history]);
+            break;
+
+        case 'admin_town_factions':
+            requireAdmin();
+            $townId = (int) ($_GET['town_id'] ?? 0);
+            if (!$townId) throw new Exception('Missing town_id');
+            $factions = query('SELECT * FROM factions WHERE town_id = ?', [$townId], 0);
+            respond(['ok' => true, 'factions' => $factions]);
+            break;
+
+        case 'admin_campaign_rules':
+            requireAdmin();
+            $campId = (int) ($_GET['campaign_id'] ?? 0);
+            if (!$campId) throw new Exception('Missing campaign_id');
+            $rules = query('SELECT * FROM campaign_rules WHERE campaign_id = ?', [$campId], 0);
+            respond(['ok' => true, 'rules' => $rules[0] ?? null]);
+            break;
+
+        case 'admin_calendar':
+            requireAdmin();
+            $campId = (int) ($_GET['campaign_id'] ?? 0);
+            if (!$campId) throw new Exception('Missing campaign_id');
+            $cal = query('SELECT * FROM calendar WHERE campaign_id = ?', [$campId], 0);
+            respond(['ok' => true, 'calendar' => $cal[0] ?? null]);
+            break;
+
+        case 'admin_character_detail':
+            requireAdmin();
+            $charId = (int) ($_GET['character_id'] ?? 0);
+            if (!$charId) throw new Exception('Missing character_id');
+            $char = query('SELECT * FROM characters WHERE id = ?', [$charId], 0);
+            if (!$char) throw new Exception('Character not found');
+            $equipment = query('SELECT * FROM character_equipment WHERE character_id = ? ORDER BY equipped DESC, sort_order', [$charId], 0);
+            $xpLog = query('SELECT * FROM character_xp_log WHERE character_id = ? ORDER BY created_at DESC LIMIT 50', [$charId], 0);
+            $memories = query('SELECT * FROM character_memories WHERE character_id = ? ORDER BY importance DESC LIMIT 50', [$charId], 0);
+            $relationships = query(
+                "SELECT cr.*, c1.name as char1_name, c2.name as char2_name
+                 FROM character_relationships cr
+                 LEFT JOIN characters c1 ON cr.char1_id = c1.id
+                 LEFT JOIN characters c2 ON cr.char2_id = c2.id
+                 WHERE cr.char1_id = ? OR cr.char2_id = ?",
+                [$charId, $charId],
+                0
+            );
+            $spellsKnown = query('SELECT * FROM character_spells_known WHERE character_id = ?', [$charId], 0);
+            $effects = query('SELECT * FROM character_active_effects WHERE character_id = ?', [$charId], 0);
+            $levelHistory = query('SELECT * FROM character_level_history WHERE character_id = ? ORDER BY level_number', [$charId], 0);
+            respond([
+                'ok' => true,
+                'character' => $char[0],
+                'equipment' => $equipment ?: [],
+                'xp_log' => $xpLog ?: [],
+                'memories' => $memories ?: [],
+                'relationships' => $relationships ?: [],
+                'spells_known' => $spellsKnown ?: [],
+                'active_effects' => $effects ?: [],
+                'level_history' => $levelHistory ?: [],
+            ]);
+            break;
+
+        case 'admin_all_towns':
+            requireAdmin();
+            $towns = query(
+                "SELECT t.*, u.username as owner_name, c.name as campaign_name,
+                    (SELECT COUNT(*) FROM characters WHERE town_id = t.id) as character_count
+                 FROM towns t
+                 JOIN users u ON u.id = t.user_id
+                 LEFT JOIN campaigns c ON c.id = t.campaign_id
+                 ORDER BY u.username, t.name",
+                [], 0
+            );
+            respond(['ok' => true, 'towns' => $towns]);
+            break;
+
+        case 'admin_all_campaigns':
+            requireAdmin();
+            $camps = query(
+                "SELECT c.*, u.username as owner_name,
+                    (SELECT COUNT(*) FROM towns WHERE campaign_id = c.id) as town_count
+                 FROM campaigns c
+                 JOIN users u ON u.id = c.user_id
+                 ORDER BY u.username, c.name",
+                [], 0
+            );
+            respond(['ok' => true, 'campaigns' => $camps]);
+            break;
+
+        case 'admin_update_meta':
+            requireAdmin();
+            $townId = (int) ($input['town_id'] ?? 0);
+            $key = trim($input['key'] ?? '');
+            $value = $input['value'] ?? '';
+            if (!$townId || !$key) throw new Exception('Missing town_id or key');
+            execute('DELETE FROM town_meta WHERE town_id = ? AND `key` = ?', [$townId, $key], 0);
+            execute('INSERT INTO town_meta (town_id, `key`, value) VALUES (?, ?, ?)', [$townId, $key, $value], 0);
+            respond(['ok' => true]);
+            break;
+
+        case 'admin_delete_meta':
+            requireAdmin();
+            $townId = (int) ($input['town_id'] ?? 0);
+            $key = trim($input['key'] ?? '');
+            if (!$townId || !$key) throw new Exception('Missing town_id or key');
+            execute('DELETE FROM town_meta WHERE town_id = ? AND `key` = ?', [$townId, $key], 0);
             respond(['ok' => true]);
             break;
 

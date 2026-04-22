@@ -108,8 +108,9 @@ try {
         $results[] = "✅ Created default campaign (id=$cid) for user {$u['id']}";
     }
 
-    // Flag dracolumina as legendary tier
-    execute("UPDATE users SET subscription_tier = 'subscriber' WHERE username = 'dracolumina'", [], 0);
+    // Flag dracolumina and Kael as world_builder tier (dev accounts)
+    execute("UPDATE users SET subscription_tier = 'world_builder' WHERE username = 'dracolumina'", [], 0);
+    execute("UPDATE users SET subscription_tier = 'world_builder' WHERE username = 'Kael'", [], 0);
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS characters (
         id              INT AUTO_INCREMENT PRIMARY KEY,
@@ -358,20 +359,35 @@ try {
         id              INT AUTO_INCREMENT PRIMARY KEY,
         user_id         INT NOT NULL,
         `year_month`    VARCHAR(7) NOT NULL,
+        feature_key     VARCHAR(100) DEFAULT 'global',
         tokens_used     BIGINT DEFAULT 0,
         call_count      INT DEFAULT 0,
         updated_at      DATETIME DEFAULT NOW(),
-        UNIQUE KEY unique_user_month (user_id, `year_month`),
+        UNIQUE KEY unique_user_month_feature (user_id, `year_month`, feature_key),
         INDEX idx_usage_user (user_id),
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $results[] = '✅ user_token_usage table';
 
-    // Seed default token limits into site_settings
+    // Migration: add feature_key
     try {
-        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_free', '500000')");
-        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_subscriber', '5000000')");
-        $results[] = '✅ Seeded default token limits';
+        $pdo->exec("ALTER TABLE user_token_usage ADD COLUMN feature_key VARCHAR(100) DEFAULT 'global' AFTER year_month");
+        $pdo->exec("ALTER TABLE user_token_usage DROP INDEX unique_user_month");
+        $pdo->exec("ALTER TABLE user_token_usage ADD UNIQUE KEY unique_user_month_feature (user_id, `year_month`, feature_key)");
+        $results[] = '✅ Added feature_key to user_token_usage';
+    } catch (Exception $e) { /* already exists or column modified */ }
+
+    // Seed default token limits into site_settings (4-tier model)
+    try {
+        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_free', '1500000')");
+        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_adventurer', '6000000')");
+        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_guild_master', '20000000')");
+        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_world_builder', '60000000')");
+        // Update legacy values if they still exist
+        $pdo->exec("UPDATE site_settings SET value = '1500000' WHERE `key` = 'token_limit_free' AND value = '500000'");
+        // Migrate old subscriber limit to adventurer if it exists
+        $pdo->exec("DELETE FROM site_settings WHERE `key` = 'token_limit_subscriber'");
+        $results[] = '✅ Seeded 4-tier token limits (free=1.5M, adventurer=6M, guild_master=20M, world_builder=60M)';
     } catch (Exception $e) { /* already exists */ }
 
 
@@ -1292,6 +1308,65 @@ try {
         }
     }
 
+    // -- Make campaign_rules campaign-specific (migrate from user-level) --
+    // Add campaign_id column
+    try {
+        $pdo->exec("ALTER TABLE campaign_rules ADD COLUMN campaign_id INT DEFAULT NULL AFTER user_id");
+        $results[] = '✅ Added campaign_id to campaign_rules';
+    } catch (Exception $e) { /* already exists */ }
+
+    // Add world simulation setting columns (migrated from users table)
+    $crCols = [
+        ['campaign_rules', 'relationship_speed', "VARCHAR(20) DEFAULT 'normal'"],
+        ['campaign_rules', 'birth_rate',         "VARCHAR(20) DEFAULT 'normal'"],
+        ['campaign_rules', 'death_threshold',    "VARCHAR(20) DEFAULT '50'"],
+        ['campaign_rules', 'child_growth',       "VARCHAR(20) DEFAULT 'realistic'"],
+        ['campaign_rules', 'conflict_frequency', "VARCHAR(20) DEFAULT 'occasional'"],
+        ['campaign_rules', 'sell_rate',          "VARCHAR(20) DEFAULT '50'"],
+    ];
+    foreach ($crCols as [$tbl, $col, $def]) {
+        try {
+            $pdo->exec("ALTER TABLE $tbl ADD COLUMN $col $def");
+            $results[] = "✅ Added campaign_rules.$col";
+        } catch (Exception $e) { /* already exists */ }
+    }
+
+    // Migrate existing user-level world sim settings into campaign_rules rows
+    try {
+        $pdo->exec("UPDATE campaign_rules cr
+            JOIN users u ON u.id = cr.user_id
+            SET cr.relationship_speed = COALESCE(u.relationship_speed, 'normal'),
+                cr.birth_rate = COALESCE(u.birth_rate, 'normal'),
+                cr.death_threshold = COALESCE(u.death_threshold, '50'),
+                cr.child_growth = COALESCE(u.child_growth, 'realistic'),
+                cr.conflict_frequency = COALESCE(u.conflict_frequency, 'occasional')
+            WHERE cr.relationship_speed IS NULL OR cr.relationship_speed = 'normal'");
+        $results[] = '✅ Migrated world sim settings from users → campaign_rules';
+    } catch (Exception $e) {
+        $results[] = '⚠️ World sim migration: ' . htmlspecialchars($e->getMessage());
+    }
+
+    // Link existing campaign_rules rows to user's active campaign
+    try {
+        $pdo->exec("UPDATE campaign_rules cr
+            SET cr.campaign_id = (
+                SELECT c.id FROM campaigns c
+                WHERE c.user_id = cr.user_id
+                ORDER BY c.is_active DESC, c.id ASC LIMIT 1
+            )
+            WHERE cr.campaign_id IS NULL");
+        $results[] = '✅ Linked campaign_rules rows to campaigns';
+    } catch (Exception $e) {
+        $results[] = '⚠️ campaign_rules link: ' . htmlspecialchars($e->getMessage());
+    }
+
+    // Change unique key from user_id to (user_id, campaign_id)
+    try {
+        $pdo->exec("ALTER TABLE campaign_rules DROP INDEX unique_user");
+        $pdo->exec("ALTER TABLE campaign_rules ADD UNIQUE KEY unique_user_campaign (user_id, campaign_id)");
+        $results[] = '✅ Changed campaign_rules unique key to (user_id, campaign_id)';
+    } catch (Exception $e) { /* key already changed or doesn't exist */ }
+
     // -- Add role column to users (admin system) --
     try {
         $pdo->exec("ALTER TABLE users ADD COLUMN role VARCHAR(20) DEFAULT 'user'");
@@ -1309,7 +1384,7 @@ try {
         $adminExists = $pdo->query("SELECT id FROM users WHERE username = 'CelticTrinityStudios'")->fetch();
         if (!$adminExists) {
             $adminHash = password_hash('@Jdsdm14e', PASSWORD_BCRYPT);
-            $pdo->prepare("INSERT INTO users (username, email, password_hash, role, subscription_tier) VALUES (?, ?, ?, 'admin', 'subscriber')")
+            $pdo->prepare("INSERT INTO users (username, email, password_hash, role, subscription_tier) VALUES (?, ?, ?, 'admin', 'world_builder')")
                 ->execute(['CelticTrinityStudios', 'admin@Eon Weaver.local', $adminHash]);
             $results[] = '✅ Created admin account: CelticTrinityStudios';
         } else {

@@ -56,15 +56,15 @@
                 Just <strong>systems that save you prep.</strong></p>
             <div class="hero-stats">
                 <div class="hero-stat">
-                    <span class="stat-number" data-target="5307">$0</span>
-                    <span class="stat-label">Pledged of $6,200 goal</span>
+                    <span class="stat-number" data-target="0">$0</span>
+                    <span class="stat-label">Pledged of $5,000 goal</span>
                 </div>
                 <div class="hero-stat">
-                    <span class="stat-number" data-target="72">0</span>
+                    <span class="stat-number" data-target="0">0</span>
                     <span class="stat-label">Backers</span>
                 </div>
                 <div class="hero-stat">
-                    <span class="stat-number">28</span>
+                    <span class="stat-number">30</span>
                     <span class="stat-label">Days to go</span>
                 </div>
             </div>
@@ -78,9 +78,9 @@
             </div>
             <div class="hero-progress">
                 <div class="progress-bar">
-                    <div class="progress-fill" style="width: 85.6%"></div>
+                    <div class="progress-fill" style="width: 0%"></div>
                 </div>
-                <span class="progress-label">85.6% funded</span>
+                <span class="progress-label">0% funded</span>
             </div>
         </div>
         <div class="hero-scroll-indicator">
@@ -445,77 +445,214 @@
                 <h2>Choose your <em>reward</em></h2>
             </div>
             <div class="rewards-grid" id="pledge">
+
+                <!-- Tier 0: Tavern Regular ($1) -->
+                <div class="reward-card reward-dollar">
+                    <div class="reward-tier">Tavern Regular</div>
+                    <div class="reward-price">$1</div>
+                    <div class="reward-tagline">"Drop a coin in the tip jar."</div>
+                    <div class="reward-desc">
+                        <ul>
+                            <li>A heartfelt thank-you from the dev</li>
+                            <li>All backer updates delivered to your inbox</li>
+                            <li>Access to backer-only Discord channel</li>
+                            <li>Your name on the Supporters Wall in-app</li>
+                        </ul>
+                    </div>
+                    <div class="reward-backers">0 backers</div>
+                    <button class="btn btn-reward" id="reward-btn-regular">Select This Reward</button>
+                </div>
+
+                <!-- Tier 1: Tavern Patron -->
                 <div class="reward-card">
                     <div class="reward-tier">Tavern Patron</div>
                     <div class="reward-price">$5</div>
+                    <div class="reward-tagline">"Leave your mark on the wall."</div>
                     <div class="reward-desc">
                         <ul>
                             <li>Digital thank-you & backer updates</li>
-                            <li>Name in the credits</li>
+                            <li>Name in the credits wall</li>
                             <li>Access to backer-only Discord</li>
                             <li>Community role & feature voting</li>
                         </ul>
                     </div>
-                    <div class="reward-backers">47 backers</div>
-                    <button class="btn btn-reward">Select This Reward</button>
+                    <div class="reward-backers">0 backers</div>
+                    <button class="btn btn-reward" id="reward-btn-patron">Select This Reward</button>
                 </div>
+
+                <!-- Tier 2: Adventurer -->
                 <div class="reward-card">
                     <div class="reward-tier">Adventurer</div>
                     <div class="reward-price">$25</div>
+                    <div class="reward-tagline">"Gear up for the road ahead."</div>
                     <div class="reward-desc">
                         <ul>
                             <li>Everything in Tavern Patron</li>
                             <li><strong>6-Month Full GM Access</strong> (early adopter pricing)</li>
                             <li>Early access to beta builds</li>
+                            <li>Digital DM Quick-Reference Card (printable PDF)</li>
+                            <li class="reward-physical"><strong>Eon Weaver Sticker Pack</strong> (3 vinyl die-cut stickers)</li>
                         </ul>
                     </div>
-                    <div class="reward-backers">89 backers</div>
-                    <button class="btn btn-reward">Select This Reward</button>
+                    <div class="reward-backers">0 backers</div>
+                    <button class="btn btn-reward" id="reward-btn-adventurer">Select This Reward</button>
                 </div>
+
+                <!-- Tier 2.5: Early Bird Dungeon Master -->
+                <div class="reward-card reward-earlybird">
+                    <div class="reward-badge reward-badge-earlybird">⚡ Early Bird — First 100 Backers</div>
+                    <div class="reward-tier">Early Bird Dungeon Master</div>
+                    <div class="reward-price">$45</div>
+                    <div class="reward-price-original">$60</div>
+                    <div class="reward-tagline">"First to the table, first to save."</div>
+                    <div class="reward-desc">
+                        <ul>
+                            <li>Everything in the Dungeon Master tier</li>
+                            <li><strong>2-Year Full GM Access</strong> (locked founding rate)</li>
+                            <li>Pre-built example world ("The Divine Preserve")</li>
+                            <li>Founding DM badge displayed in-app</li>
+                            <li class="reward-physical"><strong>Eon Weaver Enamel Pin</strong> (Kickstarter-exclusive design)</li>
+                            <li class="reward-physical"><strong>"The Weaver's Codex" Pocket Notebook</strong> (A6, 48pg)</li>
+                            <li><strong>25% savings</strong> — available to the first 100 backers only</li>
+                        </ul>
+                    </div>
+                    <div class="reward-backers">0 of 100 claimed</div>
+                    <button class="btn btn-reward btn-earlybird" id="reward-btn-earlybird">Select This Reward</button>
+                </div>
+
+                <!-- Tier 3: Dungeon Master -->
                 <div class="reward-card reward-popular">
                     <div class="reward-badge">⭐ Most Popular</div>
                     <div class="reward-tier">Dungeon Master</div>
                     <div class="reward-price">$60</div>
+                    <div class="reward-tagline">"Your world, your rules — now with the tools to prove it."</div>
                     <div class="reward-desc">
                         <ul>
                             <li>Everything in Adventurer</li>
                             <li><strong>2-Year Full GM Access</strong> (locked founding rate)</li>
-                            <li>Pre-built example world to explore features</li>
+                            <li>Pre-built example world ("The Divine Preserve")</li>
                             <li>Founding DM badge displayed in-app</li>
+                            <li class="reward-physical"><strong>Eon Weaver Enamel Pin</strong> (Kickstarter-exclusive design)</li>
+                            <li class="reward-physical"><strong>"The Weaver's Codex" Pocket Notebook</strong> (A6, 48pg, campaign note templates)</li>
                         </ul>
                     </div>
-                    <div class="reward-backers">189 backers</div>
-                    <button class="btn btn-primary btn-reward">Select This Reward</button>
+                    <div class="reward-backers">0 backers</div>
+                    <button class="btn btn-primary btn-reward" id="reward-btn-dm">Select This Reward</button>
                 </div>
+
+                <!-- Tier 4: World Builder -->
                 <div class="reward-card">
                     <div class="reward-tier">World Builder</div>
                     <div class="reward-price">$120</div>
+                    <div class="reward-tagline">"Shape the world itself."</div>
                     <div class="reward-desc">
                         <ul>
                             <li>Everything in Dungeon Master</li>
                             <li><strong>5-Year GM Access</strong> (locked founding rate)</li>
                             <li>Priority feature requests & voting</li>
                             <li>Exclusive "Founder" badge in-app</li>
-                            <li><strong>Your own NPC immortalized</strong> in the default roster</li>
+                            <li><strong>Your own NPC immortalized</strong> in the default starter world</li>
+                            <li class="reward-physical"><strong>"The Weaver's Codex" Hardcover Notebook</strong> (A5, 120pg, lay-flat binding)</li>
+                            <li class="reward-physical"><strong>Signed & Numbered Art Print</strong> (8×10")</li>
                         </ul>
                     </div>
-                    <div class="reward-backers">72 backers</div>
-                    <button class="btn btn-reward">Select This Reward</button>
+                    <div class="reward-backers">0 backers</div>
+                    <button class="btn btn-reward" id="reward-btn-worldbuilder">Select This Reward</button>
                 </div>
+
+                <!-- Tier 5: Legend -->
                 <div class="reward-card reward-legendary">
+                    <div class="reward-badge reward-badge-limited">🔒 Limited — 50 slots</div>
                     <div class="reward-tier">Legend</div>
                     <div class="reward-price">$250</div>
+                    <div class="reward-tagline">"Your name echoes through the ages."</div>
                     <div class="reward-desc">
                         <ul>
                             <li>Everything in World Builder</li>
-                            <li><strong>Lifetime GM Access</strong> (limited to 50)</li>
-                            <li>1-hour session with the dev to discuss features</li>
-                            <li>Physical "Eon Weaver DM Notebook" (limited edition)</li>
+                            <li><strong>LIFETIME GM Access</strong></li>
                             <li>Table Bundle: share access with up to 5 players</li>
+                            <li>1-hour video session with the dev</li>
+                            <li><strong>Name a town</strong> in the default starter world</li>
+                            <li class="reward-physical"><strong>"The Weaver's Vault" Collector's Box:</strong></li>
+                            <li class="reward-physical">Hardcover Codex + Enamel Pin + Art Print</li>
+                            <li class="reward-physical"><strong>Custom Eon Weaver Metal d20</strong> (antique bronze)</li>
+                            <li class="reward-physical">Hand-written thank-you note from the dev</li>
                         </ul>
                     </div>
-                    <div class="reward-backers">34 backers</div>
-                    <button class="btn btn-reward btn-legendary">Select This Reward</button>
+                    <div class="reward-backers">0 of 50 claimed</div>
+                    <button class="btn btn-reward btn-legendary" id="reward-btn-legend">Select This Reward</button>
+                </div>
+
+                <!-- Tier 6: Mythic Patron -->
+                <div class="reward-card reward-mythic">
+                    <div class="reward-badge reward-badge-limited">🔥 Limited — 10 slots</div>
+                    <div class="reward-tier">Mythic Patron</div>
+                    <div class="reward-price">$500</div>
+                    <div class="reward-tagline">"The gods themselves take notice."</div>
+                    <div class="reward-desc">
+                        <ul>
+                            <li>Everything in Legend</li>
+                            <li><strong>Design a canonical faction</strong> with the dev (name, lore, members)</li>
+                            <li>Your faction appears in every new user's starter world</li>
+                            <li class="reward-physical"><strong>Custom 4-Panel DM Screen</strong> (hardboard, Eon Weaver art + 3.5e quick-ref)</li>
+                            <li class="reward-physical"><strong>Second Metal d20</strong> (alternate colorway)</li>
+                            <li class="reward-physical">Kickstarter-exclusive sticker sheet</li>
+                        </ul>
+                    </div>
+                    <div class="reward-backers">0 of 10 claimed</div>
+                    <button class="btn btn-reward btn-legendary" id="reward-btn-mythic">Select This Reward</button>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- ADD-ONS -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <section id="addons" class="section section-dark">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">Add-Ons</span>
+                <h2>Customize your <em>pledge</em></h2>
+                <p class="section-desc">Available to any backer at the Adventurer tier ($25) or above. Add these to your pledge during checkout — build your perfect package without jumping tiers.</p>
+            </div>
+            <div class="addons-grid">
+                <div class="addon-card">
+                    <div class="addon-icon">🎨</div>
+                    <h3>Sticker Pack</h3>
+                    <p>3 vinyl die-cut stickers featuring Eon Weaver fantasy iconography.</p>
+                    <div class="addon-price">+$5</div>
+                </div>
+                <div class="addon-card">
+                    <div class="addon-icon">📌</div>
+                    <h3>Enamel Pin</h3>
+                    <p>Kickstarter-exclusive Eon Weaver enamel pin. Not available after the campaign ends.</p>
+                    <div class="addon-price">+$12</div>
+                </div>
+                <div class="addon-card">
+                    <div class="addon-icon">📓</div>
+                    <h3>Pocket Notebook</h3>
+                    <p>"The Weaver's Codex" A6 pocket notebook (48pg) with campaign note templates.</p>
+                    <div class="addon-price">+$10</div>
+                </div>
+                <div class="addon-card">
+                    <div class="addon-icon">📔</div>
+                    <h3>Hardcover Notebook</h3>
+                    <p>"The Weaver's Codex" A5 hardcover (120pg) with lay-flat binding and session templates.</p>
+                    <div class="addon-price">+$25</div>
+                </div>
+                <div class="addon-card">
+                    <div class="addon-icon">🎲</div>
+                    <h3>Custom Metal d20</h3>
+                    <p>Antique bronze Eon Weaver metal d20. Weighty, engraved, and built to last.</p>
+                    <div class="addon-price">+$20</div>
+                </div>
+                <div class="addon-card">
+                    <div class="addon-icon">🖼️</div>
+                    <h3>Signed Art Print</h3>
+                    <p>8×10" signed and numbered fantasy art print. Kickstarter exclusive.</p>
+                    <div class="addon-price">+$15</div>
                 </div>
             </div>
         </div>
@@ -748,6 +885,51 @@
                 <div class="roadmap-stat">
                     <span class="roadmap-stat-number">28+</span>
                     <span class="roadmap-stat-label">World Parameters</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <!-- ABOUT THE CREATOR -->
+    <!-- ═══════════════════════════════════════════════════════════ -->
+    <section id="about" class="section section-dark">
+        <div class="container">
+            <div class="section-header">
+                <span class="section-tag">About the Creator</span>
+                <h2>Meet <em>Celtic Trinity Studios</em></h2>
+            </div>
+            <div class="about-creator">
+                <div class="about-shield">
+                    <div class="about-shield-icon">🛡️</div>
+                    <h3>Celtic Trinity Studios</h3>
+                    <p class="about-shield-tagline">Forging adventures since day one.</p>
+                </div>
+                <div class="about-creator-content">
+                    <div class="about-block">
+                        <h4>A Community Born at the Table</h4>
+                        <p>Celtic Trinity Studios is a community of passionate tabletop role-playing enthusiasts who share a love for immersive storytelling and epic adventures. We are committed to providing a welcoming and inclusive environment where players of all experience levels can come together to create unforgettable memories in the realms of fantasy.</p>
+                    </div>
+                    <div class="about-block">
+                        <h4>Why We Built Eon Weaver</h4>
+                        <p>Eon Weaver was born out of a real need — managing the living, breathing world of our own long-running D&D 3.5e campaigns. What started as a personal tool to track NPCs, simulate downtime, and keep a sprawling world consistent between sessions grew into something far bigger. We realized every DM struggles with the same problem: <strong>the world doesn't stop when the session ends.</strong></p>
+                    </div>
+                    <div class="about-offerings">
+                        <h4>What We Bring to the Table</h4>
+                        <ul>
+                            <li>Regularly scheduled D&D sessions played on virtual tabletop platforms</li>
+                            <li>A diverse and friendly community of adventurers from around the world</li>
+                            <li>A variety of campaign settings and game systems, catering to different tastes</li>
+                            <li>Opportunities for both players and Dungeon Masters to hone their skills</li>
+                            <li>A supportive and collaborative atmosphere for creating unique and engaging stories</li>
+                        </ul>
+                    </div>
+                    <div class="about-join">
+                        <p>Whether you're an experienced adventurer or a newcomer to the world of tabletop role-playing, we welcome you with open arms. Together, we'll explore dungeons, face dragons, and forge bonds that will last a lifetime.</p>
+                        <a href="https://discord.gg/RgTkhfbsXg" class="btn btn-discord" target="_blank" rel="noopener">
+                            <span>💬</span> Join Our Discord
+                        </a>
+                    </div>
                 </div>
             </div>
         </div>

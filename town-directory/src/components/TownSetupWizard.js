@@ -7,7 +7,7 @@ import { getState, setState } from '../stores/appState.js';
 import { showModal } from './Modal.js';
 import { apiGetCharacters, normalizeCharacter } from '../api/characters.js';
 import { apiGetTownMeta, apiSaveTownMeta } from '../api/towns.js';
-import { apiApplySimulation, apiIntakeRoster, apiIntakeFlesh, apiIntakeCreature, apiGetCampaignRules, apiAutoAssignSpellsTown } from '../api/simulation.js';
+import { apiApplySimulation, apiIntakeRoster, apiIntakeFlesh, apiIntakeCreature, apiGetCampaignRules, apiAutoAssignSpellsTown, apiSaveCampaignRules } from '../api/simulation.js';
 import { apiGenerateWeather } from '../api/simulation.js';
 import { apiGetCalendar } from '../api/settings.js';
 import { apiGetBuildings, apiSaveBuilding } from '../api/buildings.js';
@@ -227,6 +227,7 @@ export function openTownSetupWizard(townId, onRefresh) {
           <button class="setup-tab" data-tab="buildings">🏛️ Buildings</button>
           <button class="setup-tab" data-tab="weather">🌦️ Weather</button>
           <button class="setup-tab" data-tab="spells">✨ Spells</button>
+          <button class="setup-tab" data-tab="settings">⚙️ Settings</button>
         </div>
 
         <!-- POPULATE TAB -->
@@ -321,6 +322,94 @@ export function openTownSetupWizard(townId, onRefresh) {
             <button class="btn-primary" id="sw-spell-assign">✨ Auto-Assign All Caster Spells</button>
           </div>
           <div class="setup-status" id="sw-spell-status"></div>
+        </div>
+
+        <!-- SETTINGS TAB -->
+        <div class="setup-panel" data-panel="settings">
+          <h3 style="margin-bottom:0.5rem;">⚙️ Campaign Rules</h3>
+          <p class="setup-desc">These settings control how the AI simulation generates content. Changes are saved to your active campaign and affect all towns.</p>
+
+          <div id="sw-settings-loading" style="color:var(--text-muted);padding:1rem;">Loading settings...</div>
+          <div id="sw-settings-content" style="display:none;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
+              <div>
+                <h4 style="color:var(--accent);margin-bottom:0.5rem;font-size:0.85rem;">🌍 World Simulation</h4>
+                <div class="form-group"><label>Relationship Formation</label>
+                  <select id="sw-rel-speed" class="form-select">
+                    <option value="very slow">Very Slow</option><option value="slow">Slow</option>
+                    <option value="normal" selected>Normal</option><option value="fast">Fast</option>
+                  </select></div>
+                <div class="form-group"><label>Birth Rate</label>
+                  <select id="sw-birth-rate" class="form-select">
+                    <option value="rare">Rare</option><option value="low">Low</option>
+                    <option value="normal" selected>Normal</option><option value="high">High</option>
+                  </select></div>
+                <div class="form-group"><label>Death Threshold</label>
+                  <select id="sw-death-threshold" class="form-select">
+                    <option value="25">25</option><option value="50" selected>50</option>
+                    <option value="75">75</option><option value="100">100</option>
+                    <option value="150">150</option><option value="unlimited">Unlimited</option>
+                  </select></div>
+                <div class="form-group"><label>Child Growth</label>
+                  <select id="sw-child-growth" class="form-select">
+                    <option value="realistic" selected>Realistic (18 yr)</option>
+                    <option value="accelerated">Accelerated</option><option value="instant">Instant</option>
+                  </select></div>
+                <div class="form-group"><label>Conflict & Events</label>
+                  <select id="sw-conflict" class="form-select">
+                    <option value="peaceful">Peaceful</option><option value="occasional" selected>Occasional</option>
+                    <option value="frequent">Frequent</option><option value="brutal">Brutal</option>
+                  </select></div>
+              </div>
+              <div>
+                <h4 style="color:var(--accent);margin-bottom:0.5rem;font-size:0.85rem;">🧪 Homebrew & World</h4>
+                <div class="form-group"><label>✨ Magic Level</label>
+                  <select id="sw-hb-magic-level" class="form-select">
+                    <option value="">— Default —</option><option value="none">No Magic</option>
+                    <option value="low">Low Magic</option><option value="standard">Standard</option>
+                    <option value="high">High Magic</option><option value="wild">Wild Magic</option>
+                  </select></div>
+                <div class="form-group"><label>🎭 World Tone</label>
+                  <select id="sw-hb-tone" class="form-select">
+                    <option value="">— Default —</option><option value="grimdark">Grimdark</option>
+                    <option value="dark_fantasy">Dark Fantasy</option><option value="standard">Standard</option>
+                    <option value="lighthearted">Lighthearted</option><option value="horror">Horror</option>
+                    <option value="intrigue">Political Intrigue</option>
+                  </select></div>
+                <div class="form-group"><label>🗣️ NPC Depth</label>
+                  <select id="sw-hb-npc-depth" class="form-select">
+                    <option value="">— Default —</option><option value="simple">Simple</option>
+                    <option value="standard">Standard</option><option value="deep">Deep</option>
+                    <option value="literary">Literary</option>
+                  </select></div>
+                <div class="form-group"><label>💕 Romance</label>
+                  <select id="sw-hb-romance" class="form-select">
+                    <option value="">— Default —</option><option value="none">None</option>
+                    <option value="subtle">Subtle</option><option value="present">Present</option>
+                    <option value="focus">Focus</option>
+                  </select></div>
+                <div class="form-group"><label>☠️ NPC Mortality</label>
+                  <select id="sw-hb-mortality" class="form-select">
+                    <option value="">— Default —</option><option value="lethal">Lethal</option>
+                    <option value="impactful">Impactful</option><option value="rare">Rare</option>
+                  </select></div>
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-top:0.75rem;">
+              <label>📜 Campaign Description</label>
+              <textarea id="sw-campaign-desc" class="form-input" rows="2" placeholder="Describe your world..."></textarea>
+            </div>
+            <div class="form-group">
+              <label>📋 House Rules</label>
+              <textarea id="sw-house-rules" class="form-input" rows="2" placeholder="House rules for simulations..."></textarea>
+            </div>
+
+            <div class="setup-actions">
+              <button class="btn-primary" id="sw-settings-save">💾 Save Settings</button>
+            </div>
+            <div class="setup-status" id="sw-settings-status"></div>
+          </div>
         </div>
       </div>
     `,
@@ -782,6 +871,84 @@ export function openTownSetupWizard(townId, onRefresh) {
     } finally {
       btn.disabled = false;
       btn.textContent = '✨ Auto-Assign All Caster Spells';
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════
+  // SETTINGS TAB — load & save campaign rules inline
+  // ═══════════════════════════════════════════════════════
+  (async () => {
+    try {
+      const rules = await apiGetCampaignRules();
+      const content = el.querySelector('#sw-settings-content');
+      const loading = el.querySelector('#sw-settings-loading');
+      if (!content) return;
+
+      // World sim
+      if (rules.relationship_speed) el.querySelector('#sw-rel-speed').value = rules.relationship_speed;
+      if (rules.birth_rate) el.querySelector('#sw-birth-rate').value = rules.birth_rate;
+      if (rules.death_threshold) el.querySelector('#sw-death-threshold').value = rules.death_threshold;
+      if (rules.child_growth) el.querySelector('#sw-child-growth').value = rules.child_growth;
+      if (rules.conflict_frequency) el.querySelector('#sw-conflict').value = rules.conflict_frequency;
+
+      // Homebrew
+      const hb = rules.homebrew_settings || {};
+      if (hb.magic_level) el.querySelector('#sw-hb-magic-level').value = hb.magic_level;
+      if (hb.tone) el.querySelector('#sw-hb-tone').value = hb.tone;
+      if (hb.npc_depth) el.querySelector('#sw-hb-npc-depth').value = hb.npc_depth;
+      if (hb.romance) el.querySelector('#sw-hb-romance').value = hb.romance;
+      if (hb.mortality) el.querySelector('#sw-hb-mortality').value = hb.mortality;
+
+      // Lore
+      if (rules.campaign_description) el.querySelector('#sw-campaign-desc').value = rules.campaign_description;
+      if (rules.rules_text) el.querySelector('#sw-house-rules').value = rules.rules_text;
+
+      loading.style.display = 'none';
+      content.style.display = '';
+    } catch (e) {
+      const loading = el.querySelector('#sw-settings-loading');
+      if (loading) loading.textContent = '❌ Failed to load settings';
+    }
+  })();
+
+  el.querySelector('#sw-settings-save')?.addEventListener('click', async () => {
+    const btn = el.querySelector('#sw-settings-save');
+    const statusEl = el.querySelector('#sw-settings-status');
+    btn.disabled = true;
+    btn.textContent = '⏳ Saving...';
+
+    try {
+      const houseRules = el.querySelector('#sw-house-rules').value.trim();
+      const campDesc = el.querySelector('#sw-campaign-desc').value.trim();
+
+      const homebrewSettings = {};
+      const hbMap = {
+        'sw-hb-magic-level': 'magic_level',
+        'sw-hb-tone': 'tone',
+        'sw-hb-npc-depth': 'npc_depth',
+        'sw-hb-romance': 'romance',
+        'sw-hb-mortality': 'mortality',
+      };
+      for (const [elId, key] of Object.entries(hbMap)) {
+        const val = el.querySelector(`#${elId}`)?.value || '';
+        if (val) homebrewSettings[key] = val;
+      }
+
+      const worldSimSettings = {
+        relationship_speed: el.querySelector('#sw-rel-speed').value,
+        birth_rate: el.querySelector('#sw-birth-rate').value,
+        death_threshold: el.querySelector('#sw-death-threshold').value,
+        child_growth: el.querySelector('#sw-child-growth').value,
+        conflict_frequency: el.querySelector('#sw-conflict').value,
+      };
+
+      await apiSaveCampaignRules(houseRules, campDesc, homebrewSettings, worldSimSettings);
+      statusEl.innerHTML = '<span style="color:var(--success)">✅ Settings saved!</span>';
+    } catch (err) {
+      statusEl.innerHTML = `<span style="color:var(--error)">❌ ${err.message}</span>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '💾 Save Settings';
     }
   });
 }

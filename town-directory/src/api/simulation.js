@@ -82,8 +82,13 @@ export function apiGetCampaignRules() {
     return apiFetch('get_campaign_rules');
 }
 
-export function apiSaveCampaignRules(rulesText, campaignDescription, homebrewSettings = {}) {
-    return apiFetch('save_campaign_rules', { method: 'POST', body: { rules_text: rulesText, campaign_description: campaignDescription, homebrew_settings: homebrewSettings } });
+export function apiSaveCampaignRules(rulesText, campaignDescription, homebrewSettings = {}, worldSimSettings = {}) {
+    return apiFetch('save_campaign_rules', { method: 'POST', body: {
+        rules_text: rulesText,
+        campaign_description: campaignDescription,
+        homebrew_settings: homebrewSettings,
+        ...worldSimSettings,
+    } });
 }
 
 export function apiAutoAssignSpells(characterId) {

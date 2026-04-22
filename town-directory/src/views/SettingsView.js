@@ -3,7 +3,8 @@
  * Campaign management + simulation settings.
  * Edition is set per-campaign, not globally.
  */
-import { apiGetSettings, apiSaveSetting } from '../api/settings.js';
+import { apiGetSettings } from '../api/settings.js';
+import { apiGetUsage } from '../api/settings.js';
 import { apiGetCampaigns, apiCreateCampaign, apiUpdateCampaign, apiDeleteCampaign, apiSwitchCampaign } from '../api/campaigns.js';
 import { showToast } from '../components/Toast.js';
 import { getState, setState } from '../stores/appState.js';
@@ -22,6 +23,7 @@ export default function SettingsView(container) {
         <section class="settings-section-card">
           <h3 class="settings-section">📜 Campaigns</h3>
           <div id="campaigns-panel">Loading campaigns...</div>
+          <div id="usage-meter-panel"></div>
         </section>
 
         <section class="settings-section-card">
@@ -474,6 +476,7 @@ export default function SettingsView(container) {
   loadSettings(container);
   loadCampaigns(container);
   loadCampaignRules(container);
+  loadUsageMeter(container);
 
   // Save handler
   container.querySelector('#settings-save-btn').addEventListener('click', () => saveSettings(container));
@@ -492,7 +495,7 @@ async function loadCampaigns(container) {
     const state = getState();
     const activeCampaignId = state.currentCampaign?.id;
 
-    const tierLabels = { free: 'Free', subscriber: 'Subscriber' };
+    const tierLabels = { free: 'Free', adventurer: 'Adventurer', guild_master: 'Guild Master', world_builder: 'World Builder' };
 
     panel.innerHTML = `
       <div class="campaign-tier-info">
@@ -542,6 +545,7 @@ async function loadCampaigns(container) {
             if (sidebarEl) renderSidebar(sidebarEl);
             showToast(`Switched to "${res.campaign.name}"`, 'success');
             loadCampaigns(container);
+            loadCampaignRules(container); // Reload world sim & lore for new campaign
           }
         } catch (err) { showToast(err.message, 'error'); }
       });
@@ -700,22 +704,76 @@ function getEditionLabel(edition) {
   return labels[edition] || edition || '';
 }
 
-/* ── User Settings ────────────────────────────── */
-async function loadSettings(container) {
-  try {
-    const res = await apiGetSettings();
-    if (!res.settings) return;
-    const s = res.settings;
+/* ── User Settings (global prefs only) ────────────────────────────── */
+/* ── Usage Meter ─────────────────────────────────────── */
+async function loadUsageMeter(container) {
+  const panel = container.querySelector('#usage-meter-panel');
+  if (!panel) return;
 
-    if (s.relationship_speed) container.querySelector('#s-rel-speed').value = s.relationship_speed;
-    if (s.birth_rate) container.querySelector('#s-birth-rate').value = s.birth_rate;
-    if (s.death_threshold) container.querySelector('#s-death-threshold').value = s.death_threshold;
-    if (s.child_growth) container.querySelector('#s-child-growth').value = s.child_growth;
-    if (s.conflict_frequency) container.querySelector('#s-conflict').value = s.conflict_frequency;
-    if (s.sell_rate) container.querySelector('#s-sell-rate').value = s.sell_rate;
+  try {
+    const res = await apiGetUsage();
+    if (!res.ok) return;
+
+    const { tier, tier_label, tokens_used, token_limit, percentage, call_count, year_month } = res;
+
+    // Format numbers for display
+    const formatTokens = (n) => {
+      if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+      if (n >= 1000) return (n / 1000).toFixed(0) + 'K';
+      return n.toString();
+    };
+
+    // Color based on percentage
+    let barColor, statusClass, statusText;
+    if (percentage >= 90) {
+      barColor = '#ef4444'; statusClass = 'usage-critical'; statusText = 'Almost at limit';
+    } else if (percentage >= 70) {
+      barColor = '#f59e0b'; statusClass = 'usage-warning'; statusText = 'Getting close';
+    } else if (percentage >= 40) {
+      barColor = '#eab308'; statusClass = 'usage-moderate'; statusText = 'Moderate usage';
+    } else {
+      barColor = '#22c55e'; statusClass = 'usage-good'; statusText = 'Plenty remaining';
+    }
+
+    const tierUpgrade = {
+      free: 'Upgrade to Adventurer for 4x more AI capacity.',
+      adventurer: 'Upgrade to Guild Master for 3x more capacity.',
+      guild_master: 'Upgrade to World Builder for 3x more capacity.',
+      world_builder: '',
+    };
+
+    panel.innerHTML = `
+      <div class="usage-meter-card">
+        <div class="usage-meter-header">
+          <span class="usage-meter-title">📊 AI Usage This Month</span>
+          <span class="usage-meter-period">${year_month}</span>
+        </div>
+        <div class="usage-bar-container">
+          <div class="usage-bar-track">
+            <div class="usage-bar-fill ${statusClass}" style="width: ${Math.min(percentage, 100)}%; background: ${barColor};"></div>
+          </div>
+          <div class="usage-bar-labels">
+            <span class="usage-bar-used">${formatTokens(tokens_used)} used</span>
+            <span class="usage-bar-pct" style="color: ${barColor}">${percentage}%</span>
+            <span class="usage-bar-limit">${formatTokens(token_limit)} limit</span>
+          </div>
+        </div>
+        <div class="usage-meter-details">
+          <span class="usage-detail-item">🔮 ${call_count.toLocaleString()} AI calls</span>
+          <span class="usage-detail-item">📦 ${formatTokens(tokens_used)} tokens</span>
+          <span class="usage-detail-item usage-status ${statusClass}">${statusText}</span>
+        </div>
+        ${tierUpgrade[tier] ? `<div class="usage-upgrade-hint">${tierUpgrade[tier]}</div>` : ''}
+      </div>
+    `;
   } catch (e) {
-    console.error('Failed to load settings:', e);
+    console.error('Failed to load usage meter:', e);
   }
+}
+
+async function loadSettings(container) {
+  // User-level settings are now just dnd_edition, xp_speed, npc_xp_speed
+  // World sim settings load from campaign rules below
 }
 
 async function loadCampaignRules(container) {
@@ -723,6 +781,14 @@ async function loadCampaignRules(container) {
     const res = await apiGetCampaignRules();
     if (res.campaign_description) container.querySelector('#s-campaign-desc').value = res.campaign_description;
     if (res.rules_text) container.querySelector('#s-house-rules').value = res.rules_text;
+
+    // Load world sim settings (now campaign-scoped)
+    if (res.relationship_speed) container.querySelector('#s-rel-speed').value = res.relationship_speed;
+    if (res.birth_rate) container.querySelector('#s-birth-rate').value = res.birth_rate;
+    if (res.death_threshold) container.querySelector('#s-death-threshold').value = res.death_threshold;
+    if (res.child_growth) container.querySelector('#s-child-growth').value = res.child_growth;
+    if (res.conflict_frequency) container.querySelector('#s-conflict').value = res.conflict_frequency;
+    if (res.sell_rate) container.querySelector('#s-sell-rate').value = res.sell_rate;
 
     // Load homebrew dropdowns
     const hb = res.homebrew_settings || {};
@@ -749,14 +815,7 @@ async function loadCampaignRules(container) {
 
 async function saveSettings(container) {
   try {
-    await apiSaveSetting('relationship_speed', container.querySelector('#s-rel-speed').value);
-    await apiSaveSetting('birth_rate', container.querySelector('#s-birth-rate').value);
-    await apiSaveSetting('death_threshold', container.querySelector('#s-death-threshold').value);
-    await apiSaveSetting('child_growth', container.querySelector('#s-child-growth').value);
-    await apiSaveSetting('conflict_frequency', container.querySelector('#s-conflict').value);
-    await apiSaveSetting('sell_rate', container.querySelector('#s-sell-rate').value);
-
-    // Save campaign rules & description
+    // Save campaign rules, description, homebrew, AND world sim settings together (all campaign-scoped)
     const campDesc = container.querySelector('#s-campaign-desc').value.trim();
     const houseRules = container.querySelector('#s-house-rules').value.trim();
 
@@ -779,7 +838,17 @@ async function saveSettings(container) {
       if (val) homebrewSettings[hbKeysSave[i]] = val;
     });
 
-    await apiSaveCampaignRules(houseRules, campDesc, homebrewSettings);
+    // World simulation settings (now campaign-scoped)
+    const worldSimSettings = {
+      relationship_speed: container.querySelector('#s-rel-speed').value,
+      birth_rate: container.querySelector('#s-birth-rate').value,
+      death_threshold: container.querySelector('#s-death-threshold').value,
+      child_growth: container.querySelector('#s-child-growth').value,
+      conflict_frequency: container.querySelector('#s-conflict').value,
+      sell_rate: container.querySelector('#s-sell-rate').value,
+    };
+
+    await apiSaveCampaignRules(houseRules, campDesc, homebrewSettings, worldSimSettings);
 
     showToast('Settings saved!', 'success');
   } catch (err) {

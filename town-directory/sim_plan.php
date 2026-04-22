@@ -7,14 +7,7 @@
 
             verifyTownOwnership($userId, $townId, $uid);
 
-            if (!defined('OPENROUTER_API_KEY') || !OPENROUTER_API_KEY) {
-                $keyRows = query("SELECT gemini_api_key FROM users WHERE id = ?", [$userId], 0);
-                $apiKey = $keyRows ? ($keyRows[0]['gemini_api_key'] ?? '') : '';
-                if (!$apiKey)
-                    throw new Exception('No API key configured.');
-            } else {
-                $apiKey = OPENROUTER_API_KEY;
-            }
+            $apiKey = resolveApiKey('OPENROUTER_KEY_SIM_PLAN', $userId);
 
             $town = query('SELECT * FROM towns WHERE id = ?', [$townId], $uid);
             if (!$town)
@@ -128,8 +121,8 @@ PLAN;
             }
 
             // Try to parse as JSON
-            $planText = preg_replace('/^```(?:json)?\s*/m', '', $planText);
-            $planText = preg_replace('/```\s*$/m', '', $planText);
+            $planText = preg_replace('/^`+\w*\s*/m', '', $planText);
+            $planText = preg_replace('/`+\s*$/m', '', $planText);
             $planJson = json_decode(trim($planText), true);
 
             if (!$planJson) {

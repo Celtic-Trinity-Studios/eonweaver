@@ -7,14 +7,7 @@
             if (!$charId)
                 throw new Exception('No character ID provided.');
 
-            if (!defined('OPENROUTER_API_KEY') || !OPENROUTER_API_KEY) {
-                $keyRows = query("SELECT gemini_api_key FROM users WHERE id = ?", [$userId], 0);
-                $apiKey = $keyRows ? ($keyRows[0]['gemini_api_key'] ?? '') : '';
-                if (!$apiKey)
-                    throw new Exception('No OpenRouter API key set.');
-            } else {
-                $apiKey = OPENROUTER_API_KEY;
-            }
+            $apiKey = resolveApiKey('OPENROUTER_KEY_LEVEL_UP', $userId);
 
             // Load character
             $chars = query('SELECT * FROM characters WHERE id = ? AND town_id = ?', [$charId, $townId], $uid);
@@ -153,8 +146,8 @@
             if (!empty($decoded['usage'])) {
                 trackTokenUsage($userId, $decoded['usage']);
             }
-            $aiContent = preg_replace('/^\s*```(?:json)?\s*/i', '', trim($aiContent));
-            $aiContent = preg_replace('/\s*```\s*$/', '', $aiContent);
+            $aiContent = preg_replace('/^\s*`+\w*\s*/i', '', trim($aiContent));
+            $aiContent = preg_replace('/\s*`+\s*$/', '', $aiContent);
 
             $updated = json_decode($aiContent, true);
             if (!$updated)

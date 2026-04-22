@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════
-   Ashenholm Kickstarter — Interactive Scripts
+   Eon Weaver Kickstarter — Interactive Scripts
    ═══════════════════════════════════════════════════════════ */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -130,13 +130,13 @@ function initCountUp() {
         // Pledged amount
         const pledgedEl = statEls[0];
         if (pledgedEl) {
-            animateValue(pledgedEl, 0, 12847, 2000, (val) => `$${val.toLocaleString()}`);
+            animateValue(pledgedEl, 0, 0, 2000, (val) => `$${val.toLocaleString()}`);
         }
 
         // Backers
         const backersEl = statEls[1];
         if (backersEl) {
-            animateValue(backersEl, 0, 342, 2000, (val) => val.toLocaleString());
+            animateValue(backersEl, 0, 0, 2000, (val) => val.toLocaleString());
         }
     }
 
