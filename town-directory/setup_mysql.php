@@ -46,6 +46,13 @@ try {
     } catch (Exception $e) { /* already exists */
     }
 
+    // Migration: add credit_balance column (Eon Credits wallet)
+    try {
+        $pdo->exec("ALTER TABLE users ADD COLUMN credit_balance BIGINT DEFAULT 0");
+        $results[] = '✅ Added credit_balance column';
+    } catch (Exception $e) { /* already exists */
+    }
+
     // Migration: add npc_xp_speed column
     try {
         $pdo->exec("ALTER TABLE users ADD COLUMN npc_xp_speed VARCHAR(20) DEFAULT 'normal' AFTER xp_speed");
@@ -108,9 +115,11 @@ try {
         $results[] = "✅ Created default campaign (id=$cid) for user {$u['id']}";
     }
 
-    // Flag dracolumina and Kael as world_builder tier (dev accounts)
+    // Flag dracolumina and Kael as world_builder tier (dev accounts) with generous credit balance
     execute("UPDATE users SET subscription_tier = 'world_builder' WHERE username = 'dracolumina'", [], 0);
     execute("UPDATE users SET subscription_tier = 'world_builder' WHERE username = 'Kael'", [], 0);
+    // Seed dev accounts with 500M credits if they have 0
+    execute("UPDATE users SET credit_balance = 500000000 WHERE username IN ('dracolumina', 'Kael') AND credit_balance = 0", [], 0);
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS characters (
         id              INT AUTO_INCREMENT PRIMARY KEY,
@@ -379,17 +388,22 @@ try {
         $results[] = '❌ Failed feature_key migration: ' . $e->getMessage();
     }
 
-    // Seed default token limits into site_settings (4-tier model)
+    // Seed default token limits into site_settings (5-tier model)
     try {
-        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_free', '1500000')");
-        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_adventurer', '6000000')");
-        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_guild_master', '20000000')");
-        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_world_builder', '60000000')");
+        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_free', '500000')");
+        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_apprentice', '3000000')");
+        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_adventurer', '7000000')");
+        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_guild_master', '12000000')");
+        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_world_builder', '25000000')");
         // Update legacy values if they still exist
-        $pdo->exec("UPDATE site_settings SET value = '1500000' WHERE `key` = 'token_limit_free' AND value = '500000'");
+        $pdo->exec("UPDATE site_settings SET value = '500000' WHERE `key` = 'token_limit_free'");
+        $pdo->exec("UPDATE site_settings SET value = '3000000' WHERE `key` = 'token_limit_apprentice'");
+        $pdo->exec("UPDATE site_settings SET value = '7000000' WHERE `key` = 'token_limit_adventurer'");
+        $pdo->exec("UPDATE site_settings SET value = '12000000' WHERE `key` = 'token_limit_guild_master'");
+        $pdo->exec("UPDATE site_settings SET value = '25000000' WHERE `key` = 'token_limit_world_builder'");
         // Migrate old subscriber limit to adventurer if it exists
         $pdo->exec("DELETE FROM site_settings WHERE `key` = 'token_limit_subscriber'");
-        $results[] = '✅ Seeded 4-tier token limits (free=1.5M, adventurer=6M, guild_master=20M, world_builder=60M)';
+        $results[] = '✅ Seeded 5-tier token limits (free=0.5M, apprentice=3M, adventurer=7M, guild_master=12M, world_builder=25M)';
     } catch (Exception $e) { /* already exists */ }
 
 

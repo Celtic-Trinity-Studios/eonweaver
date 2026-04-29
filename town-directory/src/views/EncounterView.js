@@ -10,7 +10,7 @@ import {
     apiCreateEncounterGroup, apiRenameEncounterGroup, apiDeleteEncounterGroup,
     apiGetParty
 } from '../api/encounters.js';
-import { apiFetch } from '../api/client.js';
+import { apiFetch, simFetch } from '../api/client.js';
 import { apiSaveCharacter } from '../api/characters.js';
 import { roll, formatMod } from '../engine/dice.js';
 import { abilityMod, parseGearWeapons } from '../engine/rulesAdapter.js';
@@ -168,10 +168,56 @@ function renderEncounterDetail(container, encId) {
           <div class="enc-roster">
             <div class="enc-roster-header">
               <h3>⚔️ Encounter Roster</h3>
-              <button class="btn-secondary btn-sm" id="enc-add-group-btn">+ Group</button>
+              <div style="display:flex;gap:.3rem">
+                <button class="btn-primary btn-sm" id="enc-setup-add-party" title="Add party members">🛡️ Add Party</button>
+                <button class="btn-secondary btn-sm" id="enc-add-group-btn">+ Group</button>
+              </div>
             </div>
             <div id="enc-roster-list" class="enc-roster-list"></div>
           </div>
+        </div>
+
+        <!-- AI Tools Row (Setup Mode) -->
+        <div class="enc-ai-tools-row">
+          <!-- AI Random Encounter Generator -->
+          <div class="enc-ai-panel" id="enc-ai-encounter-panel">
+            <div class="enc-ai-panel-header" data-toggle="enc-ai-encounter-body">
+              <h3>🤖 AI Random Encounter</h3>
+              <span class="enc-ai-toggle">▼</span>
+            </div>
+            <div class="enc-ai-panel-body" id="enc-ai-encounter-body">
+              <div class="enc-ai-form">
+                <div class="enc-ai-form-row">
+                  <label>Party Level</label>
+                  <input type="number" id="enc-ai-re-level" class="form-input" value="3" min="1" max="20">
+                </div>
+                <div class="enc-ai-form-row">
+                  <label>Party Size</label>
+                  <input type="number" id="enc-ai-re-size" class="form-input" value="4" min="1" max="10">
+                </div>
+                <div class="enc-ai-form-row">
+                  <label>Difficulty</label>
+                  <select id="enc-ai-re-diff" class="form-input">
+                    <option value="easy">Easy</option>
+                    <option value="medium" selected>Medium</option>
+                    <option value="hard">Hard</option>
+                    <option value="deadly">Deadly</option>
+                  </select>
+                </div>
+                <div class="enc-ai-form-row">
+                  <label>Environment</label>
+                  <input type="text" id="enc-ai-re-env" class="form-input" placeholder="Auto from town biome">
+                </div>
+                <div class="enc-ai-form-row">
+                  <label>Notes</label>
+                  <input type="text" id="enc-ai-re-notes" class="form-input" placeholder="e.g. Undead theme, night encounter...">
+                </div>
+                <button class="btn-primary" id="enc-ai-re-btn">🤖 Generate Encounter</button>
+              </div>
+              <div id="enc-ai-re-result" class="enc-ai-result"></div>
+            </div>
+          </div>
+
         </div>
       </div>
 
@@ -248,6 +294,7 @@ function renderEncounterDetail(container, encId) {
             </div>
           </div>
         </div>
+
       </div>
     </div>
     `;
@@ -711,13 +758,19 @@ function bindDetailEvents(container, encId) {
         setTimeout(() => { btn.textContent = '🏆 Award XP to Party'; btn.disabled = false; }, 3000);
     });
 
-    /** Calculate XP from encounter enemies (using level as CR) + extra entries */
+    /** Calculate XP from encounter enemies (using CR, level, or class HD) + extra entries */
     function calcEncounterXp() {
         const enemies = (currentEncounter?.participants || []).filter(p => p.side === 'enemy' || p.side === 'neutral');
         let autoXp = 0;
         enemies.forEach(e => {
-            const cr = parseInt(e.level) || 1;
-            autoXp += CR_XP_TABLE[cr] || CR_XP_TABLE[String(cr)] || 0;
+            let cr = e.cr || e.level || 0;
+            if (!cr && e.class) {
+                const hdMatch = e.class.match(/(\d+)\s*$/);
+                if (hdMatch) cr = parseInt(hdMatch[1]);
+            }
+            if (!cr) cr = 1;
+            const crKey = String(cr);
+            autoXp += CR_XP_TABLE[crKey] || CR_XP_TABLE[parseInt(crKey)] || 0;
         });
         let extraXp = extraCrEntries.reduce((s, e) => s + (CR_XP_TABLE[e.cr] || 0) * e.count, 0);
         return { autoXp, extraXp };
@@ -734,8 +787,17 @@ function bindDetailEvents(container, encId) {
             autoListEl.innerHTML = '<div class="enc-cr-empty">No enemies in encounter</div>';
         } else {
             autoListEl.innerHTML = enemies.map(e => {
-                const cr = parseInt(e.level) || 1;
-                const xp = CR_XP_TABLE[cr] || CR_XP_TABLE[String(cr)] || 0;
+                // Determine CR: use explicit cr field, then level, then parse from class string
+                let cr = e.cr || e.level || 0;
+                if (!cr && e.class) {
+                    // Parse HD from class like "Ogre Giant 4" or "Magical Beast 3"
+                    const hdMatch = e.class.match(/(\d+)\s*$/);
+                    if (hdMatch) cr = parseInt(hdMatch[1]);
+                }
+                if (!cr) cr = 1;
+                // CR can be a string like "1/2" or a number
+                const crKey = String(cr);
+                const xp = CR_XP_TABLE[crKey] || CR_XP_TABLE[parseInt(crKey)] || 0;
                 return `<div class="enc-cr-entry">
                     <span class="enc-cr-entry-label">${e.name} (CR ${cr})</span>
                     <span class="enc-cr-entry-xp">${xp.toLocaleString()} XP</span>
@@ -759,6 +821,167 @@ function bindDetailEvents(container, encId) {
 
     renderExtraCrList();
     updateCrCalculator(container);
+
+    // ── AI Panel Toggle (collapsible) ──
+    container.querySelectorAll('.enc-ai-panel-header[data-toggle]').forEach(hdr => {
+        hdr.addEventListener('click', () => {
+            const bodyId = hdr.dataset.toggle;
+            const body = container.querySelector(`#${bodyId}`);
+            const toggle = hdr.querySelector('.enc-ai-toggle');
+            if (!body) return;
+            const isHidden = body.style.display === 'none';
+            body.style.display = isHidden ? '' : 'none';
+            if (toggle) toggle.textContent = isHidden ? '▲' : '▼';
+        });
+        // Start collapsed
+        const bodyId = hdr.dataset.toggle;
+        const body = container.querySelector(`#${bodyId}`);
+        if (body) body.style.display = 'none';
+    });
+
+    // ── AI Random Encounter Generator ──
+    container.querySelector('#enc-ai-re-btn')?.addEventListener('click', async () => {
+        const btn = container.querySelector('#enc-ai-re-btn');
+        const resultEl = container.querySelector('#enc-ai-re-result');
+        const townId = parseInt(container.querySelector('#enc-pick-town')?.value) || 0;
+        btn.disabled = true; btn.textContent = '⏳ Generating...';
+        resultEl.innerHTML = '<div class="enc-ai-loading"><div class="spinner"></div> AI is designing an encounter...</div>';
+        let enc = null;
+        try {
+            const res = await simFetch('generate_random_encounter', {
+                town_id: townId,
+                party_level: parseInt(container.querySelector('#enc-ai-re-level')?.value) || 3,
+                party_size: parseInt(container.querySelector('#enc-ai-re-size')?.value) || 4,
+                difficulty: container.querySelector('#enc-ai-re-diff')?.value || 'medium',
+                environment: container.querySelector('#enc-ai-re-env')?.value || '',
+                notes: container.querySelector('#enc-ai-re-notes')?.value || '',
+            });
+            enc = res.encounter;
+            resultEl.innerHTML = `
+                <div class="enc-ai-result-card">
+                    <h4>${enc.encounter_name || 'Random Encounter'}</h4>
+                    <p class="enc-ai-desc">${enc.description || ''}</p>
+                    ${enc.environment_details ? `<p class="enc-ai-env">🌍 ${enc.environment_details}</p>` : ''}
+                    <div class="enc-ai-monsters">
+                        <strong>Monsters:</strong>
+                        ${(enc.monsters || []).map(m => `
+                            <div class="enc-ai-monster-row">
+                                <span class="enc-ai-monster-name">${m.count || 1}× ${m.name}</span>
+                                <span class="enc-ai-monster-cr">CR ${m.cr}</span>
+                                ${m.notes ? `<span class="enc-ai-monster-notes">${m.notes}</span>` : ''}
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="enc-ai-meta-row">
+                        <span>Total XP: <strong>${(enc.total_xp || 0).toLocaleString()}</strong></span>
+                        <span class="enc-ai-diff-badge enc-ai-diff-${enc.difficulty_rating || 'medium'}">${enc.difficulty_rating || 'medium'}</span>
+                    </div>
+                    ${enc.tactics ? `<div class="enc-ai-tactics"><strong>⚔️ Tactics:</strong> ${enc.tactics}</div>` : ''}
+                    ${enc.treasure_hint ? `<div class="enc-ai-treasure-hint"><strong>💰 Treasure:</strong> ${enc.treasure_hint}</div>` : ''}
+                    <button class="btn-primary btn-sm enc-ai-add-roster" style="margin-top:.5rem;width:100%">⚔️ Add Encounter to Roster</button>
+                </div>
+            `;
+        } catch (e) {
+            resultEl.innerHTML = `<div class="enc-ai-error">❌ ${e.message}</div>`;
+        }
+        btn.disabled = false; btn.textContent = '🤖 Generate Encounter';
+
+        // Bind "Add to Roster" button inside result
+        const addRosterBtn = resultEl.querySelector('.enc-ai-add-roster');
+        if (addRosterBtn && enc) {
+            addRosterBtn.addEventListener('click', async () => {
+                addRosterBtn.disabled = true;
+                addRosterBtn.textContent = '⏳ Creating monsters...';
+                try {
+                    // Get or create the Encounter Arena town
+                    const townRes = await apiFetch('ensure_encounter_town', { method: 'POST' });
+                    const townId = townRes.town_id;
+
+                    // Create an encounter group for this AI encounter
+                    const groupRes = await apiCreateEncounterGroup(encId, enc.encounter_name || 'AI Encounter');
+                    const groupId = groupRes.id;
+
+                    let addedCount = 0;
+                    for (const m of (enc.monsters || [])) {
+                        const count = m.count || 1;
+                        // Use intake_creature to generate SRD-based monster data
+                        const createRes = await simFetch('intake_creature', {
+                            town_id: townId,
+                            creature_name: m.name,
+                            count: count,
+                            instructions: `CR ${m.cr}. ${m.notes || ''}`
+                        });
+                        // Save each generated character to the DB, then add as participant
+                        const characters = createRes.characters || [];
+                        for (const charData of characters) {
+                            const saveRes = await apiSaveCharacter(townId, charData);
+                            if (saveRes.id) {
+                                await apiAddParticipant(encId, saveRes.id, 'enemy', groupId);
+                                addedCount++;
+                            }
+                        }
+                    }
+                    showToast(`Added ${addedCount} monster${addedCount !== 1 ? 's' : ''} to the encounter roster!`, 'success');
+                    await refreshEncounter(container);
+                    updateCrCalculator(container);
+                    addRosterBtn.textContent = '✅ Added to Roster!';
+                    addRosterBtn.disabled = true;
+                } catch (e) {
+                    showToast('Error adding to roster: ' + e.message, 'error');
+                    addRosterBtn.textContent = '⚔️ Add Encounter to Roster';
+                    addRosterBtn.disabled = false;
+                }
+            });
+        }
+    });
+
+    // ── Add Party (Setup Mode) ──
+    container.querySelector('#enc-setup-add-party')?.addEventListener('click', async () => {
+        try {
+            const partyRes = await apiGetParty();
+            const party = partyRes.party || [];
+            if (!party.length) { showToast('No party members. Add to your party first (🛡️ Party page).', 'warning'); return; }
+            const existingIds = new Set((currentEncounter?.participants || []).map(p => parseInt(p.character_id)));
+            const available = party.filter(m => !existingIds.has(parseInt(m.character_id)));
+            if (!available.length) { showToast('All party members are already in this encounter.', 'info'); return; }
+
+            const { showModal } = await import('../components/Modal.js');
+            const { el: modal, close } = showModal({
+                title: '🛡️ Add Party Members',
+                width: 'narrow',
+                content: `
+                    <div class="enc-party-picker">
+                        ${available.map(m => `
+                            <label class="enc-party-pick-item" data-char-id="${m.character_id}">
+                                <input type="checkbox" class="enc-party-check" data-char-id="${m.character_id}" checked>
+                                <span class="enc-party-pick-name">${m.name}</span>
+                                <span class="enc-party-pick-detail">${m.race || ''} ${m.class || ''} L${m.level || '?'}</span>
+                                <span class="enc-party-pick-stats">♥${m.hp || '?'} 🛡${m.ac || '?'}</span>
+                            </label>
+                        `).join('')}
+                        <div style="margin-top:0.75rem;display:flex;gap:0.5rem;justify-content:flex-end">
+                            <button class="btn-secondary btn-sm" id="enc-setup-party-cancel">Cancel</button>
+                            <button class="btn-primary btn-sm" id="enc-setup-party-add">Add Selected</button>
+                        </div>
+                    </div>
+                `
+            });
+            modal.querySelector('#enc-setup-party-cancel').addEventListener('click', close);
+            modal.querySelector('#enc-setup-party-add').addEventListener('click', async () => {
+                const checked = [...modal.querySelectorAll('.enc-party-check:checked')];
+                if (!checked.length) { showToast('No members selected.', 'warning'); return; }
+                let added = 0;
+                for (const cb of checked) {
+                    await apiAddParticipant(encId, parseInt(cb.dataset.charId), 'party');
+                    added++;
+                }
+                close();
+                showToast(`Added ${added} party member${added > 1 ? 's' : ''} to encounter.`, 'success');
+                await refreshEncounter(container);
+                updateCrCalculator(container);
+            });
+        } catch (err) { showToast('Error: ' + err.message, 'error'); }
+    });
 }
 
 function showSetupMode(container) {

@@ -16,6 +16,7 @@ import {
     apiAdminSiteSettings, apiAdminUpdateSiteSetting,
     apiAdminAllTowns, apiAdminAllCampaigns,
     apiAdminUpdateMeta, apiAdminDeleteMeta,
+    apiAdminAdjustCredits,
 } from '../api/admin.js';
 
 export default function AdminDashboardView(container) {
@@ -160,8 +161,8 @@ export default function AdminDashboardView(container) {
                 <th>Role</th>
                 <th>Campaigns</th>
                 <th>Towns</th>
+                <th>🪙 Eon Credits</th>
                 <th>Tokens (Month)</th>
-                <th>Usage %</th>
                 <th>Joined</th>
                 <th>Actions</th>
               </tr>
@@ -178,6 +179,7 @@ export default function AdminDashboardView(container) {
                 <td>
                     <select class="admin-inline-select tier-select" data-field="subscription_tier" data-user-id="${m.id}">
                         <option value="free" ${m.subscription_tier === 'free' ? 'selected' : ''}>Free</option>
+                        <option value="apprentice" ${m.subscription_tier === 'apprentice' ? 'selected' : ''}>Apprentice</option>
                         <option value="adventurer" ${m.subscription_tier === 'adventurer' ? 'selected' : ''}>Adventurer</option>
                         <option value="guild_master" ${m.subscription_tier === 'guild_master' ? 'selected' : ''}>Guild Master</option>
                         <option value="world_builder" ${m.subscription_tier === 'world_builder' ? 'selected' : ''}>World Builder</option>
@@ -191,13 +193,13 @@ export default function AdminDashboardView(container) {
                 </td>
                 <td class="clickable" data-action="drill" data-user-id="${m.id}" data-username="${esc(m.username)}">${m.campaign_count}</td>
                 <td>${m.town_count ?? 0}</td>
-                <td>${formatTokens(m.tokens_this_month)} / ${formatTokens(m.token_limit || 0)}</td>
                 <td>
-                    <div class="admin-usage-bar" title="${pct}% used">
-                        <div class="admin-usage-fill" style="width:${Math.min(pct, 100)}%; background:${barColor}"></div>
-                        <span class="admin-usage-label">${pct}%</span>
+                    <div class="admin-credit-cell">
+                        <span class="credit-balance" title="${parseInt(m.credit_balance || 0).toLocaleString()} tokens">🪙 ${formatTokens(m.credit_balance || 0)}</span>
+                        <button class="admin-btn admin-btn-small admin-btn-primary" data-action="adjust-credits" data-user-id="${m.id}" data-username="${esc(m.username)}" data-balance="${m.credit_balance || 0}" title="Adjust Credits">💰</button>
                     </div>
                 </td>
+                <td>${formatTokens(m.tokens_this_month)}</td>
                 <td>${new Date(m.created_at).toLocaleDateString()}</td>
                 <td>
                     <button class="admin-btn admin-btn-danger admin-btn-small" data-action="delete-member" data-user-id="${m.id}" data-username="${esc(m.username)}" title="Delete Account">🗑️</button>
@@ -246,6 +248,23 @@ export default function AdminDashboardView(container) {
                 } catch (err) {
                     alert('Error: ' + err.message);
                 }
+            });
+        });
+
+        // Adjust credits
+        contentEl.querySelectorAll('[data-action="adjust-credits"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const uid = parseInt(btn.dataset.userId);
+                const username = btn.dataset.username;
+                const currentBalance = parseInt(btn.dataset.balance || 0);
+                showEditModal(`🪙 Adjust Eon Credits — ${username}`, [
+                    { key: 'info', label: `Current Balance: ${formatTokens(currentBalance)} (${currentBalance.toLocaleString()})`, value: '', type: 'info' },
+                    { key: 'mode', label: 'Mode', value: 'add', type: 'select', options: ['add', 'set', 'subtract'] },
+                    { key: 'amount', label: 'Amount (tokens)', value: '10000000', type: 'number' },
+                ], async (data) => {
+                    await apiAdminAdjustCredits(uid, parseInt(data.amount), data.mode);
+                    renderMembers();
+                });
             });
         });
     }
@@ -1584,7 +1603,9 @@ export default function AdminDashboardView(container) {
                 ${fields.map(f => `
                 <div class="admin-form-group">
                     <label>${f.label}</label>
-                    ${f.type === 'textarea'
+                    ${f.type === 'info'
+                        ? `<div class="admin-form-info">${esc(f.value || f.label)}</div>`
+                        : f.type === 'textarea'
                         ? `<textarea class="admin-form-input" data-key="${f.key}" rows="4">${esc(f.value || '')}</textarea>`
                         : f.type === 'select'
                             ? `<select class="admin-form-input" data-key="${f.key}">

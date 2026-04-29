@@ -495,7 +495,7 @@ async function loadCampaigns(container) {
     const state = getState();
     const activeCampaignId = state.currentCampaign?.id;
 
-    const tierLabels = { free: 'Free', adventurer: 'Adventurer', guild_master: 'Guild Master', world_builder: 'World Builder' };
+    const tierLabels = { free: 'Free', apprentice: 'Apprentice', adventurer: 'Adventurer', guild_master: 'Guild Master', world_builder: 'World Builder' };
 
     panel.innerHTML = `
       <div class="campaign-tier-info">

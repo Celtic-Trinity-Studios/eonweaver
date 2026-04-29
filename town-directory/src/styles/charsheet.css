@@ -740,6 +740,417 @@
 }
 
 /* ═══════════════════════════════════════════════════════════
+   CHARACTER CARD — Premium Stat Block (Page 1)
+   Matches the portrait-integrated reference design.
+   ═══════════════════════════════════════════════════════════ */
+
+.ccard {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+}
+
+/* ── Card Header: Name + Portrait ──────────────────────── */
+.ccard-header {
+    display: flex;
+    gap: 1rem;
+    padding: 0.75rem;
+    background: linear-gradient(135deg, rgba(15, 10, 25, 0.95), rgba(25, 15, 40, 0.9));
+    border-radius: 10px 10px 0 0;
+    border: 1px solid rgba(184, 115, 51, 0.2);
+    border-bottom: none;
+}
+
+.ccard-header-text {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.ccard-name {
+    font-family: 'Cinzel', serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #F0E6D3;
+    margin: 0;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.6);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    line-height: 1.15;
+}
+
+.ccard-class {
+    font-size: 0.8rem;
+    color: #A89BB8;
+    font-weight: 500;
+}
+
+.ccard-meta-row {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.75rem;
+    color: #9A8DAA;
+    margin-top: 0.15rem;
+}
+
+.ccard-meta-lbl {
+    font-weight: 700;
+    color: #d4af37;
+    margin-right: 0.2rem;
+}
+
+.ccard-deity {
+    font-size: 0.8rem;
+    color: #C8B8E0;
+    font-style: italic;
+}
+
+.ccard-xp-row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+}
+
+.ccard-xp-lbl {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #A89BB8;
+    text-transform: uppercase;
+}
+
+.ccard-xp-track {
+    flex: 1;
+    height: 5px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.ccard-xp-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #2d7d32, #4caf50);
+    border-radius: 3px;
+    transition: width 0.5s;
+}
+
+/* Portrait */
+.ccard-portrait {
+    width: 120px;
+    height: 140px;
+    flex-shrink: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 2px solid rgba(184, 115, 51, 0.35);
+    background: rgba(0,0,0,0.4);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+}
+
+.ccard-portrait-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.ccard-portrait-placeholder {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.5rem;
+    opacity: 0.25;
+    color: #d4af37;
+}
+
+/* Divider */
+.ccard-divider {
+    text-align: center;
+    font-size: 0.9rem;
+    color: rgba(184, 115, 51, 0.4);
+    padding: 0.15rem 0;
+    background: linear-gradient(90deg, transparent, rgba(184,115,51,0.1), transparent);
+    border-left: 1px solid rgba(184, 115, 51, 0.2);
+    border-right: 1px solid rgba(184, 115, 51, 0.2);
+    letter-spacing: 8px;
+}
+
+/* ── Card Body: 3-column ───────────────────────────────── */
+.ccard-body {
+    display: grid;
+    grid-template-columns: 110px 1fr 280px;
+    gap: 0.75rem;
+    padding: 0.75rem;
+    background: linear-gradient(180deg, rgba(15,10,25,0.95), rgba(10,6,18,0.98));
+    border: 1px solid rgba(184, 115, 51, 0.2);
+    border-top: none;
+    border-radius: 0 0 10px 10px;
+}
+
+/* ── LEFT: Ability Grid ────────────────────────────────── */
+.ccard-col-left {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* ── SKILLS Column (far right) ─────────────────────────── */
+.ccard-col-skills {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    border-left: 1px solid rgba(184, 115, 51, 0.1);
+    padding-left: 0.75rem;
+}
+
+.ccard-skills-scroll {
+    overflow-y: auto;
+    max-height: calc(100vh - 380px);
+    scrollbar-width: thin;
+    scrollbar-color: rgba(184,115,51,0.2) transparent;
+}
+
+.ccard-ab-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.3rem;
+}
+
+.ccard-ab {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.3rem 0.4rem;
+    background: linear-gradient(180deg, rgba(25,18,38,0.9), rgba(18,12,30,0.95));
+    border: 1px solid rgba(184, 115, 51, 0.2);
+    border-radius: 8px;
+    box-shadow: inset 0 2px 6px rgba(0,0,0,0.3);
+    transition: border-color 0.2s;
+}
+
+.ccard-ab:hover {
+    border-color: rgba(184, 115, 51, 0.5);
+}
+
+.ccard-ab-label {
+    font-size: 0.6rem;
+    font-weight: 800;
+    color: #d4af37;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    width: 28px;
+    flex-shrink: 0;
+}
+
+.ccard-ab-score {
+    font-size: 1.1rem;
+    font-family: 'Cinzel', serif;
+    font-weight: 700;
+    color: #fff;
+    line-height: 1;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+    width: 28px;
+    text-align: center;
+}
+
+.ccard-ab-mod {
+    font-size: 0.65rem;
+    font-weight: 700;
+    color: #C8B8E0;
+    background: rgba(184, 115, 51, 0.12);
+    border: 1px solid rgba(184, 115, 51, 0.25);
+    padding: 0.05rem 0.35rem;
+    border-radius: 20px;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.ccard-ab-pos .ccard-ab-mod {
+    color: #81c784;
+}
+
+/* ── RIGHT: Stats Column ──────────────────────────────── */
+.ccard-col-right {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    overflow-y: auto;
+}
+
+/* Section headings */
+.ccard-section {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+.ccard-section-title {
+    font-family: 'Cinzel', serif;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #d4af37;
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-bottom: 1px solid rgba(184, 115, 51, 0.15);
+    padding-bottom: 0.2rem;
+}
+
+/* Combat stat boxes (HP / AC / Init) */
+.ccard-stat-boxes {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.4rem;
+}
+
+.ccard-stat-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.4rem 0.25rem;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 8px;
+    transition: all 0.2s;
+}
+
+.ccard-stat-box:hover {
+    background: rgba(184, 115, 51, 0.06);
+    border-color: rgba(184, 115, 51, 0.25);
+}
+
+.ccard-stat-lbl {
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: #A89BB8;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.ccard-stat-val {
+    font-size: 1.2rem;
+    font-family: 'Cinzel', serif;
+    font-weight: 700;
+    color: #fff;
+}
+
+.ccard-ac-detail {
+    font-size: 0.65rem;
+    color: #8A7DA0;
+    line-height: 1.4;
+    text-align: right;
+}
+
+.ccard-speed {
+    font-size: 0.75rem;
+    color: #9A8DAA;
+    text-align: right;
+}
+
+.ccard-speed strong {
+    color: #C8B8E0;
+}
+
+/* Saving throw boxes */
+.ccard-save-boxes {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.4rem;
+}
+
+.ccard-save-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 0.35rem;
+    background: rgba(0,0,0,0.25);
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 6px;
+}
+
+.ccard-save-lbl {
+    font-size: 0.55rem;
+    font-weight: 700;
+    color: #A89BB8;
+    text-transform: uppercase;
+}
+
+.ccard-save-val {
+    font-size: 1rem;
+    font-family: 'Cinzel', serif;
+    font-weight: 700;
+    color: #fff;
+}
+
+/* Lists (skills, feats, inventory, attacks) */
+.ccard-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.ccard-list-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.2rem 0.3rem;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s;
+    font-size: 0.78rem;
+}
+
+.ccard-list-item:hover {
+    background: rgba(184, 115, 51, 0.06);
+}
+
+.ccard-list-icon {
+    font-size: 0.7rem;
+    flex-shrink: 0;
+    width: 1rem;
+    text-align: center;
+    opacity: 0.7;
+}
+
+.ccard-list-name {
+    flex: 1;
+    color: #D4C5F9;
+    min-width: 0;
+    line-height: 1.25;
+}
+
+/* Compound skill names (Knowledge, Profession, Craft) */
+.ccard-skill-base {
+    display: block;
+}
+
+.ccard-skill-sub {
+    display: block;
+    font-size: 0.68rem;
+    color: #9A8DAA;
+    margin-top: -0.05rem;
+}
+
+.ccard-list-val {
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    color: #fff;
+    font-size: 0.75rem;
+    flex-shrink: 0;
+    min-width: 32px;
+    text-align: right;
+}
+
+.ccard-empty {
+    font-size: 0.75rem;
+    color: #6B5D7A;
+    font-style: italic;
+    padding: 0.2rem 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
    PAGE 2 — Equipment, Feats, Spells
    ═══════════════════════════════════════════════════════════ */
 

@@ -118,3 +118,8 @@ export function apiAdminUpdateMeta(townId, key, value) {
 export function apiAdminDeleteMeta(townId, key) {
     return apiFetch('admin_delete_meta', { method: 'DELETE', body: { town_id: townId, key } });
 }
+
+// ── Credit Balance (Eon Credits Wallet) ──
+export function apiAdminAdjustCredits(userId, amount, mode = 'add') {
+    return apiFetch('admin_adjust_credits', { method: 'POST', body: { user_id: userId, amount, mode } });
+}

@@ -291,6 +291,7 @@
 }
 
 .tier-free { background: rgba(100,100,100,.3); color: #aaa; }
+.tier-apprentice { background: rgba(103,232,249,.15); color: #67e8f9; }
 .tier-adventurer { background: rgba(110,231,183,.15); color: #6ee7b7; }
 .tier-guild_master { background: rgba(196,181,253,.15); color: #c4b5fd; }
 .tier-world_builder { background: rgba(245,197,24,.15); color: var(--gold-primary); }

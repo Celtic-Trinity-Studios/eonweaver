@@ -63,29 +63,56 @@
     letter-spacing: .5px;
 }
 
-.sidebar-usage-pct {
-    font-size: .72rem;
+/* Eon Credits wallet display */
+.sidebar-credits-display {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .25rem 0;
+}
+
+.sidebar-credits-icon {
+    font-size: 1rem;
+}
+
+.sidebar-credits-value {
+    font-size: 1.1rem;
     font-weight: 700;
+    font-family: 'Inter', sans-serif;
 }
 
-.sidebar-usage-track {
-    width: 100%;
-    height: 5px;
-    background: rgba(255, 255, 255, .08);
-    border-radius: 3px;
-    overflow: hidden;
-}
-
-.sidebar-usage-fill {
-    height: 100%;
-    border-radius: 3px;
-    transition: width .8s ease;
+.sidebar-credits-label {
+    font-size: .65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .4px;
 }
 
 .sidebar-usage-label {
     font-size: .6rem;
     color: var(--text-muted);
     margin-top: .2rem;
+}
+
+/* Admin credit cell */
+.admin-credit-cell {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+}
+
+.credit-balance {
+    font-weight: 600;
+    font-size: .85rem;
+}
+
+.admin-form-info {
+    padding: .5rem .75rem;
+    background: rgba(255,255,255,.05);
+    border-radius: 6px;
+    font-size: .85rem;
+    color: var(--text-secondary);
+    font-weight: 500;
 }
 
 .sidebar-calendar {

@@ -931,6 +931,354 @@ WPROMPT;
             ]);
             break;
 
+        /* ═══════════════════════════════════════════════════════
+           AI RANDOM ENCOUNTER GENERATOR
+           Generates level-appropriate monsters for a random encounter
+           ═══════════════════════════════════════════════════════ */
+        case 'generate_random_encounter':
+            $townId = (int) ($input['town_id'] ?? 0);
+            $partyLevel = (int) ($input['party_level'] ?? 3);
+            $partySize = (int) ($input['party_size'] ?? 4);
+            $difficulty = trim($input['difficulty'] ?? 'medium');
+            $environment = trim($input['environment'] ?? '');
+            $notes = trim($input['notes'] ?? '');
+
+            // Token budget check
+            $uTierRows = query('SELECT subscription_tier FROM users WHERE id = ?', [$userId], 0);
+            $uTier = $uTierRows ? ($uTierRows[0]['subscription_tier'] ?? 'free') : 'free';
+            if (checkTokenBudget($userId, $uTier)) {
+                throw new Exception('Token budget exceeded. Usage resets on the 1st.');
+            }
+
+            $apiKey = resolveApiKey('OPENROUTER_KEY_SIM_STRUCTURED', $userId);
+
+            // Load biome from town meta if available
+            if ($townId > 0) {
+                $metaRows = query('SELECT `key`, value FROM town_meta WHERE town_id = ?', [$townId], $uid);
+                foreach ($metaRows as $m) {
+                    if ($m['key'] === 'biome' && !$environment) $environment = $m['value'];
+                }
+            }
+            if (!$environment) $environment = 'Temperate Forest';
+
+            // Load campaign context
+            $loreContext = '';
+            $campRow = $townId ? query('SELECT campaign_id FROM towns WHERE id = ? AND user_id = ?', [$townId, $userId], $uid) : [];
+            $campId = $campRow ? ($campRow[0]['campaign_id'] ?? null) : null;
+            if ($campId) {
+                $loreRow = query('SELECT lore, house_rules FROM campaign_rules WHERE user_id = ? AND campaign_id = ?', [$userId, $campId], 0);
+                if ($loreRow && !empty($loreRow[0]['lore'])) {
+                    $loreContext = "\nCampaign Lore: " . substr($loreRow[0]['lore'], 0, 500);
+                }
+            }
+
+            $difficultyGuide = [
+                'easy' => 'CR should be 1-2 below party level. Straightforward fight.',
+                'medium' => 'CR should be around party level. A fair challenge.',
+                'hard' => 'CR should be 1-2 above party level. Dangerous fight.',
+                'deadly' => 'CR should be 3+ above party level. Could be lethal.',
+            ];
+            $diffDesc = $difficultyGuide[$difficulty] ?? $difficultyGuide['medium'];
+
+            $rePrompt = <<<REPROMPT
+You are a D&D 3.5e encounter designer. Generate a random encounter for a party.
+
+PARAMETERS:
+- Party Level: {$partyLevel} (average)
+- Party Size: {$partySize} members
+- Difficulty: {$difficulty} — {$diffDesc}
+- Environment/Biome: {$environment}
+{$loreContext}
+{$notes}
+
+RULES:
+- Use only SRD-legal D&D 3.5e monsters
+- Include the CR for each monster
+- Provide a brief encounter description/setup
+- Include tactical notes for the DM
+- The total encounter XP should be appropriate for the difficulty level
+
+Respond ONLY with valid JSON, no extra text:
+{
+  "encounter_name": "Short descriptive name",
+  "description": "2-3 sentence narrative setup for this encounter",
+  "environment_details": "Specific terrain and conditions",
+  "monsters": [
+    {"name": "Monster Name", "cr": 2, "count": 3, "notes": "tactical note"}
+  ],
+  "total_xp": 0,
+  "difficulty_rating": "easy|medium|hard|deadly",
+  "tactics": "How the monsters fight — formation, strategy, retreat conditions",
+  "treasure_hint": "Brief note about what treasure might be found"
+}
+REPROMPT;
+
+            $openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
+            $model = defined('OPENROUTER_MODEL_CHEAP') ? OPENROUTER_MODEL_CHEAP : 'google/gemini-2.5-flash';
+            $payload = json_encode([
+                'model' => $model,
+                'messages' => [['role' => 'user', 'content' => $rePrompt]],
+                'temperature' => 0.9,
+                'max_tokens' => 2048
+            ]);
+            $ch = curl_init($openRouterUrl);
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $payload,
+                CURLOPT_HTTPHEADER => [
+                    "Authorization: Bearer {$apiKey}",
+                    "HTTP-Referer: https://eonweaver.com",
+                    "X-Title: Eon Weaver",
+                    "Content-Type: application/json"
+                ],
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 60,
+                CURLOPT_SSL_VERIFYPEER => true
+            ]);
+            $resp = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            resetDB();
+
+            if ($httpCode !== 200 || !$resp)
+                throw new Exception("AI encounter generation failed (HTTP {$httpCode})");
+
+            $data = json_decode($resp, true);
+            if (!empty($data['usage'])) trackTokenUsage($userId, $data['usage']);
+            $respText = $data['choices'][0]['message']['content'] ?? '';
+
+            // Try to extract JSON if wrapped in markdown or extra text
+            if (preg_match('/\{[\s\S]*\}/u', $respText, $jsonMatch)) {
+                $respText = $jsonMatch[0];
+            }
+
+            $encounterData = robustJsonDecode($respText);
+            if (!$encounterData || !isset($encounterData['monsters'])) {
+                // Return raw text for debugging
+                $preview = substr($respText, 0, 200);
+                throw new Exception("AI returned invalid encounter data. Preview: {$preview}");
+            }
+
+            simRespond(['ok' => true, 'encounter' => $encounterData]);
+            break;
+
+        /* ═══════════════════════════════════════════════════════
+           AI LOOT & TREASURE GENERATOR
+           Generates level-appropriate treasure for post-combat rewards
+           ═══════════════════════════════════════════════════════ */
+        case 'generate_loot':
+            $partyLevel = (int) ($input['party_level'] ?? 3);
+            $encounterCr = trim($input['encounter_cr'] ?? '');
+            $lootType = trim($input['loot_type'] ?? 'standard');
+            $monsterType = trim($input['monster_type'] ?? '');
+            $notes = trim($input['notes'] ?? '');
+
+            // Token budget check
+            $uTierRows = query('SELECT subscription_tier FROM users WHERE id = ?', [$userId], 0);
+            $uTier = $uTierRows ? ($uTierRows[0]['subscription_tier'] ?? 'free') : 'free';
+            if (checkTokenBudget($userId, $uTier)) {
+                throw new Exception('Token budget exceeded. Usage resets on the 1st.');
+            }
+
+            $apiKey = resolveApiKey('OPENROUTER_KEY_SIM_STRUCTURED', $userId);
+
+            $lootTypes = [
+                'standard' => 'Standard treasure appropriate for the CR (DMG Table 3-5). Mix of coins, gems, and items.',
+                'hoard' => 'A large dragon-style treasure hoard. Significantly more than standard.',
+                'individual' => 'What a single monster carries. Modest pocket change and personal items.',
+                'quest_reward' => 'A quest reward from an NPC or patron. More curated and story-appropriate.',
+            ];
+            $lootDesc = $lootTypes[$lootType] ?? $lootTypes['standard'];
+
+            $lootPrompt = <<<LPROMPT
+You are a D&D 3.5e treasure generator following DMG guidelines.
+
+PARAMETERS:
+- Party Level: {$partyLevel}
+- Encounter CR: {$encounterCr}
+- Loot Type: {$lootType} — {$lootDesc}
+- Monster Type: {$monsterType}
+{$notes}
+
+RULES:
+- Follow D&D 3.5e treasure value guidelines (DMG Table 3-5)
+- Include a mix of coins (cp, sp, gp, pp), gems, art objects, and magic items
+- Magic items should be level-appropriate (no +5 swords for level 3 parties)
+- Provide gold piece value estimates for gems and art objects
+- Include interesting flavor text for special items
+
+Respond ONLY with valid JSON, no extra text:
+{
+  "coins": {"cp": 0, "sp": 0, "gp": 0, "pp": 0},
+  "total_coin_value_gp": 0,
+  "gems": [{"name": "Gem Name", "value_gp": 50, "description": "appearance"}],
+  "art_objects": [{"name": "Art Object", "value_gp": 100, "description": "appearance"}],
+  "mundane_items": [{"name": "Item", "value_gp": 10, "description": "brief note"}],
+  "magic_items": [{"name": "Magic Item +1", "value_gp": 2000, "description": "properties and appearance", "aura": "faint evocation"}],
+  "total_value_gp": 0,
+  "flavor_text": "Brief narrative about finding this treasure"
+}
+LPROMPT;
+
+            $openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
+            $model = defined('OPENROUTER_MODEL_CHEAP') ? OPENROUTER_MODEL_CHEAP : 'google/gemini-2.5-flash';
+            $payload = json_encode([
+                'model' => $model,
+                'messages' => [['role' => 'user', 'content' => $lootPrompt]],
+                'temperature' => 0.9,
+                'max_tokens' => 1024
+            ]);
+            $ch = curl_init($openRouterUrl);
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $payload,
+                CURLOPT_HTTPHEADER => [
+                    "Authorization: Bearer {$apiKey}",
+                    "HTTP-Referer: https://eonweaver.com",
+                    "X-Title: Eon Weaver",
+                    "Content-Type: application/json"
+                ],
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 60,
+                CURLOPT_SSL_VERIFYPEER => true
+            ]);
+            $resp = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            resetDB();
+
+            if ($httpCode !== 200 || !$resp)
+                throw new Exception("AI loot generation failed (HTTP {$httpCode})");
+
+            $data = json_decode($resp, true);
+            if (!empty($data['usage'])) trackTokenUsage($userId, $data['usage']);
+            $respText = $data['choices'][0]['message']['content'] ?? '';
+            $lootData = robustJsonDecode($respText);
+            if (!$lootData)
+                throw new Exception('AI returned invalid loot data. Try again.');
+
+            simRespond(['ok' => true, 'loot' => $lootData]);
+            break;
+
+        /* ═══════════════════════════════════════════════════════
+           AI MAGIC SHOP GENERATOR
+           Generates a level-appropriate magic item shop inventory
+           ═══════════════════════════════════════════════════════ */
+        case 'generate_magic_shop':
+            $townId = (int) ($input['town_id'] ?? 0);
+            $shopType = trim($input['shop_type'] ?? 'general');
+            $partyLevel = (int) ($input['party_level'] ?? 3);
+            $settlementSize = trim($input['settlement_size'] ?? 'small town');
+            $budget = trim($input['budget'] ?? '');
+            $notes = trim($input['notes'] ?? '');
+
+            // Token budget check
+            $uTierRows = query('SELECT subscription_tier FROM users WHERE id = ?', [$userId], 0);
+            $uTier = $uTierRows ? ($uTierRows[0]['subscription_tier'] ?? 'free') : 'free';
+            if (checkTokenBudget($userId, $uTier)) {
+                throw new Exception('Token budget exceeded. Usage resets on the 1st.');
+            }
+
+            $apiKey = resolveApiKey('OPENROUTER_KEY_SIM_STRUCTURED', $userId);
+
+            // Load town info if available
+            $townName = 'Unknown Settlement';
+            $biome = '';
+            if ($townId > 0) {
+                $townRow = query('SELECT name FROM towns WHERE id = ? AND user_id = ?', [$townId, $userId], $uid);
+                if ($townRow) $townName = $townRow[0]['name'];
+                $metaRows = query('SELECT `key`, value FROM town_meta WHERE town_id = ?', [$townId], $uid);
+                foreach ($metaRows as $m) {
+                    if ($m['key'] === 'biome') $biome = $m['value'];
+                    if ($m['key'] === 'settlement_type') $settlementSize = $m['value'];
+                }
+            }
+
+            $shopTypes = [
+                'general' => 'A general magic goods emporium. Mix of weapons, armor, potions, scrolls, wondrous items.',
+                'weapons_armor' => 'A specialized magical armory. Focuses on enchanted weapons and armor.',
+                'potions_scrolls' => 'An alchemist/scribe shop. Potions, scrolls, and wands.',
+                'wondrous' => 'A curiosity shop. Wondrous items, rings, and strange artifacts.',
+                'divine' => 'A temple marketplace. Divine scrolls, holy items, healing potions.',
+            ];
+            $shopDesc = $shopTypes[$shopType] ?? $shopTypes['general'];
+
+            $shopPrompt = <<<SPROMPT
+You are a D&D 3.5e magic shop inventory generator following DMG settlement wealth guidelines.
+
+PARAMETERS:
+- Settlement: {$townName} ({$settlementSize})
+- Biome: {$biome}
+- Shop Type: {$shopType} — {$shopDesc}
+- Party Level: {$partyLevel}
+- Budget Hint: {$budget}
+{$notes}
+
+RULES:
+- Follow D&D 3.5e pricing (DMG/SRD magic item costs)
+- Settlement size limits item availability: hamlets have very basic items, metropolises have rare ones
+- Include pricing in gold pieces
+- Include mix of price ranges (cheap consumables to pricier permanent items)
+- Generate 8-15 items appropriate for the settlement and party level
+- Include the shopkeeper name and a brief personality note
+- Potions, scrolls, and wands should list the spell and caster level
+
+Respond ONLY with valid JSON, no extra text:
+{
+  "shop_name": "Creative shop name",
+  "shopkeeper": {"name": "NPC Name", "race": "Race", "description": "Brief personality"},
+  "specialty": "What this shop is known for",
+  "items": [
+    {"name": "Item Name", "type": "weapon|armor|potion|scroll|wand|ring|wondrous|rod|staff", "price_gp": 0, "description": "Brief properties and appearance", "stock": 1}
+  ],
+  "services": [
+    {"name": "Identify (Arcane)", "price_gp": 100, "description": "Identify magic item properties"}
+  ],
+  "total_inventory_value_gp": 0,
+  "flavor_text": "Brief description of the shop atmosphere"
+}
+SPROMPT;
+
+            $openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
+            $model = defined('OPENROUTER_MODEL_CHEAP') ? OPENROUTER_MODEL_CHEAP : 'google/gemini-2.5-flash';
+            $payload = json_encode([
+                'model' => $model,
+                'messages' => [['role' => 'user', 'content' => $shopPrompt]],
+                'temperature' => 0.9,
+                'max_tokens' => 1536
+            ]);
+            $ch = curl_init($openRouterUrl);
+            curl_setopt_array($ch, [
+                CURLOPT_POST => true,
+                CURLOPT_POSTFIELDS => $payload,
+                CURLOPT_HTTPHEADER => [
+                    "Authorization: Bearer {$apiKey}",
+                    "HTTP-Referer: https://eonweaver.com",
+                    "X-Title: Eon Weaver",
+                    "Content-Type: application/json"
+                ],
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 60,
+                CURLOPT_SSL_VERIFYPEER => true
+            ]);
+            $resp = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+            resetDB();
+
+            if ($httpCode !== 200 || !$resp)
+                throw new Exception("AI magic shop generation failed (HTTP {$httpCode})");
+
+            $data = json_decode($resp, true);
+            if (!empty($data['usage'])) trackTokenUsage($userId, $data['usage']);
+            $respText = $data['choices'][0]['message']['content'] ?? '';
+            $shopData = robustJsonDecode($respText);
+            if (!$shopData)
+                throw new Exception('AI returned invalid shop data. Try again.');
+
+            simRespond(['ok' => true, 'shop' => $shopData]);
+            break;
+
         default:
             throw new Exception("Unknown simulation action: $action");
     }

@@ -17,6 +17,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once __DIR__ . '/auth.php';
 
+// Ensure is_encounter_town column exists (one-time migration)
+try { execute('ALTER TABLE towns ADD COLUMN is_encounter_town TINYINT(1) NOT NULL DEFAULT 0', [], 0); } catch (Exception $e) { /* already exists */ }
+
 $action = $_GET['action'] ?? '';
 $input = null;
 
@@ -67,33 +70,26 @@ try {
         case 'get_usage':
             $user = requireAuth();
             $uid = (int) $user['id'];
-            $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
+            $udata = query('SELECT subscription_tier, credit_balance FROM users WHERE id = ?', [$uid], 0);
             $tier = $udata[0]['subscription_tier'] ?? 'free';
+            $creditBalance = (int) ($udata[0]['credit_balance'] ?? 0);
             $yearMonth = date('Y-m');
 
-            // Get limit for this tier
-            $limitKey = 'token_limit_' . $tier;
-            $limitRows = query("SELECT value FROM site_settings WHERE `key` = ?", [$limitKey], 0);
-            $fallbacks = ['free' => 1500000, 'adventurer' => 6000000, 'guild_master' => 20000000, 'world_builder' => 60000000];
-            $limit = $limitRows ? (int) $limitRows[0]['value'] : ($fallbacks[$tier] ?? 1500000);
-
-            // Get usage this month
+            // Get usage this month (for analytics display)
             $usageRows = query(
-                "SELECT tokens_used, call_count FROM user_token_usage WHERE user_id = ? AND `year_month` = ?",
+                "SELECT COALESCE(SUM(tokens_used), 0) as tokens_used, COALESCE(SUM(call_count), 0) as call_count FROM user_token_usage WHERE user_id = ? AND `year_month` = ?",
                 [$uid, $yearMonth], 0
             );
-            $tokensUsed = $usageRows ? (int) $usageRows[0]['tokens_used'] : 0;
-            $callCount = $usageRows ? (int) $usageRows[0]['call_count'] : 0;
-            $percentage = $limit > 0 ? round(($tokensUsed / $limit) * 100, 1) : 0;
+            $tokensUsed = (int) ($usageRows[0]['tokens_used'] ?? 0);
+            $callCount = (int) ($usageRows[0]['call_count'] ?? 0);
 
-            $tierLabels = ['free' => 'Free', 'adventurer' => 'Adventurer', 'guild_master' => 'Guild Master', 'world_builder' => 'World Builder'];
+            $tierLabels = ['free' => 'Free', 'apprentice' => 'Apprentice', 'adventurer' => 'Adventurer', 'guild_master' => 'Guild Master', 'world_builder' => 'World Builder'];
             respond([
                 'ok' => true,
                 'tier' => $tier,
                 'tier_label' => $tierLabels[$tier] ?? $tier,
-                'tokens_used' => $tokensUsed,
-                'token_limit' => $limit,
-                'percentage' => $percentage,
+                'credit_balance' => $creditBalance,
+                'tokens_used_this_month' => $tokensUsed,
                 'call_count' => $callCount,
                 'year_month' => $yearMonth,
             ]);
@@ -114,8 +110,8 @@ try {
             // Tier info — four tiers: free, adventurer, guild_master, world_builder
             $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
             $tier = $udata[0]['subscription_tier'] ?? 'free';
-            $limits = ['free' => 1, 'adventurer' => 3, 'guild_master' => 10, 'world_builder' => 999];
-            $townLimits = ['free' => 3, 'adventurer' => 5, 'guild_master' => 10, 'world_builder' => 999];
+            $limits = ['free' => 1, 'apprentice' => 2, 'adventurer' => 3, 'guild_master' => 10, 'world_builder' => 999];
+            $townLimits = ['free' => 3, 'apprentice' => 4, 'adventurer' => 5, 'guild_master' => 10, 'world_builder' => 999];
             respond(['ok' => true, 'campaigns' => $camps, 'tier' => $tier, 'max_campaigns' => $limits[$tier] ?? 1, 'max_towns' => $townLimits[$tier] ?? 3]);
             break;
 
@@ -132,7 +128,7 @@ try {
             // Check tier limit — four tiers: free, adventurer, guild_master, world_builder
             $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
             $tier = $udata[0]['subscription_tier'] ?? 'free';
-            $limits = ['free' => 1, 'adventurer' => 3, 'guild_master' => 10, 'world_builder' => 999];
+            $limits = ['free' => 1, 'apprentice' => 2, 'adventurer' => 3, 'guild_master' => 10, 'world_builder' => 999];
             $maxCamps = $limits[$tier] ?? 1;
             $existing = query('SELECT COUNT(*) as c FROM campaigns WHERE user_id = ?', [$uid], 0);
             $currentCount = (int) ($existing[0]['c'] ?? 0);
@@ -225,13 +221,13 @@ try {
             $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
             if ($campId) {
                 $towns = query(
-                    'SELECT id, name, subtitle, campaign_id, created_at, updated_at FROM towns WHERE user_id = ? AND campaign_id = ? AND (is_party_base = 0 OR is_party_base IS NULL) ORDER BY name',
+                    'SELECT id, name, subtitle, campaign_id, created_at, updated_at FROM towns WHERE user_id = ? AND campaign_id = ? AND (is_party_base = 0 OR is_party_base IS NULL) AND (is_encounter_town = 0 OR is_encounter_town IS NULL) ORDER BY name',
                     [$uid, $campId],
                     $uid
                 );
             } else {
                 $towns = query(
-                    'SELECT id, name, subtitle, campaign_id, created_at, updated_at FROM towns WHERE user_id = ? AND (is_party_base = 0 OR is_party_base IS NULL) ORDER BY name',
+                    'SELECT id, name, subtitle, campaign_id, created_at, updated_at FROM towns WHERE user_id = ? AND (is_party_base = 0 OR is_party_base IS NULL) AND (is_encounter_town = 0 OR is_encounter_town IS NULL) ORDER BY name',
                     [$uid],
                     $uid
                 );
@@ -241,6 +237,33 @@ try {
                 $t['character_count'] = (int) ($cnt[0]['c'] ?? 0);
             }
             respond(['ok' => true, 'towns' => $towns]);
+            break;
+
+        case 'ensure_encounter_town':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+            // Ensure the is_encounter_town column exists
+            try {
+                execute('ALTER TABLE towns ADD COLUMN is_encounter_town TINYINT(1) NOT NULL DEFAULT 0', [], 0);
+            } catch (Exception $e) { /* column already exists */ }
+            // Look for existing encounter town in this campaign
+            $existing = query(
+                'SELECT id, name FROM towns WHERE user_id = ? AND campaign_id = ? AND is_encounter_town = 1 LIMIT 1',
+                [$uid, $campId], $uid
+            );
+            if ($existing) {
+                respond(['ok' => true, 'town_id' => (int) $existing[0]['id'], 'town_name' => $existing[0]['name']]);
+            } else {
+                // Create the encounter town (bypasses tier limits)
+                $encTownId = insertAndGetId(
+                    'INSERT INTO towns (user_id, campaign_id, name, subtitle, is_encounter_town) VALUES (?, ?, ?, ?, 1)',
+                    [$uid, $campId, '⚔️ Encounter Arena', 'System town for encounter creatures'],
+                    $uid
+                );
+                respond(['ok' => true, 'town_id' => (int) $encTownId, 'town_name' => '⚔️ Encounter Arena']);
+            }
             break;
 
         case 'create_town':
@@ -257,9 +280,9 @@ try {
             if ($campId) {
                 $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
                 $tier = $udata[0]['subscription_tier'] ?? 'free';
-                $townLimits = ['free' => 3, 'adventurer' => 5, 'guild_master' => 10, 'world_builder' => 999];
+                $townLimits = ['free' => 3, 'apprentice' => 4, 'adventurer' => 5, 'guild_master' => 10, 'world_builder' => 999];
                 $maxTowns = $townLimits[$tier] ?? 3;
-                $existingTowns = query('SELECT COUNT(*) as c FROM towns WHERE campaign_id = ? AND (is_party_base = 0 OR is_party_base IS NULL)', [$campId], $uid);
+                $existingTowns = query('SELECT COUNT(*) as c FROM towns WHERE campaign_id = ? AND (is_party_base = 0 OR is_party_base IS NULL) AND (is_encounter_town = 0 OR is_encounter_town IS NULL)', [$campId], $uid);
                 $currentTownCount = (int) ($existingTowns[0]['c'] ?? 0);
                 if ($currentTownCount >= $maxTowns)
                     throw new Exception("Your plan allows up to $maxTowns towns per campaign. Upgrade to create more.");
@@ -1311,7 +1334,7 @@ try {
             );
             // Load participants with character data
             $encounter['participants'] = query(
-                'SELECT ep.*, c.name, c.race, c.class, c.level, c.xp, c.town_id,
+                'SELECT ep.*, c.name, c.race, c.class, c.level, c.xp, c.cr, c.town_id,
                         c.hp as base_hp, c.ac as base_ac,
                         c.str, c.dex, c.con, c.int_, c.wis, c.cha, c.gear, c.feats, c.atk,
                         c.alignment, c.status as char_status, t.name as town_name
@@ -2641,72 +2664,9 @@ try {
 
         /* ═══════════════════════════════════════════════════
            ADMIN — Requires admin role
+           (Primary admin handlers are further below in the
+            "cross-account database management" section)
            ═══════════════════════════════════════════════════ */
-        case 'admin_overview':
-            requireAdmin();
-            $totalUsers = query('SELECT COUNT(*) as c FROM users WHERE role != ?', ['admin'], 0);
-            $totalTowns = query('SELECT COUNT(*) as c FROM towns', [], 0);
-
-            $ym = date('Y-m');
-            $monthlyTokens = 0;
-            $monthlyCalls = 0;
-            $activeCount = 0;
-            try {
-                $monthlyUsage = query('SELECT SUM(tokens_used) as tokens, SUM(call_count) as calls FROM user_token_usage WHERE `year_month` = ?', [$ym], 0);
-                $monthlyTokens = (int) ($monthlyUsage[0]['tokens'] ?? 0);
-                $monthlyCalls = (int) ($monthlyUsage[0]['calls'] ?? 0);
-                $activeUsers = query('SELECT COUNT(DISTINCT user_id) as c FROM user_token_usage WHERE `year_month` = ?', [$ym], 0);
-                $activeCount = (int) ($activeUsers[0]['c'] ?? 0);
-            } catch (\PDOException $e) { /* table may not exist yet */ }
-              catch (\Exception $e) { /* fallback */ }
-
-            respond([
-                'ok' => true,
-                'total_users' => (int) ($totalUsers[0]['c'] ?? 0),
-                'total_towns' => (int) ($totalTowns[0]['c'] ?? 0),
-                'month' => $ym,
-                'monthly_tokens' => $monthlyTokens,
-                'monthly_calls' => $monthlyCalls,
-                'active_users' => $activeCount,
-            ]);
-            break;
-
-        case 'admin_members':
-            requireAdmin();
-            $members = query(
-                'SELECT id, username, email, subscription_tier, role, created_at FROM users WHERE role != ? ORDER BY created_at DESC',
-                ['admin'], 0
-            );
-            $ym = date('Y-m');
-            $fallbacks = ['free' => 1500000, 'adventurer' => 6000000, 'guild_master' => 20000000, 'world_builder' => 60000000];
-            foreach ($members as &$m) {
-                try {
-                    $usage = query('SELECT tokens_used, call_count FROM user_token_usage WHERE user_id = ? AND `year_month` = ?', [(int) $m['id'], $ym], 0);
-                    $m['tokens_this_month'] = (int) ($usage[0]['tokens_used'] ?? 0);
-                    $m['calls_this_month'] = (int) ($usage[0]['call_count'] ?? 0);
-                } catch (\PDOException $e) {
-                    $m['tokens_this_month'] = 0;
-                    $m['calls_this_month'] = 0;
-                } catch (\Exception $e) {
-                    $m['tokens_this_month'] = 0;
-                    $m['calls_this_month'] = 0;
-                }
-                $campCount = query('SELECT COUNT(*) as c FROM campaigns WHERE user_id = ?', [(int) $m['id']], 0);
-                $m['campaign_count'] = (int) ($campCount[0]['c'] ?? 0);
-                // Town count
-                $townCount = query('SELECT COUNT(*) as c FROM towns WHERE user_id = ? AND (is_party_base = 0 OR is_party_base IS NULL)', [(int) $m['id']], 0);
-                $m['town_count'] = (int) ($townCount[0]['c'] ?? 0);
-                // Token limit and usage percentage
-                $tier = $m['subscription_tier'] ?? 'free';
-                $limitKey = 'token_limit_' . $tier;
-                $limitRows = query("SELECT value FROM site_settings WHERE `key` = ?", [$limitKey], 0);
-                $limit = $limitRows ? (int) $limitRows[0]['value'] : ($fallbacks[$tier] ?? 1500000);
-                $m['token_limit'] = $limit;
-                $m['usage_pct'] = $limit > 0 ? round(($m['tokens_this_month'] / $limit) * 100, 1) : 0;
-            }
-            unset($m);
-            respond(['ok' => true, 'members' => $members]);
-            break;
 
         case 'admin_token_usage':
             requireAdmin();
@@ -3009,8 +2969,8 @@ try {
             foreach ($files as $f) $totalSize += (int) ($f['file_size'] ?? 0);
             $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
             $tier = $udata[0]['subscription_tier'] ?? 'free';
-            $storageLimits = ['free' => 20 * 1024 * 1024, 'adventurer' => 100 * 1024 * 1024, 'guild_master' => 500 * 1024 * 1024, 'world_builder' => 2048 * 1024 * 1024];
-            $fileLimits = ['free' => 10, 'adventurer' => 50, 'guild_master' => 200, 'world_builder' => 9999];
+            $storageLimits = ['free' => 20 * 1024 * 1024, 'apprentice' => 50 * 1024 * 1024, 'adventurer' => 100 * 1024 * 1024, 'guild_master' => 500 * 1024 * 1024, 'world_builder' => 2048 * 1024 * 1024];
+            $fileLimits = ['free' => 10, 'apprentice' => 25, 'adventurer' => 50, 'guild_master' => 200, 'world_builder' => 9999];
             respond([
                 'ok' => true,
                 'files' => $files,
@@ -3066,7 +3026,7 @@ try {
         case 'admin_members':
             requireAdmin();
             $members = query(
-                "SELECT u.id, u.username, u.email, u.subscription_tier, u.role, u.created_at,
+                "SELECT u.id, u.username, u.email, u.subscription_tier, u.role, u.credit_balance, u.created_at,
                     (SELECT COUNT(*) FROM campaigns WHERE user_id = u.id) as campaign_count,
                     (SELECT COUNT(*) FROM towns WHERE user_id = u.id) as town_count,
                     COALESCE((SELECT SUM(tokens_used) FROM user_token_usage WHERE user_id = u.id AND `year_month` = ?), 0) as tokens_this_month,
@@ -3104,6 +3064,24 @@ try {
             $params[] = $targetId;
             execute('UPDATE users SET ' . implode(', ', $updates) . ' WHERE id = ?', $params, 0);
             respond(['ok' => true]);
+            break;
+
+        case 'admin_adjust_credits':
+            requireAdmin();
+            $targetId = (int) ($input['user_id'] ?? 0);
+            if (!$targetId) throw new Exception('Missing user_id');
+            $amount = (int) ($input['amount'] ?? 0);
+            $mode = $input['mode'] ?? 'add'; // 'add', 'set', or 'subtract'
+            if ($mode === 'set') {
+                execute('UPDATE users SET credit_balance = ? WHERE id = ?', [max(0, $amount), $targetId], 0);
+            } elseif ($mode === 'subtract') {
+                execute('UPDATE users SET credit_balance = GREATEST(0, credit_balance - ?) WHERE id = ?', [abs($amount), $targetId], 0);
+            } else {
+                // Default: add
+                execute('UPDATE users SET credit_balance = credit_balance + ? WHERE id = ?', [abs($amount), $targetId], 0);
+            }
+            $newBalance = query('SELECT credit_balance FROM users WHERE id = ?', [$targetId], 0);
+            respond(['ok' => true, 'new_balance' => (int) ($newBalance[0]['credit_balance'] ?? 0)]);
             break;
 
         case 'admin_delete_member':

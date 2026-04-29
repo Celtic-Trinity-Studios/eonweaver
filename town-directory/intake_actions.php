@@ -1024,6 +1024,7 @@ elseif ($action === 'intake_creature') {
             'gender' => random_int(0, 1) ? 'M' : 'F',
             'age' => random_int(1, max(2, (int) ($hdCount * 3))),
             'level' => $hdCount,
+            'cr' => $mCR,
             'status' => 'Alive',
             'alignment' => $alCode,
             'role' => $instructions ?: ($isIntelligent ? 'Resident' : 'Wildlife'),

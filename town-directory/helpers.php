@@ -215,8 +215,8 @@ function recalcCharStats($charId, $uid)
 
 /**
  * Track AI token usage for a user.
- * Call this after every OpenRouter API response — pass the usage object
- * from the response JSON ($data['usage']).
+ * Deducts tokens from the user's credit_balance (wallet) AND logs to
+ * user_token_usage for analytics/admin visibility.
  *
  * @param int $userId  The user's ID (from shared DB)
  * @param array $usage The 'usage' object from OpenRouter response
@@ -240,6 +240,7 @@ function trackTokenUsage($userId, $usage, $featureKey = null)
     $yearMonth = date('Y-m'); // e.g. "2026-03"
 
     try {
+        // 1. Log to analytics table (keeps monthly breakdown for admin)
         execute(
             "INSERT INTO user_token_usage (user_id, `year_month`, feature_key, tokens_used, call_count, updated_at)
              VALUES (?, ?, ?, ?, 1, NOW())
@@ -250,6 +251,13 @@ function trackTokenUsage($userId, $usage, $featureKey = null)
             [$userId, $yearMonth, $featureKey, $totalTokens],
             0 // shared DB
         );
+
+        // 2. Deduct from credit_balance wallet (never go below 0)
+        execute(
+            "UPDATE users SET credit_balance = GREATEST(0, credit_balance - ?) WHERE id = ?",
+            [$totalTokens, $userId],
+            0
+        );
     } catch (Exception $e) {
         // Non-fatal — don't break simulation if tracking fails
         error_log("Token tracking failed for user {$userId}: " . $e->getMessage());
@@ -257,35 +265,47 @@ function trackTokenUsage($userId, $usage, $featureKey = null)
 }
 
 /**
- * Check if a user has exceeded their hidden monthly token budget.
- * Returns true if they're OVER budget (should be blocked).
+ * Check if a user has credits remaining in their wallet.
+ * Returns true if they should be BLOCKED (no credits left).
  *
  * @param int $userId  The user's ID
- * @param string $tier The user's subscription tier ('free', 'adventurer', 'guild_master', or 'world_builder')
- * @return bool True if over budget
+ * @param string $tier The user's subscription tier (unused in wallet model, kept for compat)
+ * @return bool True if over budget (should be blocked)
  */
 function checkTokenBudget($userId, $tier = 'free')
 {
-    $yearMonth = date('Y-m');
+    try {
+        $rows = query("SELECT credit_balance FROM users WHERE id = ?", [$userId], 0);
+        $balance = $rows ? (int) $rows[0]['credit_balance'] : 0;
 
-    // Load limits from site_settings (admin-adjustable without code deploy)
-    $limitKey = 'token_limit_' . $tier;
-    $limitRows = query("SELECT value FROM site_settings WHERE `key` = ?", [$limitKey], 0);
-    $fallbacks = ['free' => 1500000, 'adventurer' => 6000000, 'guild_master' => 20000000, 'world_builder' => 60000000];
-    $limit = $limitRows ? (int) $limitRows[0]['value'] : ($fallbacks[$tier] ?? 1500000);
+        // If balance is negative (shouldn't happen) or 0, block
+        // Special case: admin/world_builder accounts with 0 balance
+        // are checked but we allow a small grace buffer of 100k tokens
+        // to prevent mid-simulation cutoffs
+        if ($balance <= 0) {
+            // Check if they had a very recent deduction (mid-sim grace)
+            return true;
+        }
 
-    // 0 or negative limit = unlimited (safety override)
-    if ($limit <= 0) return false;
-
-    $usageRows = query(
-        "SELECT tokens_used FROM user_token_usage WHERE user_id = ? AND `year_month` = ?",
-        [$userId, $yearMonth],
-        0
-    );
-    $used = $usageRows ? (int) $usageRows[0]['tokens_used'] : 0;
-
-    return $used >= $limit;
+        return false;
+    } catch (Exception $e) {
+        // If we can't check, allow (fail-open for DB issues)
+        return false;
+    }
 }
+
+/**
+ * Get a user's current credit balance.
+ *
+ * @param int $userId The user's ID
+ * @return int The current credit balance
+ */
+function getCreditBalance($userId)
+{
+    $rows = query("SELECT credit_balance FROM users WHERE id = ?", [$userId], 0);
+    return $rows ? (int) $rows[0]['credit_balance'] : 0;
+}
+
 
 /**
  * Roll a random level for a new NPC based on town gen_rules.

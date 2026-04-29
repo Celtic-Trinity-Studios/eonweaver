@@ -226,7 +226,7 @@ export function openTownSetupWizard(townId, onRefresh) {
           <button class="setup-tab active" data-tab="populate">👥 Populate</button>
           <button class="setup-tab" data-tab="buildings">🏛️ Buildings</button>
           <button class="setup-tab" data-tab="weather">🌦️ Weather</button>
-          <button class="setup-tab" data-tab="spells">✨ Spells</button>
+
           <button class="setup-tab" data-tab="settings">⚙️ Settings</button>
         </div>
 
@@ -313,16 +313,7 @@ export function openTownSetupWizard(townId, onRefresh) {
           <div class="setup-status" id="sw-wx-status"></div>
         </div>
 
-        <!-- SPELLS TAB -->
-        <div class="setup-panel" data-panel="spells">
-          <h3 style="margin-bottom:0.5rem;">✨ Auto-Assign Spells</h3>
-          <p class="setup-desc">Automatically assigns role-optimal SRD spells to all spellcasting NPCs in this town. Existing spell assignments will be replaced.</p>
 
-          <div class="setup-actions">
-            <button class="btn-primary" id="sw-spell-assign">✨ Auto-Assign All Caster Spells</button>
-          </div>
-          <div class="setup-status" id="sw-spell-status"></div>
-        </div>
 
         <!-- SETTINGS TAB -->
         <div class="setup-panel" data-panel="settings">
@@ -403,6 +394,14 @@ export function openTownSetupWizard(townId, onRefresh) {
             <div class="form-group">
               <label>📋 House Rules</label>
               <textarea id="sw-house-rules" class="form-input" rows="2" placeholder="House rules for simulations..."></textarea>
+            </div>
+
+            <div class="form-group" style="margin-top:0.5rem;">
+              <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;">
+                <input type="checkbox" id="sw-auto-spells" checked style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer;">
+                ✨ Auto-Assign Spells After Populate
+              </label>
+              <p class="setup-desc" style="margin:0.25rem 0 0 1.75rem;font-size:0.75rem;">When enabled, SRD-optimal spells are automatically assigned to all casters after populating the town.</p>
             </div>
 
             <div class="setup-actions">
@@ -590,7 +589,16 @@ export function openTownSetupWizard(townId, onRefresh) {
 
           if (totalAdded > 0) {
             statusEl.innerHTML = `<span style="color:var(--success)">✅ ${totalAdded} creatures added from SRD! No AI credits used.</span>`;
-
+            // Auto-assign spells if enabled
+            if (el.querySelector('#sw-auto-spells')?.checked) {
+              statusEl.innerHTML += '<br><span style="color:var(--text-secondary)">✨ Auto-assigning spells to casters...</span>';
+              try {
+                const spellResult = await apiAutoAssignSpellsTown(townId, true);
+                if (spellResult.ok && spellResult.assigned > 0) {
+                  statusEl.innerHTML += `<br><span style="color:var(--success)">✅ Spells assigned to ${spellResult.assigned} caster${spellResult.assigned !== 1 ? 's' : ''}</span>`;
+                }
+              } catch (e) { console.warn('Auto-spell failed:', e); }
+            }
           } else {
             statusEl.innerHTML = '<span style="color:var(--error)">❌ No matching creatures found in SRD. Check demographic race names match SRD monster names.</span>';
           }
@@ -670,7 +678,16 @@ export function openTownSetupWizard(townId, onRefresh) {
 
           if (totalAdded > 0) {
             statusEl.innerHTML = `<span style="color:var(--success)">✅ ${totalAdded} characters/creatures added!</span>`;
-
+            // Auto-assign spells if enabled
+            if (el.querySelector('#sw-auto-spells')?.checked) {
+              statusEl.innerHTML += '<br><span style="color:var(--text-secondary)">✨ Auto-assigning spells to casters...</span>';
+              try {
+                const spellResult = await apiAutoAssignSpellsTown(townId, true);
+                if (spellResult.ok && spellResult.assigned > 0) {
+                  statusEl.innerHTML += `<br><span style="color:var(--success)">✅ Spells assigned to ${spellResult.assigned} caster${spellResult.assigned !== 1 ? 's' : ''}</span>`;
+                }
+              } catch (e) { console.warn('Auto-spell failed:', e); }
+            }
           } else {
             statusEl.innerHTML = '<span style="color:var(--error)">❌ Failed to generate population</span>';
           }
@@ -691,6 +708,16 @@ export function openTownSetupWizard(townId, onRefresh) {
         if (chars.length > 0) {
           await apiApplySimulation(townId, { new_characters: chars }, null, 0);
           statusEl.innerHTML = `<span style="color:var(--success)">✅ ${chars.length}x ${creatureName} added from SRD! No AI credits used.</span>`;
+          // Auto-assign spells if enabled
+          if (el.querySelector('#sw-auto-spells')?.checked) {
+            statusEl.innerHTML += '<br><span style="color:var(--text-secondary)">✨ Auto-assigning spells to casters...</span>';
+            try {
+              const spellResult = await apiAutoAssignSpellsTown(townId, true);
+              if (spellResult.ok && spellResult.assigned > 0) {
+                statusEl.innerHTML += `<br><span style="color:var(--success)">✅ Spells assigned to ${spellResult.assigned} caster${spellResult.assigned !== 1 ? 's' : ''}</span>`;
+              }
+            } catch (e) { console.warn('Auto-spell failed:', e); }
+          }
         } else {
           statusEl.innerHTML = `<span style="color:var(--error)">❌ "${creatureName}" not found in SRD.</span>`;
         }
@@ -727,6 +754,16 @@ export function openTownSetupWizard(townId, onRefresh) {
 
         if (created > 0) {
           statusEl.innerHTML = `<span style="color:var(--success)">✅ ${created} character${created !== 1 ? 's' : ''} added!</span>`;
+          // Auto-assign spells if enabled
+          if (el.querySelector('#sw-auto-spells')?.checked) {
+            statusEl.innerHTML += '<br><span style="color:var(--text-secondary)">✨ Auto-assigning spells to casters...</span>';
+            try {
+              const spellResult = await apiAutoAssignSpellsTown(townId, true);
+              if (spellResult.ok && spellResult.assigned > 0) {
+                statusEl.innerHTML += `<br><span style="color:var(--success)">✅ Spells assigned to ${spellResult.assigned} caster${spellResult.assigned !== 1 ? 's' : ''}</span>`;
+              }
+            } catch (e) { console.warn('Auto-spell failed:', e); }
+          }
         } else {
           statusEl.innerHTML = '<span style="color:var(--error)">❌ Failed to generate characters</span>';
         }
@@ -848,31 +885,7 @@ export function openTownSetupWizard(townId, onRefresh) {
   });
 
 
-  // ═══════════════════════════════════════════════════════
-  // SPELLS TAB
-  // ═══════════════════════════════════════════════════════
-  el.querySelector('#sw-spell-assign').addEventListener('click', async () => {
-    const btn = el.querySelector('#sw-spell-assign');
-    const statusEl = el.querySelector('#sw-spell-status');
-    btn.disabled = true;
-    btn.textContent = '⏳ Assigning...';
-    statusEl.innerHTML = '<span style="color:var(--text-secondary)">✨ Auto-assigning spells to all casters...</span>';
 
-    try {
-      const result = await apiAutoAssignSpellsTown(townId, true);
-      if (result.ok) {
-        const names = (result.characters || []).join(', ');
-        statusEl.innerHTML = `<span style="color:var(--success)">✅ Assigned spells to ${result.assigned} caster${result.assigned !== 1 ? 's' : ''}${names ? ': ' + names : ''}</span>`;
-      } else {
-        statusEl.innerHTML = `<span style="color:var(--error)">❌ ${result.error || 'Failed'}</span>`;
-      }
-    } catch (err) {
-      statusEl.innerHTML = `<span style="color:var(--error)">❌ ${err.message}</span>`;
-    } finally {
-      btn.disabled = false;
-      btn.textContent = '✨ Auto-Assign All Caster Spells';
-    }
-  });
 
   // ═══════════════════════════════════════════════════════
   // SETTINGS TAB — load & save campaign rules inline

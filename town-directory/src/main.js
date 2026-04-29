@@ -5,6 +5,7 @@ import { apiGetCurrentUser, apiLogin, apiRegister, apiLogout } from './api/auth.
 import { apiGetCalendar, calendarToString } from './api/settings.js';
 import { setCurrentEdition } from './api/srd.js';
 import { apiCreateCampaign } from './api/campaigns.js';
+import { mountDmToolbar } from './components/DmToolbar.js';
 
 // Views
 import DashboardView from './views/DashboardView.js';
@@ -119,6 +120,7 @@ function showApp() {
 
     // Render sidebar (it adapts to no-campaign state)
     renderSidebar(document.getElementById('sidebar-container'));
+    mountDmToolbar();
 
     // Bind logout
     document.getElementById('sidebar-logout-btn')?.addEventListener('click', async () => {

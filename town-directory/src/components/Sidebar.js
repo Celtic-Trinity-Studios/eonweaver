@@ -207,7 +207,7 @@ subscribe((state) => {
 });
 
 /**
- * Load and display compact usage meter in sidebar brand area.
+ * Load and display Eon Credits wallet in sidebar brand area.
  */
 async function loadSidebarUsage() {
   const el = document.getElementById('sidebar-usage');
@@ -215,19 +215,20 @@ async function loadSidebarUsage() {
   try {
     const res = await apiGetUsage();
     if (!res.ok) return;
-    const { tier_label, percentage, tokens_used, token_limit } = res;
-    const pct = percentage || 0;
-    const barColor = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : pct >= 40 ? '#eab308' : '#22c55e';
+    const { tier_label, credit_balance, tokens_used_this_month } = res;
+    const balance = credit_balance || 0;
     const fmt = (n) => n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(0) + 'K' : n;
+    const balanceColor = balance <= 0 ? '#ef4444' : balance < 1000000 ? '#f59e0b' : '#22c55e';
     el.innerHTML = `
       <div class="sidebar-usage-row">
         <span class="sidebar-tier-badge tier-${res.tier}">${tier_label}</span>
-        <span class="sidebar-usage-pct" style="color:${barColor}">${pct}%</span>
       </div>
-      <div class="sidebar-usage-track">
-        <div class="sidebar-usage-fill" style="width:${Math.min(pct, 100)}%;background:${barColor}"></div>
+      <div class="sidebar-credits-display">
+        <span class="sidebar-credits-icon">🪙</span>
+        <span class="sidebar-credits-value" style="color:${balanceColor}">${fmt(balance)}</span>
+        <span class="sidebar-credits-label">Eon Credits</span>
       </div>
-      <div class="sidebar-usage-label">${fmt(tokens_used)} / ${fmt(token_limit)} tokens</div>
+      <div class="sidebar-usage-label">${fmt(tokens_used_this_month || 0)} used this month</div>
     `;
   } catch (e) { /* silent */ }
 }

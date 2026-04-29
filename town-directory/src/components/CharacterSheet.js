@@ -686,192 +686,160 @@ export function renderCharacterSheet(el, c, { onListRefresh, onDelete, container
   wireEditableSections(el, c, addToLog, { onListRefresh, containerRef });
 }
 
-/* ── Tab Builder: Page 1 — Stats, Combat, Skills ─────────── */
+/* ── Tab Builder: Page 1 — Character Card Layout ─────────── */
 function buildPage1(c, abilities, saves, acVals, bab, babStr, attacks, trainedSkills, allSkills) {
-  const grappleMod = c.grapple || '—';
-  const maxRanks = ((parseInt(c.level) || 1) + 3);
+  const classDisplay = (c.class || '').replace(/\s+\d+$/, '').trim();
+  const level = parseInt(c.level) || 1;
+  const featsList = (c.feats || '').split(/[,;]/).map(f => f.trim()).filter(Boolean);
+  const gearItems = (c.gear || '').split(/[,;]/).map(g => g.trim()).filter(Boolean);
+  // Filter out money entries from gear for display
+  const moneyRx = /^\s*(\d+(?:,\d+)?)\s*(pp|gp|sp|cp|ep)\s*$/i;
+  const displayGear = gearItems.filter(g => !moneyRx.test(g));
+
+  // Build AC breakdown text
+  const acParts = [];
+  if (acVals.dex) acParts.push(`+${acVals.dex} Dex`);
+  if (acVals.armor) acParts.push(`+${acVals.armor} Armor`);
+  if (acVals.shield) acParts.push(`+${acVals.shield} Shield`);
+  if (acVals.natural) acParts.push(`+${acVals.natural} Natural`);
+  if (acVals.misc) acParts.push(`+${acVals.misc} Misc`);
+
+  const portraitHtml = c.portrait_url
+    ? `<img class="ccard-portrait-img" src="${c.portrait_url}" alt="${c.name}">`
+    : `<div class="ccard-portrait-placeholder"><span>⚔️</span></div>`;
 
   return `
-  <!-- Character Info Bar -->
-  <div class="cs-info-bar">
-    <div class="cs-info-field"><span class="cs-info-val">${c.name || ''}</span><span class="cs-info-label">Character Name</span></div>
-    <div class="cs-info-field"><span class="cs-info-val">${c.race || ''}</span><span class="cs-info-label">Race</span></div>
-    <div class="cs-info-field"><span class="cs-info-val">${c.alignment || ''}</span><span class="cs-info-label">Alignment</span></div>
+  <div class="ccard">
+    <!-- Card Header: Name + Portrait -->
+    <div class="ccard-header">
+      <div class="ccard-header-text">
+        <h2 class="ccard-name">${c.name}</h2>
+        <div class="ccard-class">${c.race || ''} ${classDisplay}</div>
+        <div class="ccard-meta-row">
+          <span class="ccard-meta-item"><span class="ccard-meta-lbl">STR</span> ${abilities.find(a=>a.name==='STR')?.val || '—'}</span>
+          <span class="ccard-meta-item">${c.race || ''}</span>
+          <span class="ccard-meta-item"><span class="ccard-meta-lbl">AL</span> ${c.alignment || '—'}</span>
+        </div>
+        ${c.title ? `<div class="ccard-deity">${c.title}</div>` : ''}
+        <div class="ccard-xp-row">
+          <span class="ccard-xp-lbl">XP</span>
+          <div class="ccard-xp-track"><div class="ccard-xp-fill" style="width:${Math.min(100, Math.max(5, ((parseInt(c.xp)||0) % 1000) / 10))}%"></div></div>
+        </div>
+      </div>
+      <div class="ccard-portrait">
+        ${portraitHtml}
+      </div>
+    </div>
+
+    <div class="ccard-divider">⚜</div>
+
+    <!-- Card Body: 3 columns -->
+    <div class="ccard-body">
+      <!-- LEFT: Abilities + Feats -->
+      <div class="ccard-col-left">
+        <div class="ccard-ab-grid">
+          ${abilities.map(a => `
+            <div class="ccard-ab${a.mod > 0 ? ' ccard-ab-pos' : ''}">
+              <div class="ccard-ab-label">${a.name}</div>
+              <div class="ccard-ab-score">${a.val || 10}</div>
+              <div class="ccard-ab-mod">${a.modStr}</div>
+            </div>
+          `).join('')}
+        </div>
+
+        <div class="ccard-section">
+          <h3 class="ccard-section-title">Feats</h3>
+          <div class="ccard-list">
+            ${featsList.map(f => `
+              <div class="ccard-list-item" data-srd-type="feat" data-srd-name="${f}">
+                <span class="ccard-list-icon">◈</span>
+                <span class="ccard-list-name">${f}</span>
+              </div>
+            `).join('')}
+            ${featsList.length === 0 ? '<div class="ccard-empty">No feats</div>' : ''}
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Combat + Attacks + Saves + Feats + Inventory -->
+      <div class="ccard-col-right">
+        <div class="ccard-section">
+          <h3 class="ccard-section-title">Combat Stats</h3>
+          <div class="ccard-stat-boxes">
+            <div class="ccard-stat-box" id="cs-hp-display" title="Click to adjust HP" style="cursor:pointer">
+              <div class="ccard-stat-lbl">HP</div>
+              <div class="ccard-stat-val">${c.hp || '—'}</div>
+            </div>
+            <div class="ccard-stat-box">
+              <div class="ccard-stat-lbl">AC</div>
+              <div class="ccard-stat-val">${acVals.total || 10}</div>
+            </div>
+            <div class="ccard-stat-box">
+              <div class="ccard-stat-lbl">Initiative</div>
+              <div class="ccard-stat-val">${c.init || '+0'}</div>
+            </div>
+          </div>
+          ${acParts.length ? `<div class="ccard-ac-detail">${acParts.join('<br>')}</div>` : ''}
+          <div class="ccard-speed">Speed <strong>${c.spd || '30 ft.'}</strong></div>
+        </div>
+
+        <div class="ccard-section">
+          <h3 class="ccard-section-title">Attacks</h3>
+          <div class="ccard-list">
+            ${attacks.length ? attacks.map((a, i) => `
+              <div class="ccard-list-item cs-attack-block" data-atk-idx="${i}">
+                <span class="ccard-list-icon">${a.type === 'Ranged' ? '🏹' : '⚔️'}</span>
+                <span class="ccard-list-name">${a.name}</span>
+                <span class="ccard-list-val">${a.bonus}${a.damage ? '/' + a.damage : ''}</span>
+              </div>
+            `).join('') : '<div class="ccard-empty">No attacks</div>'}
+          </div>
+        </div>
+
+        <div class="ccard-section">
+          <h3 class="ccard-section-title">Saving Throws</h3>
+          <div class="ccard-save-boxes">
+            <div class="ccard-save-box">
+              <div class="ccard-save-lbl">Fort</div>
+              <div class="ccard-save-val">${saves.fort || '+0'}</div>
+            </div>
+            <div class="ccard-save-box">
+              <div class="ccard-save-lbl">Ref</div>
+              <div class="ccard-save-val">${saves.ref || '+0'}</div>
+            </div>
+            <div class="ccard-save-box">
+              <div class="ccard-save-lbl">Will</div>
+              <div class="ccard-save-val">${saves.will || '+0'}</div>
+            </div>
+          </div>
+        </div>
+
+
+      </div>
+
+      <!-- RIGHT: Skills -->
+      <div class="ccard-col-skills">
+        <h3 class="ccard-section-title">Skills</h3>
+        <div class="ccard-list ccard-skills-scroll">
+          ${trainedSkills.map(s => {
+            // Split compound skills: "Knowledge (Arcana)" → "Knowledge" + "(Arcana)"
+            const m = s.name.match(/^(Knowledge|Profession|Craft)\s*(\(.+\))$/i);
+            const nameHtml = m
+              ? `<span class="ccard-skill-base">${m[1]}</span><span class="ccard-skill-sub">${m[2]}</span>`
+              : s.name;
+            return `
+              <div class="ccard-list-item cs-skill-row" data-skill="${s.name}">
+                <span class="ccard-list-icon">🎯</span>
+                <span class="ccard-list-name">${nameHtml}</span>
+                <span class="ccard-list-val">${fmtMod(s.total)}</span>
+              </div>`;
+          }).join('')}
+          ${trainedSkills.length === 0 ? '<div class="ccard-empty">No trained skills</div>' : ''}
+        </div>
+      </div>
+    </div>
   </div>
-  <div class="cs-phys-bar">
-    <div class="cs-phys-field"><span class="cs-info-val">${c.class || ''}</span><span class="cs-info-label">Class & Level</span></div>
-    <div class="cs-phys-field"><span class="cs-info-val">${c.gender || ''}</span><span class="cs-info-label">Gender</span></div>
-    <div class="cs-phys-field"><span class="cs-info-val">${c.age || ''}</span><span class="cs-info-label">Age</span></div>
-    <div class="cs-phys-field"><span class="cs-info-val">${c.role || ''}</span><span class="cs-info-label">Role</span></div>
-  </div>
-
-  <!-- 3-Column: Abilities | Combat | Skills -->
-  <div class="cs-page1-grid">
-    <!-- Left: Abilities -->
-    <div class="cs-abilities-col">
-      <div class="dnd-section-head">Ability Scores</div>
-      <div class="cs-ability-header">
-        <span></span>
-        <span>Score</span>
-        <span>Mod</span>
-        <span>Temp</span>
-        <span>T.Mod</span>
-      </div>
-      ${abilities.map(a => `
-        <div class="cs-ability-row">
-          <div class="cs-ability-name">${a.name}<small>${{ STR: 'Strength', DEX: 'Dexterity', CON: 'Constitution', INT: 'Intelligence', WIS: 'Wisdom', CHA: 'Charisma' }[a.name] || ''}</small></div>
-          <div class="dnd-field">${a.val || '—'}</div>
-          <div class="dnd-field">${a.val ? a.modStr : ''}</div>
-          <div class="dnd-field dnd-field-sm"></div>
-          <div class="dnd-field dnd-field-sm"></div>
-        </div>`).join('')}
-    </div>
-
-    <!-- Center: Combat -->
-    <div class="cs-combat-col">
-      <!-- HP -->
-      <div>
-        <div class="dnd-section-head">Hit Points</div>
-        <div class="cs-hp-section">
-          <div class="cs-hp-total">
-            <div class="dnd-field dnd-field-lg" id="cs-hp-display" title="Click to adjust HP" style="cursor:pointer">${c.hp || '0'}</div>
-            <div class="dnd-field-label">Total</div>
-          </div>
-          <div class="cs-hp-boxes">
-            <div class="cs-hp-box"><div class="dnd-field" style="flex:1;width:100%;min-height:28px">${c.hd || ''}</div><div class="dnd-field-label">Hit Dice</div></div>
-            <div class="cs-hp-box"><div class="dnd-field" style="flex:1;width:100%;min-height:28px;color:#ff6b6b"></div><div class="dnd-field-label">Wounds</div></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Speed -->
-      <div>
-        <div class="dnd-section-head">Speed</div>
-        <div style="display:flex;gap:0.3rem">
-          <div style="display:flex;flex-direction:column;align-items:center"><div class="dnd-field">${c.spd || '30 ft'}</div><div class="dnd-field-label">Speed</div></div>
-        </div>
-      </div>
-
-      <!-- AC -->
-      <div>
-        <div class="dnd-section-head">Armor Class</div>
-        <div class="cs-ac-section">
-          <div class="cs-ac-main-row">
-            <div style="display:flex;flex-direction:column;align-items:center"><div class="dnd-field dnd-field-lg">${acVals.total || '10'}</div><div class="dnd-field-label">Total</div></div>
-            <span class="cs-ac-equals">=</span>
-            <div class="cs-ac-breakdown">
-              <div style="display:flex;flex-direction:column;align-items:center"><div class="dnd-field dnd-field-sm">10</div><div class="dnd-field-label">Base</div></div>
-              <span class="cs-ac-plus">+</span>
-              <div style="display:flex;flex-direction:column;align-items:center"><div class="dnd-field dnd-field-sm">${acVals.armor || ''}</div><div class="dnd-field-label">Armor</div></div>
-              <span class="cs-ac-plus">+</span>
-              <div style="display:flex;flex-direction:column;align-items:center"><div class="dnd-field dnd-field-sm">${acVals.shield || ''}</div><div class="dnd-field-label">Shield</div></div>
-              <span class="cs-ac-plus">+</span>
-              <div style="display:flex;flex-direction:column;align-items:center"><div class="dnd-field dnd-field-sm">${acVals.dex || ''}</div><div class="dnd-field-label">Dex</div></div>
-              <span class="cs-ac-plus">+</span>
-              <div style="display:flex;flex-direction:column;align-items:center"><div class="dnd-field dnd-field-sm">${acVals.natural || ''}</div><div class="dnd-field-label">Natural</div></div>
-              <span class="cs-ac-plus">+</span>
-              <div style="display:flex;flex-direction:column;align-items:center"><div class="dnd-field dnd-field-sm">${acVals.misc || ''}</div><div class="dnd-field-label">Misc</div></div>
-            </div>
-          </div>
-          <div class="cs-ac-sub-row">
-            <div class="cs-ac-sub-item"><span class="cs-ac-sub-label">Touch</span><div class="dnd-field dnd-field-sm">${acVals.touch || '—'}</div></div>
-            <div class="cs-ac-sub-item"><span class="cs-ac-sub-label">Flat-Footed</span><div class="dnd-field dnd-field-sm">${acVals.flat || '—'}</div></div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Initiative -->
-      <div>
-        <div class="dnd-section-head">Initiative</div>
-        <div class="cs-init-row">
-          <div style="display:flex;flex-direction:column;align-items:center"><div class="dnd-field">${c.init || '+0'}</div><div class="dnd-field-label">Total</div></div>
-          <span class="cs-ac-equals">=</span>
-          <div style="display:flex;flex-direction:column;align-items:center"><div class="dnd-field dnd-field-sm">${abilities.find(a => a.name === 'DEX')?.modStr || '+0'}</div><div class="dnd-field-label">Dex Mod</div></div>
-          <span class="cs-ac-plus">+</span>
-          <div style="display:flex;flex-direction:column;align-items:center"><div class="dnd-field dnd-field-sm"></div><div class="dnd-field-label">Misc</div></div>
-        </div>
-      </div>
-
-      <!-- Saving Throws -->
-      <div>
-        <div class="dnd-section-head">Saving Throws</div>
-        <div class="cs-saves-section">
-          <div class="cs-save-header">
-            <span></span><span>Total</span><span>Base</span><span>Ability</span><span>Magic</span><span>Misc</span><span>Temp</span>
-          </div>
-          ${[
-      { name: 'Fortitude', sub: 'CON', val: saves.fort },
-      { name: 'Reflex', sub: 'DEX', val: saves.ref },
-      { name: 'Will', sub: 'WIS', val: saves.will }
-    ].map(sv => `
-            <div class="cs-save-row">
-              <div class="cs-save-name">${sv.name}<small>(${sv.sub})</small></div>
-              <div class="dnd-field">${sv.val || '+0'}</div>
-              <div class="dnd-field dnd-field-sm"></div>
-              <div class="dnd-field dnd-field-sm">${abilities.find(a => a.name === sv.sub)?.modStr || ''}</div>
-              <div class="dnd-field dnd-field-sm"></div>
-              <div class="dnd-field dnd-field-sm"></div>
-              <div class="dnd-field dnd-field-sm"></div>
-            </div>`).join('')}
-        </div>
-      </div>
-
-      <!-- BAB & Grapple -->
-      <div>
-        <div class="dnd-section-head">Base Attack / Grapple</div>
-        <div class="cs-bab-section">
-          <div class="cs-bab-item"><span class="cs-bab-label">BAB</span><div class="dnd-field">${babStr}</div></div>
-          <div class="cs-bab-item"><span class="cs-bab-label">Grapple</span><div class="dnd-field">${grappleMod}</div></div>
-          <div class="cs-bab-item"><span class="cs-bab-label">Spell Res.</span><div class="dnd-field">${c.sr || ''}</div></div>
-        </div>
-      </div>
-
-      <!-- Attacks -->
-      <div>
-        <div class="dnd-section-head">Attacks</div>
-        ${attacks.length ? attacks.map((a, i) => `
-          <div class="cs-attack-block" data-atk-idx="${i}" title="Click to roll">
-            <div class="cs-atk-top">
-              <div><span class="cs-atk-val-text">${a.name}</span><span class="cs-atk-label-text">Attack</span></div>
-              <div><span class="cs-atk-val-text">${a.bonus}</span><span class="cs-atk-label-text">Attack Bonus</span></div>
-              <div><span class="cs-atk-val-text">${a.damage}</span><span class="cs-atk-label-text">Damage</span></div>
-              <div><span class="cs-atk-val-text">${a.crit}</span><span class="cs-atk-label-text">Critical</span></div>
-            </div>
-            <div class="cs-atk-bot">
-              <div><span class="cs-atk-val-text">${a.weaponData?.range || ''}</span><span class="cs-atk-label-text">Range</span></div>
-              <div><span class="cs-atk-val-text">${a.type || ''}</span><span class="cs-atk-label-text">Type</span></div>
-              <div><span class="cs-atk-val-text"></span><span class="cs-atk-label-text">Notes</span></div>
-            </div>
-          </div>`).join('') : '<div class="cs-empty">No attacks</div>'}
-      </div>
-    </div>
-
-    <!-- Right: Skills -->
-    <div class="cs-skills-col">
-      <div class="dnd-section-head">Skills <span class="head-count">${trainedSkills.length} trained · Max Ranks ${maxRanks}</span></div>
-      <div class="cs-skills-list">
-        <div class="cs-skill-header">
-          <span>✓</span><span>Skill Name</span><span>Key</span><span>Mod</span><span>Ab</span><span>Rnk</span><span>Misc</span>
-        </div>
-        ${allSkills.map(s => {
-      const isTrained = s.ranks > 0;
-      const tc = s.total > 0 ? 'cs-val-pos' : s.total < 0 ? 'cs-val-neg' : '';
-      const abData = abilities.find(a => a.name === s.ability);
-      const abMod = abData ? abData.mod : 0;
-      const abTc = abMod > 0 ? 'cs-val-pos' : abMod < 0 ? 'cs-val-neg' : '';
-      return `<div class="cs-skill-row" data-skill="${s.name}" data-srd-type="skill" data-srd-name="${s.name}">
-            <div class="cs-skill-check">${isTrained ? '✓' : ''}</div>
-            <span class="cs-skill-name">${s.name}</span>
-            <span class="cs-skill-ab">${s.ability}</span>
-            <span class="cs-skill-val ${tc}">${fmtMod(s.total)}</span>
-            <span class="cs-skill-val ${abTc}">${fmtMod(abMod)}</span>
-            <span class="cs-skill-val">${s.ranks || ''}</span>
-            <span class="cs-skill-val">${s.misc || ''}</span>
-          </div>`;
-    }).join('')}
-      </div>
-    </div>
-  </div>`;
+  `;
 }
 
 /* ── Tab Builder: Page 2 — Equipment, Feats, Spells ─────── */
