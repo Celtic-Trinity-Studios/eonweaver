@@ -1392,6 +1392,46 @@ ul {
     font-size: 0.8rem;
 }
 
+/* ── Weaver's Vault Box ─────────────────────────────────── */
+.reward-vault-box {
+    margin-top: 20px;
+    padding: 20px;
+    background: linear-gradient(145deg, rgba(212, 168, 67, 0.06), rgba(124, 92, 191, 0.04));
+    border: 1px solid rgba(212, 168, 67, 0.25);
+    border-radius: var(--radius-md);
+}
+
+.reward-vault-title {
+    font-family: var(--font-display);
+    font-size: 1.05rem;
+    color: var(--accent-gold);
+    margin-bottom: 10px;
+}
+
+.reward-vault-desc {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.6;
+    margin-bottom: 16px;
+    font-style: italic;
+}
+
+.reward-vault-box ul {
+    gap: 14px;
+}
+
+.reward-vault-box li.reward-physical {
+    font-size: 0.85rem;
+    line-height: 1.6;
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+
+.reward-vault-box li.reward-physical strong {
+    color: var(--accent-gold);
+    font-weight: 600;
+}
+
 .reward-backers {
     font-size: 0.8rem;
     color: var(--text-muted);
