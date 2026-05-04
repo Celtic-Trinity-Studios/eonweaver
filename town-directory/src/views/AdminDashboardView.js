@@ -17,6 +17,7 @@ import {
     apiAdminAllTowns, apiAdminAllCampaigns,
     apiAdminUpdateMeta, apiAdminDeleteMeta,
     apiAdminAdjustCredits,
+    apiAdminBetaKeys, apiAdminCreateBetaKeys, apiAdminDeleteBetaKey, apiAdminRevokeBetaKey,
 } from '../api/admin.js';
 
 export default function AdminDashboardView(container) {
@@ -37,6 +38,7 @@ export default function AdminDashboardView(container) {
         <button class="admin-tab" data-tab="campaigns">📜 Campaigns</button>
         <button class="admin-tab" data-tab="towns">🏰 Towns</button>
         <button class="admin-tab" data-tab="usage">📈 Token Usage</button>
+        <button class="admin-tab" data-tab="beta_keys">🔑 Beta Keys</button>
         <button class="admin-tab" data-tab="settings">⚙️ Site Settings</button>
       </div>
 
@@ -71,6 +73,7 @@ export default function AdminDashboardView(container) {
             else if (tab === 'campaigns') await renderAllCampaigns();
             else if (tab === 'towns') await renderAllTowns();
             else if (tab === 'usage') await renderUsage();
+            else if (tab === 'beta_keys') await renderBetaKeys();
             else if (tab === 'settings') await renderSettings();
         } catch (err) {
             contentEl.innerHTML = `<div class="admin-error">⚠️ ${err.message}</div>`;
@@ -1526,6 +1529,161 @@ export default function AdminDashboardView(container) {
                 if (featuresRow && featuresRow.classList.contains('usage-features-row')) {
                     featuresRow.style.display = featuresRow.style.display === 'none' ? 'table-row' : 'none';
                 }
+            });
+        });
+    }
+
+    // ═══════════════════════════════════════
+    // BETA KEYS TAB
+    // ═══════════════════════════════════════
+    async function renderBetaKeys() {
+        const data = await apiAdminBetaKeys();
+        const keys = data.keys || [];
+        const available = keys.filter(k => !parseInt(k.is_used)).length;
+        const used = keys.filter(k => parseInt(k.is_used)).length;
+
+        contentEl.innerHTML = `
+        <div class="admin-section-header">
+            <h2>🔑 Beta Keys</h2>
+            <div class="beta-key-actions">
+                <button class="admin-btn admin-btn-primary" id="generate-keys-btn">⚡ Generate Keys</button>
+                <button class="admin-btn" id="add-custom-key-btn">✏️ Custom Key</button>
+            </div>
+        </div>
+
+        <div class="admin-stats-grid" style="margin-bottom: 20px;">
+            ${statCard('🔑', keys.length, 'Total Keys')}
+            ${statCard('✅', available, 'Available')}
+            ${statCard('🔒', used, 'Used')}
+        </div>
+
+        ${keys.length ? `
+        <div class="admin-table-wrap">
+          <table class="admin-table" id="beta-keys-table">
+            <thead>
+              <tr>
+                <th>Key Code</th>
+                <th>Status</th>
+                <th>Note</th>
+                <th>Used By</th>
+                <th>Used At</th>
+                <th>Created</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${keys.map(k => {
+                const isUsed = parseInt(k.is_used);
+                return `
+              <tr data-key-id="${k.id}" class="${isUsed ? 'beta-key-used' : 'beta-key-available'}">
+                <td class="beta-key-code">
+                    <code class="key-code-text" title="Click to copy">${esc(k.key_code)}</code>
+                    <button class="admin-btn admin-btn-small beta-copy-btn" data-code="${esc(k.key_code)}" title="Copy to clipboard">📋</button>
+                </td>
+                <td>
+                    <span class="card-badge ${isUsed ? 'badge-inactive' : 'badge-active'}">
+                        ${isUsed ? '🔒 Used' : '✅ Available'}
+                    </span>
+                </td>
+                <td class="cell-truncate">${esc(k.note || '—')}</td>
+                <td>${isUsed ? esc(k.used_by_username || 'Unknown') : '—'}</td>
+                <td>${k.used_at ? new Date(k.used_at).toLocaleString() : '—'}</td>
+                <td>${new Date(k.created_at).toLocaleDateString()}</td>
+                <td>
+                    ${isUsed ? `<button class="admin-btn admin-btn-small" data-action="revoke-key" data-key-id="${k.id}" title="Revoke (mark as unused)">🔓 Revoke</button>` : ''}
+                    <button class="admin-btn admin-btn-danger admin-btn-small" data-action="delete-key" data-key-id="${k.id}" data-code="${esc(k.key_code)}" title="Delete permanently">🗑️</button>
+                </td>
+              </tr>
+              `}).join('')}
+            </tbody>
+          </table>
+        </div>
+        ` : '<div class="admin-empty">No beta keys yet. Click "Generate Keys" to create some.</div>'}
+        `;
+
+        // Copy to clipboard
+        contentEl.querySelectorAll('.beta-copy-btn').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const code = btn.dataset.code;
+                try {
+                    await navigator.clipboard.writeText(code);
+                    btn.textContent = '✅';
+                    setTimeout(() => btn.textContent = '📋', 1500);
+                } catch {
+                    // Fallback for non-HTTPS
+                    const ta = document.createElement('textarea');
+                    ta.value = code;
+                    document.body.appendChild(ta);
+                    ta.select();
+                    document.execCommand('copy');
+                    ta.remove();
+                    btn.textContent = '✅';
+                    setTimeout(() => btn.textContent = '📋', 1500);
+                }
+            });
+        });
+
+        // Click on key code text to copy
+        contentEl.querySelectorAll('.key-code-text').forEach(el => {
+            el.style.cursor = 'pointer';
+            el.addEventListener('click', async () => {
+                const code = el.textContent;
+                try {
+                    await navigator.clipboard.writeText(code);
+                    const orig = el.textContent;
+                    el.textContent = 'Copied!';
+                    el.style.color = 'var(--accent, #22c55e)';
+                    setTimeout(() => { el.textContent = orig; el.style.color = ''; }, 1200);
+                } catch {}
+            });
+        });
+
+        // Generate keys
+        contentEl.querySelector('#generate-keys-btn')?.addEventListener('click', () => {
+            showEditModal('⚡ Generate Beta Keys', [
+                { key: 'count', label: 'Number of keys (1–50)', value: '5', type: 'number' },
+                { key: 'note', label: 'Note (optional)', value: '', type: 'text' },
+            ], async (formData) => {
+                const count = Math.min(50, Math.max(1, parseInt(formData.count) || 1));
+                await apiAdminCreateBetaKeys(count, formData.note);
+                renderBetaKeys();
+            });
+        });
+
+        // Custom key
+        contentEl.querySelector('#add-custom-key-btn')?.addEventListener('click', () => {
+            showEditModal('✏️ Add Custom Beta Key', [
+                { key: 'custom_key', label: 'Key Code', value: '', type: 'text' },
+                { key: 'note', label: 'Note (optional)', value: '', type: 'text' },
+            ], async (formData) => {
+                if (!formData.custom_key.trim()) throw new Error('Key code is required.');
+                await apiAdminCreateBetaKeys(1, formData.note, formData.custom_key.trim());
+                renderBetaKeys();
+            });
+        });
+
+        // Revoke key
+        contentEl.querySelectorAll('[data-action="revoke-key"]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const keyId = parseInt(btn.dataset.keyId);
+                if (!confirm('Revoke this key? It will become available for use again.')) return;
+                try {
+                    await apiAdminRevokeBetaKey(keyId);
+                    renderBetaKeys();
+                } catch (err) { alert('Error: ' + err.message); }
+            });
+        });
+
+        // Delete key
+        contentEl.querySelectorAll('[data-action="delete-key"]').forEach(btn => {
+            btn.addEventListener('click', async () => {
+                const keyId = parseInt(btn.dataset.keyId);
+                const code = btn.dataset.code;
+                if (!confirm(`Delete beta key "${code}"? This cannot be undone.`)) return;
+                try {
+                    await apiAdminDeleteBetaKey(keyId);
+                    renderBetaKeys();
+                } catch (err) { alert('Error: ' + err.message); }
             });
         });
     }

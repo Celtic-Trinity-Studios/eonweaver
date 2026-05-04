@@ -406,6 +406,26 @@ try {
         $results[] = '✅ Seeded 5-tier token limits (free=0.5M, apprentice=3M, adventurer=7M, guild_master=12M, world_builder=25M)';
     } catch (Exception $e) { /* already exists */ }
 
+    // ── Beta Keys table ──
+    $pdo->exec("CREATE TABLE IF NOT EXISTS beta_keys (
+        id              INT AUTO_INCREMENT PRIMARY KEY,
+        `key_code`      VARCHAR(100) UNIQUE NOT NULL,
+        is_used         TINYINT(1) NOT NULL DEFAULT 0,
+        used_by_user_id INT DEFAULT NULL,
+        used_at         DATETIME DEFAULT NULL,
+        note            VARCHAR(255) DEFAULT '',
+        created_at      DATETIME DEFAULT NOW(),
+        INDEX idx_beta_key_code (`key_code`),
+        INDEX idx_beta_used (is_used)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $results[] = '✅ beta_keys table';
+
+    // Seed the legacy beta key from config so it shows up in the DB too
+    try {
+        if (defined('BETA_KEY') && BETA_KEY) {
+            $pdo->exec("INSERT IGNORE INTO beta_keys (`key_code`, note) VALUES ('" . addslashes(BETA_KEY) . "', 'Legacy config key')");
+        }
+    } catch (Exception $e) { /* already exists */ }
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS factions (
         id          INT AUTO_INCREMENT PRIMARY KEY,

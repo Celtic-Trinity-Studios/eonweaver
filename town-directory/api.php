@@ -3375,6 +3375,75 @@ try {
             respond(['ok' => true]);
             break;
 
+        /* ═══════════════════════════════════════════════════
+           ADMIN — Beta Key Management
+           ═══════════════════════════════════════════════════ */
+
+        case 'admin_beta_keys':
+            requireAdmin();
+            $keys = query(
+                "SELECT bk.*, u.username as used_by_username
+                 FROM beta_keys bk
+                 LEFT JOIN users u ON u.id = bk.used_by_user_id
+                 ORDER BY bk.created_at DESC",
+                [], 0
+            );
+            respond(['ok' => true, 'keys' => $keys]);
+            break;
+
+        case 'admin_create_beta_keys':
+            requireAdmin();
+            $count = min(50, max(1, (int) ($input['count'] ?? 1)));
+            $note = trim($input['note'] ?? '');
+            $customKey = trim($input['custom_key'] ?? '');
+            $created = [];
+
+            for ($i = 0; $i < $count; $i++) {
+                if ($customKey && $count === 1) {
+                    // Use custom key if provided (single key mode only)
+                    $code = $customKey;
+                } else {
+                    // Generate a random key: EW-BETA-XXXX-XXXX-XXXX
+                    $hex = strtoupper(bin2hex(random_bytes(6)));
+                    $code = 'EW-BETA-' . substr($hex, 0, 4) . '-' . substr($hex, 4, 4) . '-' . substr($hex, 8, 4);
+                }
+
+                try {
+                    $id = insertAndGetId(
+                        'INSERT INTO beta_keys (`key_code`, note) VALUES (?, ?)',
+                        [$code, $note],
+                        0
+                    );
+                    $created[] = ['id' => $id, 'key_code' => $code, 'note' => $note];
+                } catch (Exception $e) {
+                    // Duplicate key — skip and try again
+                    if (strpos($e->getMessage(), 'Duplicate') !== false && !$customKey) {
+                        $i--; // retry
+                        continue;
+                    }
+                    throw $e;
+                }
+            }
+            respond(['ok' => true, 'created' => $created, 'count' => count($created)]);
+            break;
+
+        case 'admin_delete_beta_key':
+            requireAdmin();
+            $keyId = (int) ($input['key_id'] ?? 0);
+            if (!$keyId) throw new Exception('Missing key_id');
+            execute('DELETE FROM beta_keys WHERE id = ?', [$keyId], 0);
+            respond(['ok' => true]);
+            break;
+
+        case 'admin_revoke_beta_key':
+            requireAdmin();
+            $keyId = (int) ($input['key_id'] ?? 0);
+            if (!$keyId) throw new Exception('Missing key_id');
+            // Reset the key to unused state
+            execute('UPDATE beta_keys SET is_used = 0, used_by_user_id = NULL, used_at = NULL WHERE id = ?', [$keyId], 0);
+            respond(['ok' => true]);
+            break;
+
         default:
             http_response_code(400);
             respond(['error' => "Unknown action: $action"]);

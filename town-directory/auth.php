@@ -57,11 +57,24 @@ function register(string $username, string $email, string $password, string $bet
     if (!ALLOW_REGISTRATION)
         throw new \Exception('Registration is currently disabled.');
 
-    // Beta key validation
-    if (defined('BETA_KEY') && BETA_KEY) {
-        if (trim($betaKey) !== BETA_KEY) {
-            throw new \Exception('Invalid beta key. Contact the developer for access.');
+    // Beta key validation — database-backed, one-use keys
+    $betaKey = trim($betaKey);
+    if ($betaKey === '') {
+        throw new \Exception('A beta key is required to register. Contact the developer for access.');
+    }
+
+    // Check database for valid, unused beta key
+    $keyRow = query('SELECT id, is_used FROM beta_keys WHERE `key_code` = ?', [$betaKey], 0);
+    if ($keyRow) {
+        if ((int) $keyRow[0]['is_used'] === 1) {
+            throw new \Exception('This beta key has already been used.');
         }
+        // Key is valid and unused — will be marked as used after successful registration
+    } elseif (defined('BETA_KEY') && BETA_KEY && $betaKey === BETA_KEY) {
+        // Fallback: allow the legacy config constant (for backwards compat)
+        // The key won't be tracked as "used" since it's not in the DB
+    } else {
+        throw new \Exception('Invalid beta key. Contact the developer for access.');
     }
 
     $username = trim($username);
@@ -88,6 +101,15 @@ function register(string $username, string $email, string $password, string $bet
 
     startSession();
     $_SESSION['user_id'] = $id;
+
+    // Mark beta key as used in the database
+    if ($keyRow) {
+        execute(
+            'UPDATE beta_keys SET is_used = 1, used_by_user_id = ?, used_at = NOW() WHERE id = ?',
+            [$id, (int) $keyRow[0]['id']],
+            0
+        );
+    }
 
     return ['id' => $id, 'username' => $username, 'email' => $email];
 }
