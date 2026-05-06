@@ -183,7 +183,7 @@ function buildWorldContext($userId, $campId, $townId) {
         $npcWide = query(
             "SELECT c.name, c.race, c.class, c.role, t.name AS town_name FROM characters c
              INNER JOIN towns t ON c.town_id = t.id
-             WHERE t.campaign_id = ? AND t.user_id = ? AND c.is_dead = 0
+             WHERE t.campaign_id = ? AND t.user_id = ? AND COALESCE(TRIM(c.status), '') <> 'Deceased'
              ORDER BY RAND() LIMIT 22",
             [$campId, $userId],
             $uid
@@ -212,7 +212,7 @@ function buildWorldContext($userId, $campId, $townId) {
                 $context .= "\n";
             }
 
-            $npcs = query("SELECT name, race, class, role FROM characters WHERE town_id = ? AND is_dead = 0 ORDER BY RAND() LIMIT 18", [$townId], $uid);
+            $npcs = query("SELECT name, race, class, role FROM characters WHERE town_id = ? AND COALESCE(TRIM(status), '') <> 'Deceased' ORDER BY RAND() LIMIT 18", [$townId], $uid);
             if ($npcs) {
                 $context .= "Notable NPCs in {$town[0]['name']} (use these first):\n";
                 foreach ($npcs as $npc) {
