@@ -7,7 +7,7 @@
  * This script updates the spells table level field to include "Adp X"
  * for every spell on the Adept list.
  *
- * Run: https://eonweaver.com/seed_adept_spells.php?key=setup2024
+ * Run on your host e.g.: https://eonscribe.com/seed_adept_spells.php?key=setup2024
  */
 require_once __DIR__ . '/db.php';
 

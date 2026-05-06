@@ -50,7 +50,7 @@ async function deploy() {
         const phpFiles = [
             "api.php", "db.php", "setup_mysql.php", "config.php", "simulate.php",
             "sim_apply.php", "sim_run.php", "sim_plan.php", "sim_single_town.php",
-            "sim_world.php", "sim_level_up.php", "intake_actions.php", "auth.php",
+            "sim_world.php", "sim_level_up.php", "intake_actions.php", "scribe_actions.php", "auth.php",
             "upload_portrait.php", "helpers.php", "llm_local.php", "import_srd.php",
             "import_5e_srd.php", "setup_srd_dbs.php", "migrate_srd.php", "reset_app_data.php", "discord.php",
         ];

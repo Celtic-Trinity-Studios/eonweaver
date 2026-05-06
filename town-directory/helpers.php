@@ -5,6 +5,25 @@
  */
 
 /**
+ * Metadata OpenRouter expects on chat requests (HTTP-Referer + X-Title).
+ * Override in config.php: APP_PUBLIC_URL and APP_PUBLIC_TITLE (see config.example.php).
+ *
+ * @param string|null $xTitle If non-empty, used as X-Title; otherwise APP_PUBLIC_TITLE / APP_NAME.
+ */
+function openRouterAppHeaders(?string $xTitle = null): array
+{
+    $url = defined('APP_PUBLIC_URL') ? APP_PUBLIC_URL : 'https://eonscribe.com';
+    $title = ($xTitle !== null && $xTitle !== '')
+        ? $xTitle
+        : (defined('APP_PUBLIC_TITLE') ? APP_PUBLIC_TITLE : (defined('APP_NAME') ? APP_NAME : 'Eon Scribe'));
+
+    return [
+        'HTTP-Referer: ' . $url,
+        'X-Title: ' . $title,
+    ];
+}
+
+/**
  * Determine effective item type from stored type + name keywords.
  * Handles cases where SRD lookup failed and item_type is 'gear'.
  */

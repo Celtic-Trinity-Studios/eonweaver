@@ -410,12 +410,10 @@ SPROMPT;
                     curl_setopt_array($ch, [
                         CURLOPT_POST => true,
                         CURLOPT_POSTFIELDS => $payload,
-                        CURLOPT_HTTPHEADER => [
+                        CURLOPT_HTTPHEADER => array_merge([
                             "Authorization: Bearer {$apiKey}",
-                            "HTTP-Referer: https://eonweaver.com",
-                            "X-Title: Eon Weaver",
                             "Content-Type: application/json"
-                        ],
+                        ], openRouterAppHeaders()),
                         CURLOPT_RETURNTRANSFER => true,
                         CURLOPT_TIMEOUT => 30,
                         CURLOPT_SSL_VERIFYPEER => true
@@ -909,12 +907,10 @@ PROMPT;
                 curl_setopt_array($ch, [
                     CURLOPT_POST => true,
                     CURLOPT_POSTFIELDS => $payload,
-                    CURLOPT_HTTPHEADER => [
+                    CURLOPT_HTTPHEADER => array_merge([
                         "Authorization: Bearer {$apiKey}",
-                        "HTTP-Referer: https://eonweaver.com",
-                        "X-Title: Eon Weaver",
                         "Content-Type: application/json"
-                    ],
+                    ], openRouterAppHeaders()),
                     CURLOPT_RETURNTRANSFER => true,
                     CURLOPT_TIMEOUT => 180,
                     CURLOPT_SSL_VERIFYPEER => true

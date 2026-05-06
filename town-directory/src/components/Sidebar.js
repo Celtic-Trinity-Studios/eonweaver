@@ -38,7 +38,7 @@ export function renderSidebar(container) {
   container.innerHTML = `
     <div class="sidebar">
       <div class="sidebar-brand">
-        <h1 class="sidebar-title">Eon Weaver</h1>
+        <h1 class="sidebar-title">Eon Weaver Beta</h1>
         <p class="sidebar-subtitle">Campaign Manager</p>
         <div class="sidebar-usage" id="sidebar-usage"></div>
       </div>

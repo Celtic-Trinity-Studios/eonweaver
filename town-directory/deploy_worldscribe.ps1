@@ -10,7 +10,7 @@ $localRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 function Load-DeployEnv {
     $envFile = Join-Path $localRoot "deploy.env"
     if (-not (Test-Path $envFile)) {
-        Write-Host "Missing deploy.env — copy deploy.env.example to deploy.env and set EW_FTP_* values." -ForegroundColor Red
+        Write-Host "Missing deploy.env - copy deploy.env.example to deploy.env and set EW_FTP_* values." -ForegroundColor Red
         exit 1
     }
     Get-Content $envFile | ForEach-Object {
@@ -74,7 +74,7 @@ Write-Host "Target: $ftpUri" -ForegroundColor Gray
 
 # 1. Upload PHP backend files
 Write-Host "`n[1/4] Uploading PHP backend files..." -ForegroundColor Yellow
-$phpFiles = @("api.php", "db.php", "user_db.php", "setup_mysql.php", "config.php", "simulate.php", "sim_apply.php", "sim_run.php", "sim_plan.php", "sim_single_town.php", "sim_world.php", "sim_level_up.php", "intake_actions.php", "roster_generator.php", "auth.php", "upload_portrait.php", "upload_content.php", "helpers.php", "llm_local.php", "import_srd.php", "import_5e_srd.php", "setup_srd_dbs.php", "migrate_srd.php", "reset_app_data.php", "discord.php")
+$phpFiles = @("api.php", "db.php", "user_db.php", "setup_mysql.php", "config.php", "simulate.php", "sim_apply.php", "sim_run.php", "sim_plan.php", "sim_single_town.php", "sim_world.php", "sim_level_up.php", "intake_actions.php", "scribe_actions.php", "roster_generator.php", "auth.php", "upload_portrait.php", "upload_content.php", "helpers.php", "llm_local.php", "import_srd.php", "import_5e_srd.php", "setup_srd_dbs.php", "migrate_srd.php", "reset_app_data.php", "discord.php")
 foreach ($f in $phpFiles) {
     $path = Join-Path $localRoot $f
     if (Test-Path $path) {
@@ -111,9 +111,9 @@ try {
     $notify = @{ environment = "Production (worldscribe.online)"; description = "A new version has been deployed to worldscribe.online!" }
     if ($Changes.Count -gt 0) { $notify.changes = $Changes }
     $notifyBody = $notify | ConvertTo-Json -Compress
-    Invoke-RestMethod -Uri "https://worldscribe.online/api.php?action=send_deploy_notification&key=ew_deploy_2026" -Method Post -ContentType "application/json" -Body $notifyBody -TimeoutSec 15 | Out-Null
+    Invoke-RestMethod -Uri 'https://worldscribe.online/api.php?action=send_deploy_notification&key=ew_deploy_2026' -Method Post -ContentType 'application/json' -Body $notifyBody -TimeoutSec 15 | Out-Null
     Write-Host "  Discord notification sent!" -ForegroundColor Green
 }
 catch {
-    Write-Host "  Discord notification failed (non-critical): $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host ('  Discord notification failed (non-critical): ' + $_.Exception.Message) -ForegroundColor Yellow
 }

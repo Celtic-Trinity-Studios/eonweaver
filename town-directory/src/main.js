@@ -181,7 +181,7 @@ function showAdminApp() {
     sidebarEl.innerHTML = `
     <div class="sidebar admin-mode">
       <div class="sidebar-brand">
-        <h1 class="sidebar-title">Eon Weaver</h1>
+        <h1 class="sidebar-title">Eon Weaver Beta</h1>
         <p class="sidebar-subtitle">Administration</p>
       </div>
       <nav class="sidebar-nav">

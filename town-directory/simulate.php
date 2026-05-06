@@ -218,9 +218,10 @@ try {
                 curl_setopt_array($ch, [
                     CURLOPT_RETURNTRANSFER => true,
                     CURLOPT_TIMEOUT => 10,
-                    CURLOPT_HTTPHEADER => [
-                        'Authorization: Bearer ' . $apiKey,
-                    ],
+                    CURLOPT_HTTPHEADER => array_merge(
+                        ['Authorization: Bearer ' . $apiKey],
+                        openRouterAppHeaders()
+                    ),
                 ]);
                 $resp = curl_exec($ch);
                 $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -475,12 +476,10 @@ Respond ONLY with valid JSON:
                 curl_setopt_array($ch, [
                     CURLOPT_POST => true,
                     CURLOPT_POSTFIELDS => $payload,
-                    CURLOPT_HTTPHEADER => [
+                    CURLOPT_HTTPHEADER => array_merge([
                         "Authorization: Bearer {$apiKey}",
-                        "HTTP-Referer: https://eonweaver.com",
-                        "X-Title: Eon Weaver",
                         "Content-Type: application/json"
-                    ],
+                    ], openRouterAppHeaders()),
                     CURLOPT_RETURNTRANSFER => true,
                     CURLOPT_TIMEOUT => 90,
                     CURLOPT_SSL_VERIFYPEER => true
@@ -564,12 +563,10 @@ PROMPT;
                 curl_setopt_array($ch, [
                     CURLOPT_POST => true,
                     CURLOPT_POSTFIELDS => $payload,
-                    CURLOPT_HTTPHEADER => [
+                    CURLOPT_HTTPHEADER => array_merge([
                         "Authorization: Bearer {$apiKey}",
-                        "HTTP-Referer: https://eonweaver.com",
-                        "X-Title: Eon Weaver",
                         "Content-Type: application/json"
-                    ],
+                    ], openRouterAppHeaders()),
                     CURLOPT_RETURNTRANSFER => true,
                     CURLOPT_TIMEOUT => 30,
                     CURLOPT_SSL_VERIFYPEER => true
@@ -890,12 +887,10 @@ WPROMPT;
             curl_setopt_array($ch, [
                 CURLOPT_POST => true,
                 CURLOPT_POSTFIELDS => $payload,
-                CURLOPT_HTTPHEADER => [
+                CURLOPT_HTTPHEADER => array_merge([
                     "Authorization: Bearer {$apiKey}",
-                    "HTTP-Referer: https://eonweaver.com",
-                    "X-Title: Eon Weaver",
                     "Content-Type: application/json"
-                ],
+                ], openRouterAppHeaders()),
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_TIMEOUT => 60,
                 CURLOPT_SSL_VERIFYPEER => true
@@ -1031,12 +1026,10 @@ REPROMPT;
             curl_setopt_array($ch, [
                 CURLOPT_POST => true,
                 CURLOPT_POSTFIELDS => $payload,
-                CURLOPT_HTTPHEADER => [
+                CURLOPT_HTTPHEADER => array_merge([
                     "Authorization: Bearer {$apiKey}",
-                    "HTTP-Referer: https://eonweaver.com",
-                    "X-Title: Eon Weaver",
                     "Content-Type: application/json"
-                ],
+                ], openRouterAppHeaders()),
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_TIMEOUT => 60,
                 CURLOPT_SSL_VERIFYPEER => true
@@ -1138,12 +1131,10 @@ LPROMPT;
             curl_setopt_array($ch, [
                 CURLOPT_POST => true,
                 CURLOPT_POSTFIELDS => $payload,
-                CURLOPT_HTTPHEADER => [
+                CURLOPT_HTTPHEADER => array_merge([
                     "Authorization: Bearer {$apiKey}",
-                    "HTTP-Referer: https://eonweaver.com",
-                    "X-Title: Eon Weaver",
                     "Content-Type: application/json"
-                ],
+                ], openRouterAppHeaders()),
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_TIMEOUT => 60,
                 CURLOPT_SSL_VERIFYPEER => true
@@ -1257,12 +1248,10 @@ SPROMPT;
             curl_setopt_array($ch, [
                 CURLOPT_POST => true,
                 CURLOPT_POSTFIELDS => $payload,
-                CURLOPT_HTTPHEADER => [
+                CURLOPT_HTTPHEADER => array_merge([
                     "Authorization: Bearer {$apiKey}",
-                    "HTTP-Referer: https://eonweaver.com",
-                    "X-Title: Eon Weaver",
                     "Content-Type: application/json"
-                ],
+                ], openRouterAppHeaders()),
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_TIMEOUT => 60,
                 CURLOPT_SSL_VERIFYPEER => true

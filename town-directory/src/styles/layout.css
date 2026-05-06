@@ -34,7 +34,12 @@
     border-bottom: 1px solid var(--border);
 }
 
-.sidebar-title { font-size: 1.3rem; color: var(--accent); margin: 0; }
+.sidebar-title {
+    font-size: 1.3rem;
+    color: var(--accent);
+    margin: 0;
+    text-transform: none; /* keep “Beta” legible vs all-caps UI chrome */
+}
 
 .sidebar-subtitle {
     font-size: .75rem;

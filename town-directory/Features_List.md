@@ -50,7 +50,7 @@ This document tracks all the custom features, mechanics, and UI additions we've 
 *   **Campaign Description:** Provide world lore and setting details that the AI uses for character backstories.
 
 ## 🏗️ Infrastructure
-*   **Dev/Live Split:** Separate dev (worldscribe.online/dev/) and live (worldscribe.online/) deployments with independent builds.
+*   **Dev/Live Split:** Separate dev (worldscribe.online/dev/) and live (worldscribe.online/) deployments with independent builds. (See **`PROJECT_PHASES.md`** for how “phase” is used elsewhere in the codebase — intake, Scribe, DB, UI.)
 *   **Safe Column Migrations:** Database setup script automatically adds new columns to existing tables without data loss.
 *   **FTP Deploy Scripts:** One-command deploy for both dev and live environments.
 

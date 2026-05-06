@@ -666,15 +666,17 @@ export function openTownSetupWizard(townId, onRefresh) {
             if (roster.length > 0) {
               await new Promise(r => setTimeout(r, 500));
               const BATCH = 10;
+              let humanoidFleshed = 0;
               for (let i = 0; i < roster.length; i += BATCH) {
                 const batch = roster.slice(i, i + BATCH);
-                statusEl.innerHTML = `<span style="color:var(--text-secondary)">🔧 Fleshing out humanoids... (${totalAdded - (totalAdded - humanoidCount >= 0 ? totalAdded - humanoidCount : 0)}/${roster.length})</span>`;
+                statusEl.innerHTML = `<span style="color:var(--text-secondary)">🔧 Fleshing out humanoids... (${humanoidFleshed}/${roster.length})</span>`;
                 try {
                   const fleshRes = await apiIntakeFlesh(townId, batch, rules);
                   const chars = fleshRes.characters || [];
                   if (chars.length) {
                     await apiApplySimulation(townId, { new_characters: chars }, null, 0);
                     totalAdded += chars.length;
+                    humanoidFleshed += chars.length;
                   }
                 } catch (err) {
                   console.warn('Flesh batch failed:', err.message);

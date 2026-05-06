@@ -102,12 +102,12 @@ PLAN;
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_POST => true,
                 CURLOPT_POSTFIELDS => $payload,
-                CURLOPT_HTTPHEADER => [
+                CURLOPT_HTTPHEADER => array_merge([
                     "Content-Type: application/json",
                     "Authorization: Bearer $apiKey",
-                    "HTTP-Referer: https://eonweaver.com",
-                    "X-Title: Eon Weaver Planner"
-                ],
+                ], openRouterAppHeaders(
+                    (defined('APP_PUBLIC_TITLE') ? APP_PUBLIC_TITLE : 'Eon Scribe') . ' Planner'
+                )),
                 CURLOPT_TIMEOUT => 60
             ]);
             $response = curl_exec($ch);

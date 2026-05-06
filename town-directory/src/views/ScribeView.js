@@ -93,6 +93,12 @@ export default function ScribeView(container) {
                     <label>Core Hook</label>
                     <textarea id="scribe-param-custom" class="form-input" rows="3" placeholder="e.g. The local blacksmith's daughter went missing near the old caves."></textarea>
                 </div>
+                <div class="form-group">
+                    <label class="muted" style="display:flex;align-items:flex-start;gap:.5rem;cursor:pointer;font-weight:400;">
+                        <input type="checkbox" id="scribe-param-invent_locations" style="margin-top:.2rem;">
+                        <span>Invent new realms/places/NPC factions outside saved campaign lore (default: stay in canon from Settings + towns below)</span>
+                    </label>
+                </div>
             `;
         } else if (currentTab === 'dungeon') {
             html = `
@@ -178,6 +184,8 @@ export default function ScribeView(container) {
             const el = formContainer.querySelector('#scribe-param-' + key);
             if (el) params[key] = el.value.trim();
         });
+        const inventLoc = formContainer.querySelector('#scribe-param-invent_locations');
+        if (inventLoc?.checked) params.invent_locations = true;
         
         loadingEl.style.display = 'flex';
         outputContent.style.display = 'none';

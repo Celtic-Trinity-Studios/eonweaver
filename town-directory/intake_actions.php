@@ -435,12 +435,10 @@ For each character provide ONLY: name, race, class, gender, age, role, alignment
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
         CURLOPT_POSTFIELDS => $payload,
-        CURLOPT_HTTPHEADER => [
+        CURLOPT_HTTPHEADER => array_merge([
             "Authorization: Bearer {$apiKey}",
-            "HTTP-Referer: https://eonweaver.com",
-            "X-Title: Eon Weaver",
             "Content-Type: application/json"
-        ],
+        ], openRouterAppHeaders()),
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT => 90,
         CURLOPT_SSL_VERIFYPEER => true
@@ -574,8 +572,17 @@ elseif ($action === 'intake_flesh') {
     $town = query('SELECT * FROM towns WHERE id = ?', [$townId], $uid);
     $townName = $town ? $town[0]['name'] : 'Unknown';
 
-    $userSettings = query('SELECT dnd_edition FROM users WHERE id = ?', [$userId], 0);
-    $dndEdition = $userSettings ? ($userSettings[0]['dnd_edition'] ?? '3.5e') : '3.5e';
+    $intakeCampId = ($town && !empty($town[0]['campaign_id'])) ? (int) $town[0]['campaign_id'] : null;
+    $dndEdition = '3.5e';
+    if ($intakeCampId) {
+        $campRowFlesh = query('SELECT dnd_edition FROM campaigns WHERE id = ?', [$intakeCampId], 0);
+        if ($campRowFlesh) {
+            $dndEdition = $campRowFlesh[0]['dnd_edition'] ?? '3.5e';
+        }
+    } else {
+        $userSettings = query('SELECT dnd_edition FROM users WHERE id = ?', [$userId], 0);
+        $dndEdition = $userSettings ? ($userSettings[0]['dnd_edition'] ?? '3.5e') : '3.5e';
+    }
 
     // Load SRD feats
     $srdFeats = srdQuery($dndEdition, 'SELECT name, type, prerequisites FROM feats ORDER BY name');
@@ -673,14 +680,12 @@ OUTPUT (VALID JSON ONLY, no markdown):
         curl_setopt_array($ch2, [
             CURLOPT_POST => true,
             CURLOPT_POSTFIELDS => $payload,
-            CURLOPT_HTTPHEADER => [
+            CURLOPT_HTTPHEADER => array_merge([
                 "Authorization: Bearer {$apiKey}",
-                "HTTP-Referer: https://eonweaver.com",
-                "X-Title: Eon Weaver",
                 "Content-Type: application/json"
-            ],
+            ], openRouterAppHeaders()),
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 30,
+            CURLOPT_TIMEOUT => 90,
             CURLOPT_SSL_VERIFYPEER => true
         ]);
         $resp2 = curl_exec($ch2);
@@ -1164,12 +1169,10 @@ Town: \"{$townName}\"
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
         CURLOPT_POSTFIELDS => $payload,
-        CURLOPT_HTTPHEADER => [
+        CURLOPT_HTTPHEADER => array_merge([
             "Authorization: Bearer {$apiKey}",
-            "HTTP-Referer: https://eonweaver.com",
-            "X-Title: Eon Weaver",
             "Content-Type: application/json"
-        ],
+        ], openRouterAppHeaders()),
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_TIMEOUT => 60,
         CURLOPT_SSL_VERIFYPEER => true

@@ -13,6 +13,9 @@ define('SESSION_LIFETIME', 86400 * 7);  // 7 days
 
 // ── App Settings ─────────────────────────────────────────
 define('APP_NAME', 'Eon Weaver');
+// OpenRouter attribution (production site — keep accurate for their ToS)
+define('APP_PUBLIC_URL', 'https://eonscribe.com');
+define('APP_PUBLIC_TITLE', 'Eon Scribe');
 define('ALLOW_REGISTRATION', true);     // Set false to lock signups
 define('BETA_KEY', 'your-beta-key-here');
 

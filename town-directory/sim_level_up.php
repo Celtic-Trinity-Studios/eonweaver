@@ -125,10 +125,10 @@
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_POST => true,
                 CURLOPT_POSTFIELDS => json_encode($payload),
-                CURLOPT_HTTPHEADER => [
+                CURLOPT_HTTPHEADER => array_merge([
                     'Content-Type: application/json',
                     'Authorization: Bearer ' . $apiKey,
-                ],
+                ], openRouterAppHeaders()),
                 CURLOPT_TIMEOUT => 120,
             ]);
             $resp = curl_exec($ch);

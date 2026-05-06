@@ -4,7 +4,7 @@
  * Copies ALL data from old WorldScribe database to new EonWeaver database.
  * Both databases are on the same host (localhost).
  *
- * Access: https://eonweaver.com/migrate_data.php?key=migrate2026
+ * Access on your host e.g.: https://eonscribe.com/migrate_data.php?key=migrate2026
  */
 
 set_time_limit(300); // 5 minutes max

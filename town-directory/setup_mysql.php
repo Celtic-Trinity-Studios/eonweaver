@@ -2,8 +2,8 @@
 /**
  * Eon Weaver — MySQL Database Setup
  *
- * Run ONCE after uploading files to eonweaver.com.
- * Access: https://eonweaver.com/setup_mysql.php?key=setup2024
+ * Run ONCE after uploading files to your host (production: eonscribe.com).
+ * Access e.g.: https://eonscribe.com/setup_mysql.php?key=setup2024
  *
  * After running successfully, DELETE this file or restrict access.
  */
@@ -60,6 +60,13 @@ try {
     } catch (Exception $e) { /* already exists */
     }
 
+    // Migration: active_campaign_id (optional denormalization; app primarily uses campaigns.is_active)
+    try {
+        $pdo->exec("ALTER TABLE users ADD COLUMN active_campaign_id INT DEFAULT NULL");
+        $results[] = '✅ Added active_campaign_id column';
+    } catch (Exception $e) { /* already exists */
+    }
+
     // ── Campaigns table ──
     $pdo->exec("CREATE TABLE IF NOT EXISTS campaigns (
         id              INT AUTO_INCREMENT PRIMARY KEY,
@@ -74,6 +81,19 @@ try {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $results[] = '✅ campaigns table';
+
+    // Keep users.active_campaign_id in sync where the column exists (non-fatal if column missing until migration above runs)
+    try {
+        $hasCol = $pdo->query("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'active_campaign_id'")->fetchColumn();
+        if ($hasCol) {
+            $pdo->exec("UPDATE users u
+                LEFT JOIN campaigns c ON c.user_id = u.id AND c.is_active = 1
+                SET u.active_campaign_id = c.id");
+            $results[] = '✅ Synced users.active_campaign_id from active campaigns';
+        }
+    } catch (Exception $e) {
+        $results[] = '⚠️ active_campaign_id sync: ' . htmlspecialchars($e->getMessage());
+    }
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS towns (
         id              INT AUTO_INCREMENT PRIMARY KEY,
