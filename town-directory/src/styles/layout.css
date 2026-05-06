@@ -14,6 +14,14 @@
     overflow-y: auto;
     padding: 1.5rem 2rem;
     background: var(--bg-primary);
+    min-height: 0;
+}
+
+/* AI Scribe: keep header/tabs fixed; scroll only the workspace panels */
+.app-content:has(> .view-scribe) {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
 }
 
 /* sidebar*/

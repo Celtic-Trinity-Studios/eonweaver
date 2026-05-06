@@ -17,6 +17,7 @@ const BUILDING_ICONS = {
   farm: '🌾', stable: '🐴', warehouse: '📦', market: '🧺',
   smithy: '⚔️', library: '📚', tower: '🗼', prison: '⛓️',
   cemetery: '⚰️', dock: '⚓', gate: '🚪', wall: '🧱',
+  dungeon: '🕳️', landmark: '📍',
   other: '🏗️'
 };
 
