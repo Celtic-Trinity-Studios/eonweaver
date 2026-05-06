@@ -182,6 +182,12 @@ try {
         require __DIR__ . '/intake_actions.php';
         exit;
     }
+    
+    // Handle AI Scribe actions
+    if ($action === 'scribe_generate' || $action === 'scribe_save' || $action === 'scribe_get_history') {
+        require __DIR__ . '/scribe_actions.php';
+        exit;
+    }
 
     switch ($action) {
 

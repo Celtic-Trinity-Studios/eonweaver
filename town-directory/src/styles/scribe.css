@@ -1,0 +1,127 @@
+/**
+ * Eon Weaver — AI Scribe Styles (Arcane Workshop)
+ */
+.view-scribe {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 2rem;
+    color: var(--text-color);
+}
+
+.scribe-header {
+    margin-bottom: 2rem;
+}
+
+.scribe-tabs {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 1rem;
+    overflow-x: auto;
+}
+
+.scribe-tab {
+    background: none;
+    border: none;
+    color: var(--text-color);
+    font-size: 1.1rem;
+    cursor: pointer;
+    padding: 0.75rem 1.25rem;
+    border-radius: var(--radius-md);
+    transition: background 0.2s, color 0.2s;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.scribe-tab:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.scribe-tab.active {
+    background: var(--primary-color);
+    color: white;
+}
+
+.scribe-workspace {
+    display: flex;
+    gap: 2rem;
+    flex: 1;
+}
+
+.scribe-controls {
+    flex: 0 0 380px;
+    background: var(--bg-card);
+    padding: 1.5rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    display: flex;
+    flex-direction: column;
+}
+
+.scribe-output {
+    flex: 1;
+    background: var(--bg-card);
+    padding: 2rem;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-color);
+    min-height: 500px;
+    overflow-y: auto;
+    box-shadow: inset 0 0 20px rgba(0,0,0,0.2);
+    font-family: var(--font-serif, serif);
+}
+
+.scribe-output-content {
+    white-space: pre-wrap;
+    line-height: 1.8;
+    font-size: 1.1rem;
+}
+
+.scribe-output-content h2 {
+    color: var(--primary-color);
+    margin-top: 1.5rem;
+    margin-bottom: 1rem;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 0.5rem;
+}
+
+.scribe-output-content h3 {
+    color: var(--text-color);
+    margin-top: 1.2rem;
+    margin-bottom: 0.8rem;
+}
+
+.scribe-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--primary-color);
+}
+
+.scribe-loading-icon {
+    font-size: 3rem;
+    animation: scribe-float 2s ease-in-out infinite;
+    margin-bottom: 1rem;
+}
+
+@keyframes scribe-float {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(-15px) rotate(10deg); }
+}
+
+@media (max-width: 900px) {
+    .scribe-workspace {
+        flex-direction: column;
+    }
+    .scribe-controls {
+        flex: none;
+        width: 100%;
+    }
+}

@@ -45,6 +45,11 @@ town-directory/deploy_ftp.ps1
 town-directory/deploy_live.ps1
 kickstarter/deploy.ps1
 
+# FTP / local deploy secrets
+town-directory/deploy.env
+cookies.txt
+town-directory/ftp.txt
+
 # ── User uploads ─────────────────────────────────────────
 town-directory/portraits/
 

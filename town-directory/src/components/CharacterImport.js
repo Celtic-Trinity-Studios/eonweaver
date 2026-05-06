@@ -11,6 +11,7 @@ import { apiGetCharacters, apiSaveCharacter, normalizeCharacter } from '../api/c
 import { apiIntakeCustom } from '../api/simulation.js';
 import { getState, setState } from '../stores/appState.js';
 import { renderCharacterSheet } from './CharacterSheet.js';
+import { confirmAiCost } from './AiCostConfirm.js';
 
 /* ═══════════════════════════════════════════════════════════
    IMPORT METHODS — each entry defines UI + behaviour
@@ -173,6 +174,11 @@ function wireAiPrompt(el, townId, charsArray, containerEl, closeFn, setParsed) {
         const btn = el.querySelector('#ai-generate-btn');
         const errEl = el.querySelector('#import-error');
         errEl.style.display = 'none';
+
+        // Show AI cost confirmation
+        const proceed = await confirmAiCost('customPrompt');
+        if (!proceed) return;
+
         btn.disabled = true;
         btn.innerHTML = '<span class="spinner-inline"></span> Generating...';
 

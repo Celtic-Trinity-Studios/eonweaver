@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { route: 'world-simulate', icon: '🌍', label: 'World Simulate' },
   { route: 'party', icon: '🛡️', label: 'Party' },
   { route: 'encounters', icon: '⚔️', label: 'Encounters' },
+  { route: 'scribe', icon: '✍️', label: 'AI Scribe' },
   { route: 'srd', icon: '📖', label: 'SRD Browser' },
   { route: 'homebrew', icon: '🧪', label: 'Homebrew' },
   { route: 'content-library', icon: '📁', label: 'Content Library' },

@@ -15,6 +15,7 @@ import {
 } from '../api/simulation.js';
 import { apiGetCalendar, calendarToString } from '../api/settings.js';
 import { updateSidebarCalendar } from '../components/Sidebar.js';
+import { confirmAiCost } from '../components/AiCostConfirm.js';
 
 const MIN_RESIDENCY_MONTHS = 6; // Must live in town this many months before eligible to move
 
@@ -207,6 +208,19 @@ export default function WorldSimulateView(container) {
       const val = ta.value.trim();
       if (val) perTownInstructions[tid] = val;
     });
+
+    // Show AI cost confirmation before starting
+    const townCostData = towns.map((t, i) => {
+      const chars = charResults[allTowns.indexOf(t)]?.characters || [];
+      const alive = chars.filter(c => (c.status || 'Alive') !== 'Deceased').length;
+      return { population: alive || 50 };
+    });
+    const proceed = await confirmAiCost('worldSimulation', {
+      months: selectedMonths,
+      towns: townCostData,
+      intakeCount,
+    });
+    if (!proceed) return;
 
     // Smart instruction routing: check if world-wide instructions mention
     // a specific town name — if so, only send them to that town

@@ -14,6 +14,7 @@ import {
   apiDebugLlm,
 } from '../api/simulation.js';
 import { apiGetCalendar } from '../api/settings.js';
+import { confirmAiCost } from '../components/AiCostConfirm.js';
 
 export default function SimulationView(container) {
   const state = getState();
@@ -275,6 +276,19 @@ export default function SimulationView(container) {
     let fullInstructions = instructions;
     let intakeCount = Math.max(0, Math.min(50, parseInt(cont.querySelector('#sim-intake-count')?.value) || 0));
     let daysCount = Math.max(0, Math.min(30, parseInt(cont.querySelector('#sim-days')?.value) || 0));
+
+    // Estimate population for cost display
+    const townInfo = cont.querySelector('#sim-town-info');
+    const popMatch = townInfo?.textContent?.match(/(\d+)\s*residents/i);
+    const population = popMatch ? parseInt(popMatch[1]) : 50;
+
+    // Show AI cost confirmation
+    const costType = intakeCount > 0 && selectedMonths === 0 ? 'intake' : 'simulation';
+    const costParams = costType === 'intake'
+      ? { count: intakeCount }
+      : { months: Math.max(1, selectedMonths), population };
+    const proceed = await confirmAiCost(costType, costParams);
+    if (!proceed) return;
 
     log(`--- Starting simulation: ${selectedMonths} month(s)${daysCount ? ` (${daysCount} days)` : ''}, town ID ${townId} ---`);
     log(`Instructions: ${fullInstructions || '(none)'}`);

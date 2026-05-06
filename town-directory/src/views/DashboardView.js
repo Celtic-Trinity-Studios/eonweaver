@@ -7,6 +7,7 @@ import { apiGetTowns } from '../api/towns.js';
 import { apiGetCalendar, calendarToString } from '../api/settings.js';
 import { apiRunSimulation, apiApplySimulation, apiGetCampaignRules } from '../api/simulation.js';
 import { navigate } from '../router.js';
+import { confirmAiCost } from '../components/AiCostConfirm.js';
 
 export default function DashboardView(container) {
   const state = getState();
@@ -182,6 +183,13 @@ async function startWorldSimulation(container) {
   // Start
   content.querySelector('#wsim-start-btn')?.addEventListener('click', async () => {
     const instructions = content.querySelector('#wsim-instructions')?.value || '';
+    // Show AI cost confirmation
+    const proceed = await confirmAiCost('worldSimulation', {
+      months: selectedMonths,
+      towns: towns.map(() => ({ population: 50 })),
+      intakeCount: 0,
+    });
+    if (!proceed) return;
     await runWorldSim(content, towns, selectedMonths, rules, instructions);
   });
 }

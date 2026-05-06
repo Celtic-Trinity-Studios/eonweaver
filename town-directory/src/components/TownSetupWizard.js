@@ -11,6 +11,7 @@ import { apiApplySimulation, apiIntakeRoster, apiIntakeFlesh, apiIntakeCreature,
 import { apiGenerateWeather } from '../api/simulation.js';
 import { apiGetCalendar } from '../api/settings.js';
 import { apiGetBuildings, apiSaveBuilding } from '../api/buildings.js';
+import { confirmAiCost } from './AiCostConfirm.js';
 
 // ═══════════════════════════════════════════════════════════
 // D&D BUILDING TEMPLATES — randomized per town setup
@@ -653,6 +654,12 @@ export function openTownSetupWizard(townId, onRefresh) {
 
           // Generate humanoid portion via AI (two-phase intake)
           if (humanoidCount > 0) {
+            // Show AI cost confirmation for the humanoid portion
+            const proceed = await confirmAiCost('intake', { count: humanoidCount });
+            if (!proceed) {
+              statusEl.innerHTML = '<span style="color:var(--text-muted)">Cancelled by user.</span>';
+              return;
+            }
             statusEl.innerHTML = `<span style="color:var(--text-secondary)">📋 Generating ${humanoidCount} humanoid NPCs via AI...</span>`;
             const rosterRes = await apiIntakeRoster(townId, humanoidCount, rules, instructions);
             const roster = rosterRes.roster || [];
@@ -723,6 +730,14 @@ export function openTownSetupWizard(townId, onRefresh) {
         }
       } else {
         // ── Route 4: Standard AI generation (two-phase intake) ──
+        // Show AI cost confirmation
+        const proceed = await confirmAiCost('intake', { count });
+        if (!proceed) {
+          statusEl.innerHTML = '<span style="color:var(--text-muted)">Cancelled by user.</span>';
+          btn.disabled = false;
+          btn.textContent = '🎲 Generate Characters';
+          return;
+        }
         statusEl.innerHTML = `<span style="color:var(--text-secondary)">📋 Step 1/2: Creating roster (${count} characters)...</span>`;
         const rosterRes = await apiIntakeRoster(townId, count, rules, instructions);
         const roster = rosterRes.roster || [];
@@ -867,6 +882,15 @@ export function openTownSetupWizard(townId, onRefresh) {
     statusEl.innerHTML = '<span style="color:var(--text-secondary)">🌤️ AI is generating a full year of weather patterns...</span>';
 
     try {
+      // Show AI cost confirmation
+      const proceed = await confirmAiCost('scribe', { generatorType: 'weather' });
+      if (!proceed) {
+        btn.disabled = false;
+        btn.textContent = '🌤️ Generate Full Year Weather';
+        statusEl.innerHTML = '<span style="color:var(--text-muted)">Cancelled by user.</span>';
+        return;
+      }
+
       const result = await apiGenerateWeather(townId);
       if (result.ok && result.weather) {
         statusEl.innerHTML = `<span style="color:var(--success)">✅ Weather generated! ${result.weather.months?.length || 0} months of weather data saved.</span>`;
