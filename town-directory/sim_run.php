@@ -1,6 +1,7 @@
 <?php
             require_once __DIR__ . '/sim_prompt_lib.php';
             require_once __DIR__ . '/weather_daily_lib.php';
+            require_once __DIR__ . '/macro_framework_lib.php';
 
             $townId = (int) ($input['town_id'] ?? 0);
             $months = max(0, min(24, (int) ($input['months'] ?? 1)));  // 0 = intake mode
@@ -760,6 +761,12 @@ CAL;
                     }
                 }
 
+                $macroFoodBundleRun = '';
+                if ($townCampId) {
+                    $macroFoodBundleRun = macroFoodEconomyPromptLine($townId, (int) $townCampId)
+                        . macroFoodAutonomyDirective($townId, (int) $townCampId);
+                }
+
                 // Pre-compute partial-month text for prompt
                 $partialText = '';
                 if ($days > 0) {
@@ -829,6 +836,7 @@ DM Override: If the DM's instructions below specify exact XP for a character, ho
 {$buildingContext}
 {$calBlock}
 {$weatherBlock}
+{$macroFoodBundleRun}
 
 ## BUILDING & CONSTRUCTION RULES:
 - The town ONLY has the buildings listed above. Do NOT assume buildings exist that are not listed.
@@ -837,7 +845,7 @@ DM Override: If the DM's instructions below specify exact XP for a character, ho
 - Build times: Small structures (shed, well, fence, lean-to): 1 month. Medium (house, shop, smithy, bakery): 2-3 months. Large (temple, barracks, mill, inn): 4-6 months.
 - When starting: provide build_time (integer months) and a brief description.
 - When progressing: just name the building and use action "progress".
-- A settlement NEEDS shelter, water, and food production FIRST. Then workshops, then community buildings.
+- A settlement NEEDS shelter, water, and food production FIRST. Then workshops, then community buildings. If TOWN FOOD AUTONOMY above demands hunts or farms, reflect that in events, daily_log, and building_changes (fields, smokehouse, granary, fishery, hunter's lodge, etc.).
 - If buildings are under_construction, you MUST progress them each month until complete.
 
 ## MANDATORY: FAMILY & RELATIONSHIP TRACKING

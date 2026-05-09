@@ -73,12 +73,20 @@ async function loadDashboardData(container) {
       if (towns.length === 0) {
         townListEl.innerHTML = '<p class="muted">No towns yet. Create one to get started!</p>';
       } else {
-        townListEl.innerHTML = towns.map(t => `
+        townListEl.innerHTML = towns.map(t => {
+          const food = t.macro_food_stores != null && t.macro_food_stores !== ''
+            ? `<span class="dash-town-food muted" title="Macro granary index">🌾 ${Number(t.macro_food_stores).toFixed(0)}</span>`
+            : '';
+          return `
           <div class="dash-town-item" data-town-id="${t.id}">
-            <span class="dash-town-name">${t.name}</span>
+            <div class="dash-town-main">
+              <span class="dash-town-name">${t.name}</span>
+              ${food}
+            </div>
             <span class="dash-town-sub">${t.subtitle || ''}</span>
           </div>
-        `).join('');
+        `;
+        }).join('');
 
         // Click to navigate to town
         townListEl.querySelectorAll('.dash-town-item').forEach(item => {

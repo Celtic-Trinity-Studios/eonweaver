@@ -137,6 +137,10 @@ export default function HelpView(container) {
           <strong>🌍 Biome / Terrain</strong>
           <p>Select the environment type (forest, desert, arctic, coastal, mountain cave, urban, etc.). The AI only generates buildings and resources appropriate for this terrain. A desert town won't get fishing docks.</p>
         </div>
+        <div class="help-feature">
+          <strong>🌾 Local Food Supply (Macro)</strong>
+          <p><strong>Meager</strong>, <strong>Typical</strong>, or <strong>Bountiful</strong> sets how strongly your settlement converts macro surplus into granary stores in <strong>Macro Dynamics</strong>. When granaries are stressed, the AI is instructed to show the town reacting: hunting bands, foragers, fisherfolk, rationing friction, and starting or progressing food-related buildings (farmsteads, smokehouses, granaries, fisheries, etc.).</p>
+        </div>
 
         <h4>Demographics</h4>
         <div class="help-feature">

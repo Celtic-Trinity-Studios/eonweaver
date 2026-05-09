@@ -1,5 +1,6 @@
 <?php
             require_once __DIR__ . '/sim_prompt_lib.php';
+            require_once __DIR__ . '/macro_framework_lib.php';
 
             $tId = (int) ($input['town_id'] ?? 0);
             $months = max(0, min(24, (int) ($input['months'] ?? 1)));
@@ -55,6 +56,10 @@
             $closedBordersSt = !empty($genRulesSt['closed_borders']);
             $closedBordersTextSt = $closedBordersSt ? "\nCLOSED BORDERS: This town has CLOSED BORDERS. Do NOT generate any new arrivals. The ONLY new characters allowed are births from existing romantic couples. The new_characters array should be EMPTY unless a birth occurs." : "";
 
+            $macroFoodLineSt = ($townCampIdSt ?? null)
+                ? (macroFoodEconomyPromptLine($tId, (int) $townCampIdSt) . macroFoodAutonomyDirective($tId, (int) $townCampIdSt))
+                : '';
+
             // Build prompt
             $chars = query('SELECT * FROM characters WHERE town_id = ? ORDER BY name', [$tId], $uid);
             $hist = query('SELECT heading, content FROM history WHERE town_id = ? ORDER BY sort_order', [$tId], $uid);
@@ -66,9 +71,9 @@
             $historyText = ew_sim_prompt_history_block($hist, $rollingSummary);
 
             if ($months === 0) {
-                $prompt = "You are a D&D {$dndEdition} world manager. No time passes. Add new characters or relationships to \"{$tName}\".\n\nTown ({$charCount} residents):\n(CRITICAL: Do NOT reuse names from this roster. Use highly unique D&D names.)\n{$rosterText}\n\nInstructions: {$instructions}\n\nRespond ONLY valid JSON with fields: summary, new_characters, new_relationships, stat_changes, xp_gains (empty), deaths (MUST be empty), role_changes, history_entry.";
+                $prompt = "You are a D&D {$dndEdition} world manager. No time passes. Add new characters or relationships to \"{$tName}\".\n{$macroFoodLineSt}\n\nTown ({$charCount} residents):\n(CRITICAL: Do NOT reuse names from this roster. Use highly unique D&D names.)\n{$rosterText}\n\nInstructions: {$instructions}\n\nRespond ONLY valid JSON with fields: summary, new_characters, new_relationships, stat_changes, xp_gains (empty), deaths (MUST be empty), role_changes, history_entry.";
             } else {
-                $prompt = "You are a D&D {$dndEdition} simulation engine. Simulate {$months} month(s) in \"{$tName}\" (pop {$charCount}).\nSettings: relSpeed={$relSpeed}, birthRate={$birthRate}, deathRule={$popText}, childGrowth={$childGrowth}, conflict={$conflictFreq}\n{$demoTextSt}{$closedBordersTextSt}\nXP: Town difficulty={$diffLevelSt} (x{$diffMultSt}). Use Growth Score tags for XP.\nRules: {$rules}\nInstructions: {$instructions}\n\nRoster (NPC_<id> = database character id):\n(CRITICAL: Do NOT reuse names from this roster. Use highly unique D&D names.)\n{$rosterText}\n\nHistory:\n{$historyText}\n\nIn changes, prefer numeric character_id from roster for xp_gains, stat_changes, role_changes; character1_id/character2_id for relationships (names optional).\n\nRespond ONLY valid JSON with the standard simulation structure (summary, events, changes:{new_characters,deaths,new_relationships,xp_gains,stat_changes,role_changes}, new_history_entry).";
+                $prompt = "You are a D&D {$dndEdition} simulation engine. Simulate {$months} month(s) in \"{$tName}\" (pop {$charCount}).\nSettings: relSpeed={$relSpeed}, birthRate={$birthRate}, deathRule={$popText}, childGrowth={$childGrowth}, conflict={$conflictFreq}\n{$demoTextSt}{$closedBordersTextSt}{$macroFoodLineSt}\nXP: Town difficulty={$diffLevelSt} (x{$diffMultSt}). Use Growth Score tags for XP.\nRules: {$rules}\nInstructions: {$instructions}\n\nRoster (NPC_<id> = database character id):\n(CRITICAL: Do NOT reuse names from this roster. Use highly unique D&D names.)\n{$rosterText}\n\nHistory:\n{$historyText}\n\nIn changes, prefer numeric character_id from roster for xp_gains, stat_changes, role_changes; character1_id/character2_id for relationships (names optional).\n\nRespond ONLY valid JSON with the standard simulation structure (summary, events, changes:{new_characters,deaths,new_relationships,xp_gains,stat_changes,role_changes}, new_history_entry).";
             }
 
             // LLM routing: local first, Gemini fallback

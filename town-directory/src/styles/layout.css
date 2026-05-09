@@ -306,8 +306,18 @@
 }
 .dash-town-item:hover { background: var(--accent-dim); }
 
+.dash-town-main {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    flex-wrap: wrap;
+}
+.dash-town-food {
+    font-size: 0.72rem;
+    opacity: 0.9;
+}
 .dash-town-name { font-weight: 500; }
-.dash-town-sub  { color: var(--text-muted); font-size: .8rem; }
+.dash-town-sub  { color: var(--text-muted); font-size: .8rem; text-align: right; max-width: 48%; }
 
 .dash-stats-grid { display: flex; gap: 1.5rem; }
 

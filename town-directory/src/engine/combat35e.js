@@ -2,7 +2,44 @@
  * Eon Weaver — Combat Math Engine
  * Weapon database and combat calculations from app.js.
  */
-import { abilityMod } from './rules35e.js';
+import { abilityMod, sizeModAC } from './rules35e.js';
+
+/** Normalize explicit size strings from AI/sheets (e.g. "medium", "Small"). */
+function normalizeCreatureSize(raw) {
+    if (!raw || typeof raw !== 'string') return null;
+    const key = raw.trim().toLowerCase();
+    const map = {
+        fine: 'Fine',
+        diminutive: 'Diminutive',
+        tiny: 'Tiny',
+        small: 'Small',
+        medium: 'Medium',
+        large: 'Large',
+        huge: 'Huge',
+        gargantuan: 'Gargantuan',
+        colossal: 'Colossal',
+    };
+    return map[key] || null;
+}
+
+/** When no column exists, infer typical 3.5e PC / common monster sizes from race text. */
+function inferSizeFromRace(race) {
+    const r = (race || '').toLowerCase();
+    if (!r) return 'Medium';
+    if (/\b(halfling|gnome|goblin|kobold)\b/.test(r)) return 'Small';
+    if (/\b(pixie|sprite|grig|atomie)\b/.test(r)) return 'Tiny';
+    if (/\b(ogre|troll|centaur|minotaur)\b/.test(r)) return 'Large';
+    if (/\b(hill giant|stone giant|cyclops)\b/.test(r)) return 'Huge';
+    return 'Medium';
+}
+
+function resolveCharacterSizeCategory(character) {
+    const explicit =
+        normalizeCreatureSize(character?.size) ||
+        normalizeCreatureSize(character?.creature_size);
+    if (explicit) return explicit;
+    return inferSizeFromRace(character?.race);
+}
 
 /* ── D&D 3.5 Weapon Database ───────────────────────────── */
 export const WEAPON_DB = {
@@ -141,7 +178,8 @@ export function calcEquippedAC(equipment, character) {
     }
 
     const effectiveDex = Math.min(dexMod, maxDex);
-    const sizeBonus = 0; // TODO: derive from race size
+    const sizeCat = resolveCharacterSizeCategory(character);
+    const sizeBonus = sizeModAC(sizeCat);
     const total = 10 + armorBonus + shieldBonus + effectiveDex + sizeBonus;
     const touch = 10 + effectiveDex + sizeBonus;
     const flatFooted = 10 + armorBonus + shieldBonus + sizeBonus;

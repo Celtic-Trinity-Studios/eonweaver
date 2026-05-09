@@ -5,6 +5,7 @@ import {
   apiMacroTradeRoutes,
   apiMacroWeatherLog,
 } from '../api/macro.js';
+import { apiGetCalendar, calendarToString } from '../api/settings.js';
 import { showToast } from '../components/Toast.js';
 
 function esc(v) {
@@ -16,6 +17,10 @@ function esc(v) {
 }
 
 function metricRow(m) {
+  const hub =
+    m.route_connectivity != null && m.route_connectivity !== ''
+      ? Number(m.route_connectivity).toFixed(3)
+      : '—';
   return `
     <tr>
       <td>${m.town_name}</td>
@@ -24,6 +29,7 @@ function metricRow(m) {
       <td>${Number(m.food_stores).toFixed(1)}</td>
       <td>${Number(m.stability_index).toFixed(3)}</td>
       <td>${Number(m.trade_score).toFixed(3)}</td>
+      <td title="Average route strength for roads linked to this town">${hub}</td>
       <td>${Number(m.weather_impact).toFixed(3)}</td>
     </tr>
   `;
@@ -34,8 +40,17 @@ export default function MacroSimulationView(container) {
     <div class="view-simulation">
       <header class="view-header">
         <h1>🟣 Macro Simulation & World Dynamics</h1>
-        <p class="view-subtitle">Framework shell for economy, weather/seasonality, and medieval demographic pressure.</p>
+        <p class="view-subtitle">Campaign-scale pressure: seasons, food, stability, and trade routes between your towns.</p>
       </header>
+
+      <div class="dash-card" style="padding:1rem;margin-bottom:1rem;">
+        <p class="muted" style="margin:0;font-size:0.88rem;line-height:1.45;">
+          <strong>Macro months</strong> advance here and when you apply in-game calendar advances or simulations that move time forward.
+          Each tick updates supply/demand from the season, then <strong>caravans move food</strong> along routes (stronger, safer roads move more).
+          Well-connected towns get a small <strong>supply bonus</strong>. Per-town <strong>food supply</strong> (Meager / Typical / Bountiful) lives in <strong>Town Settings</strong> and shapes how fast granaries respond to surplus. Use <strong>Run macro tick</strong> to stress-test without advancing the campaign calendar.
+        </p>
+        <p id="macro-calendar-hint" class="muted" style="margin:0.55rem 0 0;font-size:0.82rem;">Loading calendar…</p>
+      </div>
 
       <div class="dash-card" style="padding:1rem;margin-bottom:1rem;">
         <div style="display:flex;gap:0.6rem;flex-wrap:wrap;align-items:flex-end;">
@@ -68,10 +83,10 @@ export default function MacroSimulationView(container) {
           <table class="srd-table srd-table-sm">
             <thead>
               <tr>
-                <th>Town</th><th>Supply</th><th>Demand</th><th>Food</th><th>Stability</th><th>Trade</th><th>Weather Impact</th>
+                <th>Town</th><th>Supply</th><th>Demand</th><th>Food</th><th>Stability</th><th>Trade</th><th title="Avg linked route strength">Hub</th><th>Weather Δ</th>
               </tr>
             </thead>
-            <tbody id="macro-metrics-body"><tr><td colspan="7" class="muted">Loading…</td></tr></tbody>
+            <tbody id="macro-metrics-body"><tr><td colspan="8" class="muted">Loading…</td></tr></tbody>
           </table>
         </div>
       </div>
@@ -101,8 +116,27 @@ export default function MacroSimulationView(container) {
   const demoEl = container.querySelector('#macro-demo');
   const runBtn = container.querySelector('#macro-run');
   const refreshBtn = container.querySelector('#macro-refresh');
+  const calendarHintEl = container.querySelector('#macro-calendar-hint');
+
+  function loadCalendarHint() {
+    if (!calendarHintEl) return;
+    apiGetCalendar()
+      .then((calRes) => {
+        if (calRes.calendar) {
+          calendarHintEl.textContent = `In-game calendar now: ${calendarToString(calRes.calendar)}`;
+        } else {
+          calendarHintEl.textContent = '';
+        }
+      })
+      .catch(() => {
+        calendarHintEl.textContent = '';
+      });
+  }
+
+  loadCalendarHint();
 
   async function refresh() {
+    loadCalendarHint();
     const res = await apiMacroFrameworkOverview();
     const roadmap = res.phase_roadmap || [];
     const flags = res.framework_flags || {};
@@ -125,7 +159,7 @@ export default function MacroSimulationView(container) {
       <div><strong>Climate Stress:</strong> ${Number(s.climate_stress || 0).toFixed(3)}</div>
     `;
     const metrics = res.town_metrics || [];
-    tbody.innerHTML = metrics.length ? metrics.map(metricRow).join('') : '<tr><td colspan="7" class="muted">No towns yet.</td></tr>';
+    tbody.innerHTML = metrics.length ? metrics.map(metricRow).join('') : '<tr><td colspan="8" class="muted">No towns yet.</td></tr>';
 
     const [routesRes, weatherRes, demoRes] = await Promise.all([
       apiMacroTradeRoutes(),

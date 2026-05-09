@@ -1,5 +1,6 @@
 <?php
             require_once __DIR__ . '/sim_prompt_lib.php';
+            require_once __DIR__ . '/macro_framework_lib.php';
 
             $months = max(0, min(24, (int) ($input['months'] ?? 1)));
             $rules = trim($input['rules'] ?? '');
@@ -26,7 +27,7 @@
             $conflictFreq = $crW['conflict_frequency'] ?? 'occasional';
 
             // Loop all user towns (filter by active campaign if available)
-            $allTowns = query('SELECT id, name FROM towns WHERE user_id = ? AND (is_party_base = 0 OR is_party_base IS NULL)' . ($activeCampIdW ? ' AND campaign_id = ?' : ''), $activeCampIdW ? [$userId, $activeCampIdW] : [$userId], $uid);
+            $allTowns = query('SELECT id, name, campaign_id FROM towns WHERE user_id = ? AND (is_party_base = 0 OR is_party_base IS NULL)' . ($activeCampIdW ? ' AND campaign_id = ?' : ''), $activeCampIdW ? [$userId, $activeCampIdW] : [$userId], $uid);
             if (empty($allTowns))
                 throw new Exception('No towns found to simulate.');
 
@@ -55,14 +56,19 @@
                 $diffMultsAll = ['peaceful' => 1.0, 'struggling' => 1.5, 'frontier' => 2.0, 'warzone' => 3.0];
                 $diffMultAll = $diffMultsAll[$diffLevelAll] ?? 1.5;
 
+                $campIdW = (int) ($town['campaign_id'] ?? 0);
+                $macroFoodLine = $campIdW > 0
+                    ? (macroFoodEconomyPromptLine($tId, $campIdW) . macroFoodAutonomyDirective($tId, $campIdW))
+                    : '';
+
                 $rosterText = ew_sim_tiered_roster_simple($chars, 10);
                 $charCount = count($chars);
                 $historyText = ew_sim_prompt_history_block($hist, $rollingSummary);
 
                 if ($months === 0) {
-                    $prompt = "You are a D&D {$dndEdition} world manager. No time passes. Add new characters or relationships to \"{$tName}\".\n{$demoText}\nAll new characters MUST start at exactly Level 1 (0 XP) unless instructions override.\nTown ({$charCount} residents):\n(CRITICAL: Do NOT reuse names from this roster. Use highly unique D&D names.)\n{$rosterText}\n\nInstructions: {$instructions}\n\nRespond ONLY valid JSON with fields: summary, new_characters, new_relationships, stat_changes, xp_gains (empty), deaths (MUST be empty), role_changes, history_entry.";
+                    $prompt = "You are a D&D {$dndEdition} world manager. No time passes. Add new characters or relationships to \"{$tName}\".\n{$demoText}{$macroFoodLine}\nAll new characters MUST start at exactly Level 1 (0 XP) unless instructions override.\nTown ({$charCount} residents):\n(CRITICAL: Do NOT reuse names from this roster. Use highly unique D&D names.)\n{$rosterText}\n\nInstructions: {$instructions}\n\nRespond ONLY valid JSON with fields: summary, new_characters, new_relationships, stat_changes, xp_gains (empty), deaths (MUST be empty), role_changes, history_entry.";
                 } else {
-                    $prompt = "You are a D&D {$dndEdition} simulation engine. Simulate {$months} month(s) in \"{$tName}\" (pop {$charCount}).\nSettings: relSpeed={$relSpeed}, birthRate={$birthRate}, deathRule={$popText}, childGrowth={$childGrowth}, conflict={$conflictFreq}\n{$demoText}\nAll new characters MUST start at exactly Level 1 (0 XP) unless instructions override.\nXP: Town difficulty={$diffLevelAll} (x{$diffMultAll}). Use Growth Score tags for XP.\nRules: {$rules}\nInstructions: {$instructions}\n\nRoster (NPC_<id> = database character id):\n(CRITICAL: Do NOT reuse names from this roster. Use highly unique D&D names.)\n{$rosterText}\n\nHistory:\n{$historyText}\n\nIn changes, prefer character_id / character1_id / character2_id from roster for mechanical entries.\n\nRespond ONLY valid JSON with the standard simulation structure (summary, events, changes:{new_characters,deaths,new_relationships,xp_gains,stat_changes,role_changes}, new_history_entry).";
+                    $prompt = "You are a D&D {$dndEdition} simulation engine. Simulate {$months} month(s) in \"{$tName}\" (pop {$charCount}).\nSettings: relSpeed={$relSpeed}, birthRate={$birthRate}, deathRule={$popText}, childGrowth={$childGrowth}, conflict={$conflictFreq}\n{$demoText}{$macroFoodLine}\nAll new characters MUST start at exactly Level 1 (0 XP) unless instructions override.\nXP: Town difficulty={$diffLevelAll} (x{$diffMultAll}). Use Growth Score tags for XP.\nRules: {$rules}\nInstructions: {$instructions}\n\nRoster (NPC_<id> = database character id):\n(CRITICAL: Do NOT reuse names from this roster. Use highly unique D&D names.)\n{$rosterText}\n\nHistory:\n{$historyText}\n\nIn changes, prefer character_id / character1_id / character2_id from roster for mechanical entries.\n\nRespond ONLY valid JSON with the standard simulation structure (summary, events, changes:{new_characters,deaths,new_relationships,xp_gains,stat_changes,role_changes}, new_history_entry).";
                 }
 
                 // ── LLM routing: local first, Gemini fallback ──

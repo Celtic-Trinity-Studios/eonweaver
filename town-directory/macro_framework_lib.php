@@ -325,6 +325,226 @@ function getMacroTownMetrics(int $campaignId): array
     );
 }
 
+/**
+ * Per-town agrarian capacity from town_meta.macro_food_supply (meager | typical | bountiful).
+ * Scales how fast granaries fill from net supply–demand each macro month.
+ */
+function macroFoodCapacityMultiplierForTown(int $townId, int $campaignId): float
+{
+    if ($townId <= 0 || $campaignId <= 0) {
+        return 1.0;
+    }
+    $owner = query('SELECT user_id FROM campaigns WHERE id = ? LIMIT 1', [$campaignId], 0);
+    $uid = $owner ? (int) ($owner[0]['user_id'] ?? 0) : 0;
+    if ($uid <= 0) {
+        return 1.0;
+    }
+    $row = query('SELECT value FROM town_meta WHERE town_id = ? AND `key` = ? LIMIT 1', [$townId, 'macro_food_supply'], $uid);
+    if (!$row) {
+        return 1.0;
+    }
+    $v = strtolower(trim((string) ($row[0]['value'] ?? '')));
+    if ($v === 'meager') {
+        return 0.78;
+    }
+    if ($v === 'bountiful') {
+        return 1.22;
+    }
+    return 1.0;
+}
+
+/** One line for LLM simulation prompts (abstract macro indices, not headcount). */
+function macroFoodEconomyPromptLine(int $townId, int $campaignId): string
+{
+    if ($townId <= 0 || $campaignId <= 0) {
+        return '';
+    }
+    $rows = query(
+        'SELECT food_stores, supply_index, demand_index, stability_index FROM town_macro_metrics WHERE town_id = ? AND campaign_id = ? LIMIT 1',
+        [$townId, $campaignId],
+        0
+    );
+    if (!$rows) {
+        return '';
+    }
+    $f = (float) ($rows[0]['food_stores'] ?? 0);
+    $sup = (float) ($rows[0]['supply_index'] ?? 1);
+    $dem = (float) ($rows[0]['demand_index'] ?? 1);
+    $stab = (float) ($rows[0]['stability_index'] ?? 1);
+    $band = $f < 32 ? 'stress — shortages and rationing are plausible'
+        : ($f < 62 ? 'lean — tight stores, prices may bite'
+        : ($f > 125 ? 'surplus — markets stable, room for feasts or exports'
+        : 'adequate — normal harvest expectations'));
+    return "\nMACRO FOOD / ECONOMY (campaign-scale index for tone only): granary_index={$f}, supply={$sup}, demand={$dem}, civic_stability={$stab}. Interpret as {$band}.";
+}
+
+/**
+ * Pressure tier + mandatory behavioral hooks so the town "acts" on food (hunters, farms, social fallout).
+ * Appended to simulation and planner prompts after macroFoodEconomyPromptLine().
+ */
+function macroFoodPressureTier(float $foodStores, float $supplyIndex, float $demandIndex): string
+{
+    $imbalance = $demandIndex > 0 ? ($demandIndex / max(0.15, $supplyIndex)) : 1.0;
+    if ($foodStores < 26 || ($foodStores < 40 && $imbalance > 1.08)) {
+        return 'critical';
+    }
+    if ($foodStores < 50 || $imbalance > 1.04) {
+        return 'stressed';
+    }
+    if ($foodStores > 130 && $imbalance <= 0.98) {
+        return 'surplus';
+    }
+    if ($foodStores > 108 && $imbalance <= 1.02) {
+        return 'comfortable';
+    }
+    return 'moderate';
+}
+
+function macroFoodAutonomyDirective(int $townId, int $campaignId): string
+{
+    if ($townId <= 0 || $campaignId <= 0) {
+        return '';
+    }
+    $rows = query(
+        'SELECT food_stores, supply_index, demand_index, stability_index FROM town_macro_metrics WHERE town_id = ? AND campaign_id = ? LIMIT 1',
+        [$townId, $campaignId],
+        0
+    );
+    if (!$rows) {
+        return '';
+    }
+    $f = (float) ($rows[0]['food_stores'] ?? 0);
+    $sup = (float) ($rows[0]['supply_index'] ?? 1);
+    $dem = (float) ($rows[0]['demand_index'] ?? 1);
+    $stab = (float) ($rows[0]['stability_index'] ?? 1);
+    $tier = macroFoodPressureTier($f, $sup, $dem);
+
+    $common = "\nTOWN FOOD AUTONOMY — the settlement should behave as if it KNOWS its larder state (granary_index≈{$f}). Citizens are not passive: they organize work to eat.";
+
+    switch ($tier) {
+        case 'critical':
+            return "{$common}\n- PRIORITY: Hunger pressure is SEVERE. You MUST show proactive survival responses this month unless DM instructions explicitly forbid it.\n- HUNTERS & FORAGERS: Dispatch named roster NPCs on hunting, trapping, fishing, or foraging runs (peril, empty-handed returns, or meat brought home). Mention watches, dogs, snares, boats, or berrying parties as fits the biome.\n- FARMS & STORES: Prefer building_changes that START or PROGRESS food infrastructure appropriate to terrain (farmstead, plowed fields & barn, smokehouse, fishery, crab pens, hunter's lodge, trapper hut, root cellar, granary, orchard, grain mill, bakehouse). At least ONE concrete food-security step (expedition OR structure) in story events or building_changes.\n- POPULATION: Avoid gratuitous new mouths unless they bring food labor or trade; starvation tone is appropriate.\n- SOCIAL: Factions, families, or temples may clash over rationing; memories of failed hunts or hero bring-home moments.\n";
+
+        case 'stressed':
+            return "{$common}\n- PRIORITY: Stores are TIGHT. Show the town adjusting: smaller hunting bands, seasonal foraging, fence repairs, planting prep, hiring a trapper, bartering for grain.\n- BUILDINGS: Encourage 0–1 modest food project when plausible (kitchen garden expansion, smoke rack, fishing shed, tool shed for farm gear).\n- HUNTERS: At least reference ongoing subsistence effort (who goes out, what they seek).\n";
+
+        case 'surplus':
+            return "{$common}\n- Granaries are FULL relative to demand. Routine agriculture/hunting continues at maintenance levels; NPCs may trade surplus, feast modestly, diversify crops, or invest in non-food projects. Do not invent famine.\n";
+
+        case 'comfortable':
+            return "{$common}\n- Food situation is sound. Light mention of fields, markets, or catch-of-the-day is enough unless drama calls for contrast.\n";
+
+        default:
+            return "{$common}\n- MIXED month-to-month pressure. Let hunts or field work appear when it fits events; if demand outpaces supply in the indices, lean toward cautious provisioning.\n- Civic stability≈{$stab}: very low stability may spark hoarding or riots even if granary_index is middling.\n";
+    }
+}
+
+/** Mean route_strength for each town across incident trade edges (for UI + supply bonus). */
+function macroTownAverageRouteStrength(array $routes): array
+{
+    $sum = [];
+    $cnt = [];
+    foreach ($routes as $r) {
+        $a = (int) ($r['from_town_id'] ?? 0);
+        $b = (int) ($r['to_town_id'] ?? 0);
+        $s = (float) ($r['route_strength'] ?? 1);
+        foreach ([$a, $b] as $tid) {
+            if ($tid <= 0) {
+                continue;
+            }
+            $sum[$tid] = ($sum[$tid] ?? 0) + $s;
+            $cnt[$tid] = ($cnt[$tid] ?? 0) + 1;
+        }
+    }
+    $avg = [];
+    foreach ($sum as $tid => $s) {
+        $c = max(1, (int) ($cnt[$tid] ?? 1));
+        $avg[$tid] = $s / $c;
+    }
+    return $avg;
+}
+
+/**
+ * Move food stores along routes from surplus toward deficit towns (Caravan flow).
+ * Efficiency scales with route strength and inverse risk.
+ */
+function macroRedistributeFoodAlongRoutes(array $routes, array &$pending, int $passes = 2): void
+{
+    if (count($pending) < 2 || !$routes) {
+        return;
+    }
+    for ($pass = 0; $pass < $passes; $pass++) {
+        $foods = [];
+        foreach ($pending as $tid => $p) {
+            $foods[(int) $tid] = (float) $p['food'];
+        }
+        foreach ($routes as $route) {
+            $a = (int) ($route['from_town_id'] ?? 0);
+            $b = (int) ($route['to_town_id'] ?? 0);
+            if (!isset($foods[$a], $foods[$b])) {
+                continue;
+            }
+            $s = max(0.1, (float) ($route['route_strength'] ?? 1));
+            $risk = max(0.01, (float) ($route['risk_index'] ?? 0.2));
+            $efficiency = max(0.12, min(1.0, $s / ($s + $risk + 0.35)));
+
+            $fa = $foods[$a];
+            $fb = $foods[$b];
+            $diff = $fa - $fb;
+            if (abs($diff) < 0.75) {
+                continue;
+            }
+            $transfer = $diff * 0.14 * $efficiency;
+            $transfer = max(-28.0, min(28.0, $transfer));
+            $foods[$a] -= $transfer;
+            $foods[$b] += $transfer;
+        }
+        foreach ($foods as $tid => $f) {
+            $pending[$tid]['food'] = max(0.0, round($f, 2));
+        }
+    }
+}
+
+function enrichTownMetricsWithRouteStats(array $metrics, array $routes): array
+{
+    if (!$metrics) {
+        return $metrics;
+    }
+    $sum = [];
+    $cnt = [];
+    foreach ($routes as $r) {
+        $a = (int) ($r['from_town_id'] ?? 0);
+        $b = (int) ($r['to_town_id'] ?? 0);
+        $s = (float) ($r['route_strength'] ?? 1);
+        foreach ([$a, $b] as $tid) {
+            if ($tid <= 0) {
+                continue;
+            }
+            $sum[$tid] = ($sum[$tid] ?? 0) + $s;
+            $cnt[$tid] = ($cnt[$tid] ?? 0) + 1;
+        }
+    }
+    foreach ($metrics as &$m) {
+        $tid = (int) ($m['town_id'] ?? 0);
+        if ($tid && !empty($cnt[$tid])) {
+            $m['route_connectivity'] = round($sum[$tid] / $cnt[$tid], 3);
+        } else {
+            $m['route_connectivity'] = null;
+        }
+    }
+    unset($m);
+    return $metrics;
+}
+
+/** Town metrics plus computed route_connectivity for API responses. */
+function getMacroTownMetricsEnriched(int $campaignId): array
+{
+    ensureMacroTradeRoutes($campaignId);
+    $metrics = getMacroTownMetrics($campaignId);
+    $routes = getMacroTradeRoutes($campaignId);
+    return enrichTownMetricsWithRouteStats($metrics, $routes);
+}
+
 function ensureMacroTradeRoutes(int $campaignId): void
 {
     $towns = query(
@@ -406,7 +626,11 @@ function runMacroMonthTick(int $campaignId, int $months = 1, string $operatorNot
             0
         );
 
+        $routes = getMacroTradeRoutes($campaignId);
+        $routeAvg = macroTownAverageRouteStrength($routes);
+
         $rows = getMacroTownMetrics($campaignId);
+        $pending = [];
         foreach ($rows as $row) {
             $townId = (int) $row['town_id'];
             $supply = (float) $row['supply_index'];
@@ -415,24 +639,58 @@ function runMacroMonthTick(int $campaignId, int $months = 1, string $operatorNot
             $food = (float) $row['food_stores'];
             $trade = (float) $row['trade_score'];
             $pop = max(1, (int) $row['population_estimate']);
+            $avgR = $routeAvg[$townId] ?? 1.0;
+            $foodMult = macroFoodCapacityMultiplierForTown($townId, $campaignId);
 
-            $supply = max(0.1, $supply + $seasonSupply + (($trade - 1.0) * 0.02));
+            $supply = max(0.1, $supply + $seasonSupply + (($trade - 1.0) * 0.02) + (($avgR - 1.0) * 0.045) + (($foodMult - 1.0) * 0.065));
             $demand = max(0.1, $demand + $seasonDemand + ($pop / 10000.0));
-            $food = max(0.0, $food + (($supply - $demand) * 14.0));
+            $food = max(0.0, $food + (($supply - $demand) * 14.0 * $foodMult));
             $stability = max(0.1, min(2.5, $stability + (($food > 80) ? 0.015 : -0.02) + $weatherImpact * 0.25));
             $trade = max(0.1, min(3.0, $trade + (($supply > $demand) ? 0.01 : -0.008)));
+
+            $pending[$townId] = [
+                'supply' => $supply,
+                'demand' => $demand,
+                'food' => $food,
+                'stability' => $stability,
+                'trade' => $trade,
+                'weather_impact' => $weatherImpact,
+                'pop' => $pop,
+            ];
+        }
+
+        macroRedistributeFoodAlongRoutes($routes, $pending, 2);
+
+        foreach ($pending as $tid => &$p) {
+            $f = (float) $p['food'];
+            if ($f < 28) {
+                $p['stability'] = max(0.1, round(((float) $p['stability']) - 0.022, 3));
+            } elseif ($f > 132) {
+                $p['stability'] = min(2.5, round(((float) $p['stability']) + 0.01, 3));
+            }
+        }
+        unset($p);
+
+        foreach ($pending as $townId => $p) {
+            $supply = round(max(0.1, (float) $p['supply']), 3);
+            $demand = round(max(0.1, (float) $p['demand']), 3);
+            $food = round(max(0.0, (float) $p['food']), 2);
+            $stability = round(max(0.1, min(2.5, (float) $p['stability'])), 3);
+            $trade = round(max(0.1, min(3.0, (float) $p['trade'])), 3);
+            $weatherImpactRounded = round((float) $p['weather_impact'], 3);
+            $pop = max(1, (int) $p['pop']);
 
             execute(
                 'UPDATE town_macro_metrics
                  SET supply_index = ?, demand_index = ?, food_stores = ?, stability_index = ?, trade_score = ?, weather_impact = ?, population_estimate = ?
                  WHERE campaign_id = ? AND town_id = ?',
                 [
-                    round($supply, 3),
-                    round($demand, 3),
-                    round($food, 2),
-                    round($stability, 3),
-                    round($trade, 3),
-                    round($weatherImpact, 3),
+                    $supply,
+                    $demand,
+                    $food,
+                    $stability,
+                    $trade,
+                    $weatherImpactRounded,
                     $pop,
                     $campaignId,
                     $townId,
@@ -444,6 +702,12 @@ function runMacroMonthTick(int $campaignId, int $months = 1, string $operatorNot
             $elders = (int) floor($pop * 0.11);
             $workforce = max(0, $pop - $children - $elders);
             $growthRate = (($supply - $demand) * 0.012) + (($stability - 1.0) * 0.01);
+            if ($food < 40) {
+                $growthRate -= 0.004;
+            } elseif ($food > 115) {
+                $growthRate += 0.0025;
+            }
+            $growthRate = round($growthRate, 4);
 
             execute(
                 'INSERT INTO macro_demographics_snapshots
@@ -463,13 +727,12 @@ function runMacroMonthTick(int $campaignId, int $months = 1, string $operatorNot
                     $children,
                     $elders,
                     $workforce,
-                    round($growthRate, 4),
+                    $growthRate,
                 ],
                 0
             );
         }
 
-        $routes = getMacroTradeRoutes($campaignId);
         foreach ($routes as $route) {
             $strength = max(0.1, min(5.0, (float) $route['route_strength'] + (($season === 'summer') ? 0.03 : -0.01)));
             $risk = max(0.01, min(2.0, (float) $route['risk_index'] + (($season === 'winter') ? 0.02 : -0.004)));

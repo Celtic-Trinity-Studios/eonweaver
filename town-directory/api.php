@@ -345,8 +345,17 @@ try {
             $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
             $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
             if ($campId) {
+                ensureTownMacroRows($campId);
                 $towns = query(
-                    'SELECT id, name, subtitle, campaign_id, created_at, updated_at FROM towns WHERE user_id = ? AND campaign_id = ? AND (is_party_base = 0 OR is_party_base IS NULL) AND (is_encounter_town = 0 OR is_encounter_town IS NULL) ORDER BY name',
+                    'SELECT t.id, t.name, t.subtitle, t.campaign_id, t.created_at, t.updated_at,
+                            m.food_stores AS macro_food_stores,
+                            m.supply_index AS macro_supply_index,
+                            m.demand_index AS macro_demand_index,
+                            m.stability_index AS macro_stability_index
+                     FROM towns t
+                     LEFT JOIN town_macro_metrics m ON m.town_id = t.id AND m.campaign_id = t.campaign_id
+                     WHERE t.user_id = ? AND t.campaign_id = ? AND (t.is_party_base = 0 OR t.is_party_base IS NULL) AND (t.is_encounter_town = 0 OR t.is_encounter_town IS NULL)
+                     ORDER BY t.name',
                     [$uid, $campId],
                     $uid
                 );
@@ -4255,7 +4264,7 @@ try {
             $campaignId = getActiveCampaignIdForUser($uid);
             $state = ensureCampaignMacroBaseline($campaignId);
             ensureTownMacroRows($campaignId);
-            $metrics = getMacroTownMetrics($campaignId);
+            $metrics = getMacroTownMetricsEnriched($campaignId);
 
             $phaseRoadmap = [
                 ['phase' => 5, 'title' => 'Macro Simulation & World Dynamics', 'target' => 'Q2 2027', 'unlock' => 10000],
@@ -4291,14 +4300,14 @@ try {
             $months = (int) ($input['months'] ?? 1);
             $note = trim((string) ($input['note'] ?? ''));
             $state = runMacroMonthTick($campaignId, $months, $note);
-            $metrics = getMacroTownMetrics($campaignId);
+            $metrics = getMacroTownMetricsEnriched($campaignId);
             respond([
                 'ok' => true,
                 'campaign_id' => $campaignId,
                 'macro_state' => $state,
                 'town_metrics' => $metrics,
                 'note' => $note,
-                'engine' => 'framework_tick_v1',
+                'engine' => 'framework_tick_v2',
             ]);
             break;
 
@@ -4311,7 +4320,7 @@ try {
             respond([
                 'ok' => true,
                 'campaign_id' => $campaignId,
-                'town_metrics' => getMacroTownMetrics($campaignId),
+                'town_metrics' => getMacroTownMetricsEnriched($campaignId),
                 'trade_routes' => getMacroTradeRoutes($campaignId),
             ]);
             break;

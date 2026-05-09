@@ -58,12 +58,18 @@
             }
             $monthLabelStr = implode(', ', $monthLabels);
 
+            $campIdInt = $campId ? (int) $campId : 0;
+            $macroFoodPlanBlock = $campIdInt > 0
+                ? (macroFoodEconomyPromptLine($townId, $campIdInt) . macroFoodAutonomyDirective($townId, $campIdInt))
+                : '';
+
             $planPrompt = <<<PLAN
 You are a D&D world simulation planner. Plan what happens to the settlement of {$townName} over {$months} months.
 
 ## Settlement: {$townName}
 - Population: {$aliveCount} alive residents
 - Calendar months: {$monthLabelStr}, Year {$year} {$era}
+{$macroFoodPlanBlock}
 
 ## Current Residents:
 {$rosterText}
@@ -81,6 +87,7 @@ Create a realistic month-by-month roadmap. For a settlement of {$aliveCount} peo
 - **Deaths**: Roughly 1 per 12 months for small settlements (old age, accident, illness, violence). Specify WHO from the roster might die and why.
 - **Births**: EXTREMELY rare. A couple MUST have an established romantic relationship for AT LEAST 9 months before a child can be born (accounting for courtship + 9-month gestation for humans). Elves/dwarves take YEARS. For short simulations (1-6 months), births should almost NEVER happen unless a couple was already in a long-term relationship from previous history. One-night stands can produce fatherless children but this is uncommon. At most 1 birth per 12 months for a small settlement.
 - **Major Events**: 1-2 per 3 months (festivals, attacks, discoveries, disputes, trade caravans, weather events).
+- **Subsistence**: If food/granary pressure above is severe, the settlement organizes hunting parties, foragers, fishermen, or farm/granary construction across months — weave these into `events` alongside drama.
 - **Role Changes**: People taking on new jobs, promotions, demotions.
 
 Respond with ONLY a JSON object like this (no markdown, no code fences):

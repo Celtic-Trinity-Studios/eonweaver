@@ -45,6 +45,8 @@ require_once $baseDir . '/llm_local.php';
 require_once $baseDir . '/helpers.php';
 require_once $baseDir . '/tier_policy.php';
 require_once $baseDir . '/sim_prompt_lib.php';
+require_once $baseDir . '/macro_framework_lib.php';
+ensureMacroFrameworkTables();
 
 $action = $_GET['action'] ?? '';
 $input = json_decode(file_get_contents('php://input'), true) ?? [];
@@ -364,7 +366,11 @@ try {
             $stLabel = $stLabels[$stType] ?? '';
             $stBlock = $stLabel ? " | Type: {$stLabel}" : '';
 
-            $base = "D&D {$dndEdition} | Town: \"{$tName}\"{$biomeBlock}{$stBlock} | Month {$monthNum} of {$totalMonths}\n{$ctx}{$buildingText}\n\nCURRENT ROSTER (each line starts with NPC_<id> = characters.id; CRITICAL: Do NOT reuse any names from this roster. Use highly unique D&D names):\n{$rosterText}";
+            $macroFoodChunk = ($townCampIdC ?? null)
+                ? (macroFoodEconomyPromptLine($tId, (int) $townCampIdC) . macroFoodAutonomyDirective($tId, (int) $townCampIdC))
+                : '';
+
+            $base = "D&D {$dndEdition} | Town: \"{$tName}\"{$biomeBlock}{$stBlock} | Month {$monthNum} of {$totalMonths}{$macroFoodChunk}\n{$ctx}{$buildingText}\n\nCURRENT ROSTER (each line starts with NPC_<id> = characters.id; CRITICAL: Do NOT reuse any names from this roster. Use highly unique D&D names):\n{$rosterText}";
 
             // Category-specific prompt
             switch ($category) {
@@ -379,7 +385,7 @@ BUILDING RULES:
 - Only propose 1-3 building changes per month maximum. Construction requires workers and resources.
 - When starting new construction, provide a brief description of the building.
 
-Describe the STORY EVENTS this month (conflict={$conflictFreq}).
+Describe the STORY EVENTS this month (conflict={$conflictFreq}). When FOOD AUTONOMY calls for hunts or farms, weave them into events and/or building_changes using roster NPCs by name.
 Respond ONLY with valid JSON:
 {\"summary\":\"string\",\"events\":[\"string\"],\"history_entry\":{\"heading\":\"string\",\"content\":\"string\"},\"building_changes\":[{\"action\":\"start|progress|complete|damage|destroy\",\"name\":\"Building Name\",\"build_time\":3,\"description\":\"brief description\"}]}";
                     break;
