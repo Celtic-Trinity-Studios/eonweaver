@@ -4,6 +4,7 @@
 import { simFetch } from './client.js';
 import { apiFetch } from './client.js';
 import { getState, setState } from '../stores/appState.js';
+import { apiGetCalendar } from './settings.js';
 
 export function apiRunSimulation(townId, months, rules, instructions, numArrivals = 0, days = 0) {
     return simFetch('run_simulation', { town_id: townId, months, rules, instructions, num_arrivals: numArrivals, days });
@@ -17,30 +18,64 @@ export function apiGenerateWeather(townId) {
     return simFetch('generate_weather', { town_id: townId });
 }
 
-export function apiApplySimulation(townId, changes, historyEntry, monthsElapsed = 0, daysElapsed = 0) {
+/** Campaign-level yearly climate (integration_settings world_weather_year). Optional seeds persist as world_weather_seed. */
+export function apiGenerateCampaignWeather(campaignId, opts = {}) {
+    const body = { campaign_id: campaignId };
+    if (opts.seed_biome != null && opts.seed_biome !== '') body.seed_biome = opts.seed_biome;
+    if (opts.seed_place_name != null && opts.seed_place_name !== '') body.seed_place_name = opts.seed_place_name;
+    if (opts.seed_settlement_context != null && opts.seed_settlement_context !== '') {
+        body.seed_settlement_context = opts.seed_settlement_context;
+    }
+    return simFetch('generate_weather', body);
+}
+
+function mergeCalendarFromApplied(applied) {
+    if (!applied?.calendar_date) return;
+    try {
+        const cal = getState().calendar || {};
+        const cd = applied.calendar_date;
+        setState({
+            calendar: {
+                ...cal,
+                current_month: cd.month,
+                current_year: cd.year,
+                current_day: cd.day || cal.current_day,
+                era_name: cd.era || cal.era_name,
+            }
+        });
+    } catch (e) { /* non-fatal */ }
+}
+
+async function refreshCalendarFromServer() {
+    try {
+        const res = await apiGetCalendar();
+        if (res?.calendar) setState({ calendar: res.calendar });
+    } catch (e) { /* non-fatal */ }
+}
+
+export function apiApplySimulation(townId, changes, historyEntry, monthsElapsed = 0, daysElapsed = 0, opts = {}) {
     return simFetch('apply_simulation', {
         town_id: townId,
         changes,
         history_entry: historyEntry,
         months_elapsed: monthsElapsed,
         days_elapsed: daysElapsed,
-    }).then(res => {
-        // Auto-update sidebar calendar when server advances the date
-        if (res?.applied?.calendar_date) {
-            try {
-                const cal = getState().calendar || {};
-                const cd = res.applied.calendar_date;
-                setState({
-                    calendar: {
-                        ...cal,
-                        current_month: cd.month,
-                        current_year: cd.year,
-                        current_day: cd.day || cal.current_day,
-                        era_name: cd.era || cal.era_name,
-                    }
-                });
-            } catch (e) { /* non-fatal */ }
-        }
+        skip_calendar: opts.skipCalendar === true,
+    }).then(async res => {
+        mergeCalendarFromApplied(res?.applied);
+        await refreshCalendarFromServer();
+        return res;
+    });
+}
+
+/** Advance in-game date without applying town changes (e.g. after world sim advanced each town with skip_calendar). */
+export function apiAdvanceCalendar(monthsElapsed = 0, daysElapsed = 0) {
+    return simFetch('advance_calendar', {
+        months_elapsed: monthsElapsed,
+        days_elapsed: daysElapsed,
+    }).then(async res => {
+        mergeCalendarFromApplied(res?.applied);
+        await refreshCalendarFromServer();
         return res;
     });
 }
@@ -74,8 +109,19 @@ export function apiIntakeFlesh(townId, stubs, rules) {
     return simFetch('intake_flesh', { town_id: townId, stubs, rules });
 }
 
-export function apiIntakeCreature(townId, creatureName, count, instructions) {
-    return simFetch('intake_creature', { town_id: townId, creature_name: creatureName, count, instructions });
+/**
+ * @param {Record<string, unknown>} [opts] e.g. max_challenge_rating (caps CR for loose SRD matches / imports)
+ */
+export function apiIntakeCreature(townId, creatureName, count, instructions, overrideName, opts = {}) {
+    const body = {
+        town_id: townId,
+        creature_name: creatureName,
+        count,
+        instructions,
+        ...opts
+    };
+    if (overrideName) body.override_name = overrideName;
+    return simFetch('intake_creature', body);
 }
 
 export function apiGetCampaignRules() {

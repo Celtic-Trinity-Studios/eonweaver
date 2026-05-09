@@ -7,9 +7,13 @@ This repo holds **Eon Weaver**, a Vite SPA plus PHP/MySQL backend. Use this file
 - **Production:** **https://eonscribe.com** — live player-facing site. OpenRouter chat requests use **`APP_PUBLIC_URL` / `APP_PUBLIC_TITLE`** from `config.php` (see `config.example.php`) so attribution stays correct everywhere (including when you test from worldscribe).
 - **Staging / planning:** **https://worldscribe.online/** — FTP via `deploy_worldscribe.ps1`, `base: '/'` in the live build.
 
-1. `town-directory/deploy.env` — FTP credentials for whichever host you deploy to (`EW_FTP_*`). Swap or duplicate this file for worldscribe vs production FTP. This file stays **on disk only** (gitignored): when helping with deploys, **read credentials from there** — do **not** put passwords in commits, AGENTS.md, or chat replies. Running `deploy_worldscribe.ps1`/`deploy.cjs` loads `deploy.env` automatically.
-2. From `town-directory/`: `npm run build` then `.\deploy_worldscribe.ps1`  
-3. Optional Discord ping is included at the end of that script (non-critical if it fails).
+1. **FTP env files** (all gitignored, disk only — never paste passwords into commits or chat):  
+   - **`deploy.env.worldscribe`** — staging (`worldscribe.online`). Used by `deploy_worldscribe.ps1` and `node deploy.cjs worldscribe`.  
+   - **`deploy.env.eonweaver`** — production (`eonweaver.com`). Used by `node deploy.cjs eonweaver` and `deploy_live.ps1`.  
+   - **`deploy.env`** — optional legacy default for `node deploy.cjs` with no args.  
+   See `town-directory/deploy.env.example` for the full matrix.
+2. From `town-directory/`: `npm run build` then `.\deploy_worldscribe.ps1` (worldscribe) or `node deploy.cjs eonweaver` (production), using the matching env file above.  
+3. Optional **Discord deploy ping** runs **locally** after FTP (`node discord_deploy_notify.mjs` using `town-directory/.env.discord` — see `.env.discord.example`; no PHP on the server is involved).
 
 One-time / rare DB setup: `setup_mysql.php?key=…` on the host you are initializing (staging vs production URLs differ — use your real domain).
 
@@ -51,12 +55,16 @@ Wrong build (dev) + production upload = broken asset URLs and routing.
 
 ## Deploy (FTP)
 
-1. Ensure `deploy.env` exists — copy `town-directory/deploy.env.example` and fill in host/user/password (`deploy.env` is gitignored).
-2. Run `npm run build` from `town-directory/` (creates `live/` and copies root `.htaccess` into `live/.htaccess` via `postbuild`).
-3. Run `node deploy.cjs` (Eon Weaver FTP) or `.\deploy_worldscribe.ps1` (worldscribe FTP), from `town-directory/`. **Use the `EW_FTP_*` set for that host** — the two scripts share one `deploy.env` file, so swap credentials or keep two local copies and copy the right one to `deploy.env` before deploying.
+**Agents:** Always ask the maintainer **which target to deploy** (worldscribe staging vs eonweaver production, or another named env) before running deploy scripts or suggesting a specific `deploy.env.*`—unless they already said it in the same conversation (e.g. “FTP to worldscribe” or “ship to production”).
 
-Do not commit `deploy.env`, `config.php`, or `cookies.txt`-style artifacts.
+**Deploy + git:** A website deploy should be paired with **committing and pushing** the same source changes to the repo so what went live matches `main` (or the branch you use)—still excluding secrets and anything gitignored below. When helping with deploy, do not treat FTP as “done” without that step unless the maintainer explicitly skips it.
+
+1. Create **`deploy.env.worldscribe`** and **`deploy.env.eonweaver`** from `town-directory/deploy.env.example` (each with the correct `EW_FTP_*` for that host).
+2. Run `npm run build` from `town-directory/` (creates `live/` and copies root `.htaccess` into `live/.htaccess` via `postbuild`).
+3. Deploy with the command that matches the target: `.\deploy_worldscribe.ps1` or `node deploy.cjs worldscribe` for worldscribe; `node deploy.cjs eonweaver` or `.\deploy_live.ps1` for eonweaver production.
+
+Do not commit `deploy.env`, `deploy.env.worldscribe`, `deploy.env.eonweaver`, `config.php`, or `cookies.txt`-style artifacts.
 
 ## What Antigravity did not preserve
 
-Anything only said in old IDE chat (one-off URLs, production DB names, beta keys, OpenRouter keys) must be re-entered into local `config.php` or `deploy.env`. The folder + this file are the source of truth for process; secrets stay local and gitignored.
+Anything only said in old IDE chat (one-off URLs, production DB names, beta keys, OpenRouter keys) must be re-entered into local `config.php` or the appropriate `deploy.env.*` file. The folder + this file are the source of truth for process; secrets stay local and gitignored.

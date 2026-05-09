@@ -10,12 +10,233 @@
  * Variables available: $userId, $uid, $input, $action
  */
 
+/**
+ * Semicolon-separated attack lines for CharacterSheet parseAttacks() (+bonus and NdN per segment).
+ * Splits on " and " so multiple natural/manufactured weapons become separate attacks.
+ */
+function intakeMonsterAtkForSheet(?string $attack, ?string $fullAttack): string
+{
+    $a = trim(preg_replace('/\s+/', ' ', (string) $attack));
+    $f = trim(preg_replace('/\s+/', ' ', (string) $fullAttack));
+    $bits = [];
+    if ($a !== '') {
+        $bits[] = $a;
+    }
+    if ($f !== '' && strcasecmp($f, $a) !== 0) {
+        $bits[] = $f;
+    }
+    $merged = trim(implode(' ', $bits));
+    if ($merged === '') {
+        return '';
+    }
+    $segments = preg_split('/\s+and\s+/i', $merged);
+    $out = [];
+    foreach ($segments as $seg) {
+        $seg = trim($seg);
+        if ($seg !== '' && !in_array($seg, $out, true)) {
+            $out[] = $seg;
+        }
+    }
+
+    return implode('; ', $out);
+}
+
+/**
+ * Extra gear text: keywords for WEAPON_DB matching, treasure, space/reach (CharacterSheet / combat helpers).
+ */
+function intakeMonsterGearSupplement(?string $attack, ?string $fullAttack, ?string $treasure, ?string $space, ?string $reach): string
+{
+    $text = strtolower((string) $attack . ' ' . (string) $fullAttack);
+    $needles = [
+        'longsword', 'short sword', 'greatsword', 'greataxe', 'greatclub', 'morningstar', 'warhammer', 'battleaxe',
+        'heavy flail', 'flail', 'mace', 'heavy mace', 'light mace', 'dagger', 'rapier', 'scimitar', 'quarterstaff',
+        'trident', 'longspear', 'shortspear', 'glaive', 'halberd', 'falchion', 'lance', 'scythe', 'club', 'sickle',
+        'handaxe', 'throwing axe', 'shortbow', 'longbow', 'light crossbow', 'heavy crossbow', 'hand crossbow', 'javelin', 'sling',
+        'spear', 'whip', 'spiked chain', 'pick', 'heavy pick', 'ranseur', 'guisarme', 'kukri',
+        'bite', 'claw', 'claws', 'gore', 'slam', 'sting', 'tail slap', 'tentacle', 'talon', 'talons', 'hoof', 'wing',
+    ];
+    $found = [];
+    foreach ($needles as $kw) {
+        if (strpos($text, $kw) !== false) {
+            $found[] = $kw;
+        }
+    }
+    $found = array_unique($found);
+    $parts = [];
+    if (!empty($found)) {
+        $parts[] = implode(', ', $found);
+    }
+    $t = trim((string) $treasure);
+    if ($t !== '') {
+        $parts[] = 'Treasure ' . $t;
+    }
+    $sp = trim((string) $space);
+    $re = trim((string) $reach);
+    if ($sp !== '' || $re !== '') {
+        $parts[] = trim("Space {$sp} / Reach {$re}");
+    }
+
+    return implode('; ', array_filter($parts));
+}
+
+/**
+ * Parse challenge rating to float (handles "1/2", "30").
+ */
+function intakeParseCrToFloat(?string $cr): float
+{
+    $cr = trim((string) $cr);
+    if ($cr === '' || $cr === '—' || $cr === '-') {
+        return 0.0;
+    }
+    if (strpos($cr, '/') !== false) {
+        $parts = explode('/', $cr, 2);
+        $d = floatval($parts[1] ?? 1);
+
+        return $d > 0 ? (floatval($parts[0]) / $d) : 0.0;
+    }
+
+    return floatval($cr);
+}
+
+/**
+ * Prefer exact/prefix matches and lowest CR — avoids random "Ancient Force Dragon" on vague tokens.
+ */
+function intakeRankMonstersForRequest(array $monsters, string $requestedName): array
+{
+    $req = strtolower(trim($requestedName));
+    if ($req === '' || empty($monsters)) {
+        return $monsters;
+    }
+    usort($monsters, function ($a, $b) use ($req) {
+        $an = strtolower(trim($a['name'] ?? ''));
+        $bn = strtolower(trim($b['name'] ?? ''));
+        $ta = 9;
+        $tb = 9;
+        if ($an === $req) {
+            $ta = 0;
+        } elseif (strpos($an, $req) === 0) {
+            $ta = 1;
+        } elseif (strpos($an, $req) !== false) {
+            $ta = 2;
+        }
+        if ($bn === $req) {
+            $tb = 0;
+        } elseif (strpos($bn, $req) === 0) {
+            $tb = 1;
+        } elseif (strpos($bn, $req) !== false) {
+            $tb = 2;
+        }
+        if ($ta !== $tb) {
+            return $ta <=> $tb;
+        }
+        $cra = intakeParseCrToFloat($a['challenge_rating'] ?? '0');
+        $crb = intakeParseCrToFloat($b['challenge_rating'] ?? '0');
+        if ($cra != $crb) {
+            return $cra <=> $crb;
+        }
+
+        return strlen($an) <=> strlen($bn);
+    });
+
+    return $monsters;
+}
+
+/**
+ * Map Homebrew SQLite custom_monsters row into SRD-shaped keys for intake_creature.
+ */
+function intakeCustomMonsterSqliteRowToSrdShape(array $cm): array
+{
+    $sum = trim((string) ($cm['stat_summary'] ?? ''));
+
+    return [
+        'name' => $cm['name'] ?? 'Creature',
+        'type' => trim((string) ($cm['type_line'] ?? '')) !== '' ? trim($cm['type_line']) : 'Magical Beast',
+        'hit_dice' => trim((string) ($cm['hit_dice'] ?? '')) !== '' ? trim($cm['hit_dice']) : '2d8',
+        'armor_class' => trim((string) ($cm['armor_class'] ?? '')) !== '' ? trim($cm['armor_class']) : '14',
+        'abilities' => trim((string) ($cm['abilities'] ?? '')) !== '' ? trim($cm['abilities']) : 'Str 14, Dex 12, Con 13, Int 2, Wis 12, Cha 6',
+        'saves' => '',
+        'speed' => '30 ft.',
+        'attack' => '',
+        'full_attack' => '',
+        'special_attacks' => '',
+        'special_qualities' => $sum !== '' ? $sum : '',
+        'skills' => '',
+        'feats' => '',
+        'alignment' => 'N',
+        'challenge_rating' => trim((string) ($cm['cr'] ?? '')) !== '' ? trim($cm['cr']) : '1',
+        'initiative' => '+0',
+        'base_attack' => '+1',
+        'grapple' => '',
+        'environment' => '',
+        'organization' => '',
+        'advancement' => '',
+        'treasure' => '',
+        'space' => '5 ft.',
+        'reach' => '5 ft.',
+        '_homebrew_custom' => true,
+        '_homebrew_notes' => $sum,
+    ];
+}
+
+/**
+ * Look up user's Homebrew monsters when SRD has no match.
+ *
+ * @return array<int, array<string,mixed>>
+ */
+function intakeFetchCustomMonstersForCreature(int $userId, int $townId, int $uid, string $creatureName, array $nameVariants): array
+{
+    require_once __DIR__ . '/user_db.php';
+    $campId = null;
+    if ($townId > 0) {
+        $tc = query('SELECT campaign_id FROM towns WHERE id = ?', [$townId], $uid);
+        if ($tc && isset($tc[0])) {
+            $v = $tc[0]['campaign_id'] ?? null;
+            $campId = ($v !== null && $v !== '') ? (int) $v : null;
+        }
+    }
+    $terms = array_values(array_unique(array_filter(array_merge([trim($creatureName)], $nameVariants), function ($t) {
+        return trim((string) $t) !== '';
+    })));
+    $seen = [];
+    $out = [];
+    foreach ($terms as $term) {
+        $term = trim((string) $term);
+        if (strlen($term) < 2) {
+            continue;
+        }
+        try {
+            if ($campId) {
+                $rows = userQuery($userId, 'SELECT * FROM custom_monsters WHERE (campaign_id = ? OR campaign_id IS NULL) AND (LOWER(TRIM(name)) = LOWER(?) OR name LIKE ?) LIMIT 8', [$campId, $term, '%' . $term . '%']);
+            } else {
+                $rows = userQuery($userId, 'SELECT * FROM custom_monsters WHERE campaign_id IS NULL AND (LOWER(TRIM(name)) = LOWER(?) OR name LIKE ?) LIMIT 8', [$term, '%' . $term . '%']);
+            }
+        } catch (Exception $e) {
+            continue;
+        }
+        foreach ($rows as $cm) {
+            $cid = (int) ($cm['id'] ?? 0);
+            if ($cid && isset($seen[$cid])) {
+                continue;
+            }
+            if ($cid) {
+                $seen[$cid] = true;
+            }
+            $out[] = intakeCustomMonsterSqliteRowToSrdShape($cm);
+        }
+        if (!empty($out)) {
+            break;
+        }
+    }
+
+    return $out;
+}
+
 // ═══════════════════════════════════════════════════════════
 // INTAKE ROSTER — Phase 1: Generate lightweight character list
 // ═══════════════════════════════════════════════════════════
 if ($action === 'intake_roster') {
     $townId = (int) ($input['town_id'] ?? 0);
-    $numArrivals = max(1, min(100, (int) ($input['num_arrivals'] ?? 10)));
+    $numArrivals = max(1, min(150, (int) ($input['num_arrivals'] ?? 10)));
     $rules = trim($input['rules'] ?? '');
     $instructions = trim($input['instructions'] ?? '');
 
@@ -429,7 +650,7 @@ For each character provide ONLY: name, race, class, gender, age, role, alignment
         "model" => $model,
         "messages" => [["role" => "user", "content" => $rosterPrompt]],
         "temperature" => 0.95,
-        "max_tokens" => 16384
+        "max_tokens" => 32768
     ]);
     $ch = curl_init($openRouterUrl);
     curl_setopt_array($ch, [
@@ -729,6 +950,14 @@ elseif ($action === 'intake_creature') {
     $creatureName = trim($input['creature_name'] ?? '');
     $count = max(1, min(100, (int) ($input['count'] ?? 1)));
     $instructions = trim($input['instructions'] ?? '');
+    $overrideName = trim($input['override_name'] ?? '');
+    $reqMaxCrInput = null;
+    if (isset($input['max_challenge_rating']) && $input['max_challenge_rating'] !== '' && $input['max_challenge_rating'] !== null) {
+        $rm = floatval($input['max_challenge_rating']);
+        if ($rm > 0) {
+            $reqMaxCrInput = $rm;
+        }
+    }
 
     verifyTownOwnership($userId, $townId, $uid);
     if (!$creatureName)
@@ -738,23 +967,51 @@ elseif ($action === 'intake_creature') {
     $userSettings = query('SELECT dnd_edition FROM users WHERE id = ?', [$userId], 0);
     $dndEdition = $userSettings ? ($userSettings[0]['dnd_edition'] ?? '3.5e') : '3.5e';
 
+    // Try plural/singular variants ("goblins" → "goblin") so LIKE matches SRD names
+    $nameVariants = [$creatureName];
+    $cnLow = strtolower($creatureName);
+    if (strlen($creatureName) >= 4 && preg_match('/s$/i', $creatureName) && !preg_match('/ss$/i', $cnLow)) {
+        $nameVariants[] = substr($creatureName, 0, -1);
+    }
+    if (strlen($creatureName) >= 5 && preg_match('/ies$/i', $creatureName)) {
+        $nameVariants[] = substr($creatureName, 0, -3) . 'y';
+    }
+    $nameVariants = array_values(array_unique(array_filter($nameVariants)));
+
     // Look up ALL matching creatures in SRD using cascading search strategies
-    // Strategy 1: Search by NAME
-    $monsters = srdQuery($dndEdition, 'SELECT * FROM monsters WHERE name LIKE ? ORDER BY name', ["%{$creatureName}%"]);
-    if (empty($monsters)) {
-        $monsters = srdQuery($dndEdition, 'SELECT * FROM monsters WHERE name = ? LIMIT 1', [$creatureName]);
+    // Strategy 1: Search by NAME (each variant)
+    $monsters = [];
+    foreach ($nameVariants as $term) {
+        $monsters = srdQuery($dndEdition, 'SELECT * FROM monsters WHERE name LIKE ? ORDER BY name', ["%{$term}%"]);
+        if (!empty($monsters))
+            break;
+        $monsters = srdQuery($dndEdition, 'SELECT * FROM monsters WHERE name = ? LIMIT 1', [$term]);
+        if (!empty($monsters))
+            break;
     }
     // Strategy 2: Search by TYPE field (e.g. "Humanoid (Goblinoid)", "Vermin", "Magical Beast")
     if (empty($monsters)) {
-        $monsters = srdQuery($dndEdition, 'SELECT * FROM monsters WHERE type LIKE ? ORDER BY name', ["%{$creatureName}%"]);
+        foreach ($nameVariants as $term) {
+            $monsters = srdQuery($dndEdition, 'SELECT * FROM monsters WHERE type LIKE ? ORDER BY name', ["%{$term}%"]);
+            if (!empty($monsters))
+                break;
+        }
     }
     // Strategy 3: Search by FAMILY field (groups related monsters)
     if (empty($monsters)) {
-        $monsters = srdQuery($dndEdition, 'SELECT * FROM monsters WHERE family LIKE ? ORDER BY name', ["%{$creatureName}%"]);
+        foreach ($nameVariants as $term) {
+            $monsters = srdQuery($dndEdition, 'SELECT * FROM monsters WHERE family LIKE ? ORDER BY name', ["%{$term}%"]);
+            if (!empty($monsters))
+                break;
+        }
     }
     // Strategy 4: Search by DESCRIPTOR field
     if (empty($monsters)) {
-        $monsters = srdQuery($dndEdition, 'SELECT * FROM monsters WHERE descriptor_text LIKE ? ORDER BY name', ["%{$creatureName}%"]);
+        foreach ($nameVariants as $term) {
+            $monsters = srdQuery($dndEdition, 'SELECT * FROM monsters WHERE descriptor_text LIKE ? ORDER BY name', ["%{$term}%"]);
+            if (!empty($monsters))
+                break;
+        }
     }
     // Strategy 5: Category-to-name mappings for demographic categories
     if (empty($monsters)) {
@@ -801,39 +1058,44 @@ elseif ($action === 'intake_creature') {
         }
     }
     if (empty($monsters)) {
-        throw new Exception("Creature '{$creatureName}' not found in the SRD. Check the SRD Browser for valid monster names.");
+        $monsters = intakeFetchCustomMonstersForCreature($userId, $townId, $uid, $creatureName, $nameVariants);
+    }
+    if (empty($monsters)) {
+        throw new Exception("Creature '{$creatureName}' not found in the SRD or Homebrew → Monsters.");
     }
 
 
-    // ── Max CR Filter: limit creatures by town's max_cr setting ──
-    $maxCR = null;
+    // ── Max CR Filter: town gen_rules + optional request cap (Scribe imports use a sane default) ──
+    $townMaxCr = null;
     try {
         $townMeta = query('SELECT value FROM town_meta WHERE town_id = ? AND `key` = ?', [$townId, 'gen_rules'], $uid);
         if (!empty($townMeta)) {
             $genRules = json_decode($townMeta[0]['value'], true);
             if (!empty($genRules['max_cr'])) {
-                $maxCR = floatval($genRules['max_cr']);
+                $townMaxCr = floatval($genRules['max_cr']);
             }
         }
     } catch (Exception $e) { /* ignore */ }
 
-    if ($maxCR !== null) {
-        $monsters = array_filter($monsters, function($m) use ($maxCR) {
-            $cr = $m['challenge_rating'] ?? '1';
-            // Handle fractional CRs like "1/2", "1/4", "1/8"
-            if (strpos($cr, '/') !== false) {
-                $parts = explode('/', $cr);
-                $crVal = floatval($parts[0]) / floatval($parts[1]);
-            } else {
-                $crVal = floatval($cr);
-            }
-            return $crVal <= $maxCR;
+    $effectiveMaxCr = null;
+    if ($townMaxCr !== null) {
+        $effectiveMaxCr = $townMaxCr;
+    }
+    if ($reqMaxCrInput !== null) {
+        $effectiveMaxCr = $effectiveMaxCr === null ? $reqMaxCrInput : min($effectiveMaxCr, $reqMaxCrInput);
+    }
+
+    if ($effectiveMaxCr !== null) {
+        $monsters = array_filter($monsters, function ($m) use ($effectiveMaxCr) {
+            return intakeParseCrToFloat($m['challenge_rating'] ?? '1') <= $effectiveMaxCr;
         });
         $monsters = array_values($monsters); // re-index
         if (empty($monsters)) {
-            throw new Exception("No creatures found with CR ≤ {$maxCR}. Try raising the Max CR limit in Town Settings.");
+            throw new Exception("No creatures found with CR ≤ {$effectiveMaxCr}. Try raising Max CR in Town Settings or use a more specific creature name.");
         }
     }
+
+    $monsters = intakeRankMonstersForRequest($monsters, $creatureName);
 
     // Get existing names to avoid duplicates
     $existingNames = array_column(
@@ -876,8 +1138,8 @@ elseif ($action === 'intake_creature') {
     $monsterCount = count($monsters);
 
     for ($i = 0; $i < $count; $i++) {
-        // RANDOMLY select a monster from all SRD matches for each individual
-        $monster = $monsters[array_rand($monsters)];
+        // Best-ranked match (exact name / lowest CR), not a random epic variant
+        $monster = $monsters[0];
 
         // Parse this monster's stats
         $mName = $monster['name'] ?? $creatureName;
@@ -901,6 +1163,8 @@ elseif ($action === 'intake_creature') {
         $mGrapple = $monster['grapple'] ?? '';
         $mSpace = $monster['space'] ?? '5 ft.';
         $mReach = $monster['reach'] ?? '5 ft.';
+        $mTreasure = $monster['treasure'] ?? '';
+        $mInit = $monster['initiative'] ?? '';
 
         // Parse ability scores from "Str 13, Dex 15, Con 10, Int 2, Wis 12, Cha 6" format
         $abilities = ['str' => 10, 'dex' => 10, 'con' => 10, 'int' => 10, 'wis' => 10, 'cha' => 10];
@@ -957,16 +1221,41 @@ elseif ($action === 'intake_creature') {
         // Build creature class string like "Magical Beast 3" (type + HD)
         $creatureClass = trim($mType) . ' ' . $hdCount;
 
-        // Build gear/attack string
-        $gearParts = [];
-        if ($mAttack) $gearParts[] = "Attack: {$mAttack}";
-        if ($mFullAttack && $mFullAttack !== $mAttack) $gearParts[] = "Full Attack: {$mFullAttack}";
-        $gearStr = implode('; ', $gearParts);
+        // Gear + atk for CharacterSheet parseAttacks / parseGearWeapons
+        $atkLine = intakeMonsterAtkForSheet($mAttack, $mFullAttack);
+        $atkStr = $atkLine;
+        if ($atkStr === '') {
+            if ($mBAB) {
+                $atkStr = 'BAB ' . $mBAB;
+            }
+            if ($mGrapple) {
+                $atkStr .= ($atkStr !== '' ? '; ' : '') . 'Grapple ' . $mGrapple;
+            }
+        }
 
-        // Build ATK string from base_attack and grapple
-        $atkStr = '';
-        if ($mBAB) $atkStr .= "BAB {$mBAB}";
-        if ($mGrapple) $atkStr .= ($atkStr ? ', ' : '') . "Grapple {$mGrapple}";
+        $gearParts = [];
+        if ($mBAB) {
+            $gearParts[] = 'BAB ' . $mBAB;
+        }
+        if ($mGrapple) {
+            $gearParts[] = 'Grapple ' . $mGrapple;
+        }
+        if ($mAttack) {
+            $gearParts[] = "Attack: {$mAttack}";
+        }
+        if ($mFullAttack && $mFullAttack !== $mAttack) {
+            $gearParts[] = "Full Attack: {$mFullAttack}";
+        }
+        $geoSup = intakeMonsterGearSupplement($mAttack, $mFullAttack, $mTreasure, $mSpace, $mReach);
+        if ($geoSup !== '') {
+            $gearParts[] = $geoSup;
+        }
+        $gearStr = implode('; ', array_filter($gearParts));
+
+        $initStr = '';
+        if (preg_match('/([+-]\d+)/', (string) $mInit, $im)) {
+            $initStr = $im[1];
+        }
 
         // Build special abilities string for reason/backstory
         $specialParts = [];
@@ -976,9 +1265,11 @@ elseif ($action === 'intake_creature') {
 
         // Check if creature is intelligent (Int >= 3)
         $isIntelligent = $abilities['int'] >= 3;
-        // Generate unique name
+        // Generate unique name (optional story name when importing a single creature)
         $name = '';
-        if ($count === 1) {
+        if ($count === 1 && $overrideName !== '') {
+            $name = $overrideName;
+        } elseif ($count === 1) {
             $name = $mName;
         } elseif ($isIntelligent) {
             // Use fantasy names for intelligent creatures
@@ -1044,6 +1335,7 @@ elseif ($action === 'intake_creature') {
             'fort' => $saves['fort'],
             'ref' => $saves['ref'],
             'will' => $saves['will'],
+            'init' => $initStr,
             'atk' => $atkStr,
             'gear' => $gearStr,
             'feats' => $mFeats ?: '',

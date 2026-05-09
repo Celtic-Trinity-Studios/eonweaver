@@ -4,9 +4,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Eon Weaver Campaign Manager for D&D</title>
     <meta name="description"
-        content="Eon Weaver — AI-powered D&D campaign manager. Track towns, characters, and simulate your world.">
-    <title>Eon Weaver</title>
+        content="Simulate your D&D campaign world between sessions with multi-town AI progression, world maps, in-game calendar, and persistent history.">
+    <meta name="robots" content="index,follow,max-image-preview:large">
+    <link rel="canonical" href="https://eonweaver.com/">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Eon Weaver">
+    <meta property="og:title" content="Eon Weaver Campaign Manager for D&D">
+    <meta property="og:description"
+        content="Simulate your D&D campaign world between sessions with multi-town AI progression, world maps, in-game calendar, and persistent history.">
+    <meta property="og:url" content="https://eonweaver.com/">
+    <meta property="og:image" content="https://eonweaver.com/favicon.svg">
+    <meta property="og:image:alt" content="Eon Weaver logo">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Eon Weaver Campaign Manager for D&D">
+    <meta name="twitter:description"
+        content="Simulate your D&D campaign world between sessions with multi-town AI progression, world maps, in-game calendar, and persistent history.">
+    <link rel="alternate" hreflang="en" href="https://eonweaver.com/">
+    <link rel="alternate" hreflang="x-default" href="https://eonweaver.com/">
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "WebApplication",
+            "name": "Eon Weaver",
+            "applicationCategory": "GameApplication",
+            "operatingSystem": "Web",
+            "url": "https://eonweaver.com/",
+            "description": "Simulate your D&D campaign world between sessions with multi-town AI progression, world maps, in-game calendar, and persistent history."
+        }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cinzel:wght@400;600;700;900&display=swap"
@@ -17,11 +45,34 @@
 <body>
 
     <!-- ═══════════════════════════════════════════════════════
+         PUBLIC LANDING PAGE
+         ═══════════════════════════════════════════════════════ -->
+    <div id="landing-screen" class="landing-screen">
+        <div class="landing-card">
+            <p class="landing-eyebrow">EON WEAVER</p>
+            <h1 class="landing-title">Your setting keeps moving—even when the table is quiet.</h1>
+            <p class="landing-subtitle">
+                Eon Weaver simulates months across towns: births, deaths, arrivals, relationships, and macro-scale change—anchored to an in-game calendar and geographic world maps with pins and travel context.
+            </p>
+            <div class="landing-actions">
+                <button id="landing-signin-btn" class="btn-primary">Sign In</button>
+                <button id="landing-register-btn" class="btn-secondary">Create Account</button>
+            </div>
+            <div class="landing-feature-grid">
+                <div class="landing-feature"><strong>🌍 Town &amp; world simulation</strong><span>AI months for one town or every settlement at once</span></div>
+                <div class="landing-feature"><strong>🗺️ Geographic world maps</strong><span>Upload a map; pin locations and estimate travel—not just a relationship graph</span></div>
+                <div class="landing-feature"><strong>📅 In-game calendar</strong><span>Advance campaign time; hook plots to dates your table recognizes</span></div>
+                <div class="landing-feature"><strong>📜 Timeline &amp; codex</strong><span>History plus AI scribe &amp; wiki when you need lore</span></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ═══════════════════════════════════════════════════════
          AUTH SCREEN (shown when not logged in)
          ═══════════════════════════════════════════════════════ -->
-    <div id="auth-screen" class="auth-screen">
+    <div id="auth-screen" class="auth-screen" style="display:none;">
         <div class="auth-card">
-            <h1 class="auth-title">Eon Weaver</h1>
+            <div class="auth-title" role="heading" aria-level="2">Eon Weaver</div>
             <p class="auth-subtitle">AI-powered D&D campaign manager</p>
 
             <div id="auth-error" class="auth-error" style="display:none;"></div>
@@ -37,7 +88,11 @@
                     <input type="password" id="login-password" required autocomplete="current-password">
                 </div>
                 <button type="submit" class="auth-btn">Sign In</button>
-                <p class="auth-switch">No account? <a href="#" id="show-register">Create one</a></p>
+                <p class="auth-hint">
+                    Need a new confirmation email?
+                    <a href="#" id="resend-verify-btn">Resend confirmation email</a>
+                </p>
+                <p class="auth-switch">No account? <a href="#" id="show-register">Create one</a> · <a href="#" id="back-to-landing-login">Back</a></p>
             </form>
 
             <!-- Register Form -->
@@ -54,12 +109,8 @@
                     <label for="reg-password">Password</label>
                     <input type="password" id="reg-password" required minlength="6" autocomplete="new-password">
                 </div>
-                <div class="form-group">
-                    <label for="reg-beta-key">Beta Key</label>
-                    <input type="text" id="reg-beta-key" required placeholder="Enter your beta access key" autocomplete="off">
-                </div>
                 <button type="submit" class="auth-btn">Create Account</button>
-                <p class="auth-switch">Already have an account? <a href="#" id="show-login">Sign in</a></p>
+                <p class="auth-switch">Already have an account? <a href="#" id="show-login">Sign in</a> · <a href="#" id="back-to-landing-register">Back</a></p>
             </form>
         </div>
     </div>

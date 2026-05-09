@@ -49,6 +49,13 @@ export default function HelpView(container) {
               <p>Go to <strong>🌍 World Simulate</strong>, select towns and months, then watch the AI generate events, relationships, births, deaths, construction, and drama. A live log modal shows progress as it runs.</p>
             </div>
           </div>
+          <div class="help-step">
+            <span class="help-step-num">6</span>
+            <div>
+              <strong>Optional: World Map & Travel</strong>
+              <p>Open <strong>🗺️ World Map</strong> to upload a campaign map, pin towns, calibrate scale, and estimate travel. Inter-town moves during simulation can use those distances when towns are pinned.</p>
+            </div>
+          </div>
         </div>
 
         <div class="help-tip">
@@ -277,6 +284,10 @@ export default function HelpView(container) {
           <p>Characters can move between towns during simulation. About 20% of eligible residents (who've lived in town long enough) may relocate, with up to 2 moves per town per month. Town leaders (Mayors, Chieftains, etc.) never move.</p>
         </div>
         <div class="help-feature">
+          <strong>🗺️ Map-Aware Travel (optional)</strong>
+          <p>If both towns are <strong>pinned</strong> on the <strong>World Map</strong> (and not hidden from the map), the sim estimates distance and travel days from your calibration. Longer routes reduce the chance that a character chooses that destination; the live log and Movement tab can show miles and days.</p>
+        </div>
+        <div class="help-feature">
           <strong>📋 Tabbed Results</strong>
           <p>After simulation, results are organized in tabs:</p>
           <ul class="help-list">
@@ -290,6 +301,35 @@ export default function HelpView(container) {
         </div>
         <div class="help-tip">
           💡 <strong>Tip:</strong> Results are applied automatically after each month. The narrative and results are saved to the town's history for reference later.
+        </div>
+      `
+    },
+    {
+      id: 'world-map',
+      icon: '🗺️',
+      title: 'World Map & Travel',
+      content: `
+        <p>Attach a visual map to your campaign, place towns on it, and feed travel distance into the <strong>travel estimator</strong> and (when pins exist) <strong>World Simulate</strong> inter-town movement.</p>
+
+        <div class="help-feature">
+          <strong>📤 Upload & settings</strong>
+          <p>Upload a PNG, JPEG, WebP, or GIF. Set <strong>Scale (mi / unit)</strong> — miles per pixel (or per map coordinate unit — it matches how you calibrate). Set <strong>Travel hours / day</strong> for how many hours of marching count per day toward travel time. Click <strong>Save Settings</strong>.</p>
+        </div>
+        <div class="help-feature">
+          <strong>📏 Calibrate scale on map</strong>
+          <p>Click <strong>Calibrate scale on map</strong>, then click-drag on the image to draw a reference line across a known distance (e.g. a scale bar or road segment). Enter <strong>This line's distance (miles)</strong> and click <strong>Apply calibration</strong>. Press <kbd>Esc</kbd> or use <strong>Clear line</strong> to cancel. The scale field updates automatically; you can still edit it by hand.</p>
+        </div>
+        <div class="help-feature">
+          <strong>📍 Pins & roster</strong>
+          <p>Choose a town from <strong>Place / move pin</strong>, then click empty map to drop or move its marker. <strong>Click a pin</strong> to open that town's roster. The <strong>Pinned locations</strong> list includes a quick <strong>Roster</strong> action.</p>
+        </div>
+        <div class="help-feature">
+          <strong>👁️ Hide from map</strong>
+          <p>Use the per-town checkbox so a settlement stays in the campaign but has <strong>no pin</strong> — nothing roster-linked to click on the map. Hidden towns are excluded from the travel estimator and from map-based movement math.</p>
+        </div>
+        <div class="help-feature">
+          <strong>🧭 Travel estimator</strong>
+          <p>Pick <strong>From</strong> and <strong>To</strong> among pinned towns (not hidden) and click <strong>Estimate</strong> for approximate distance and duration using your scale and hours/day.</p>
         </div>
       `
     },
@@ -498,6 +538,34 @@ export default function HelpView(container) {
       `
     },
     {
+      id: 'ai-scribe',
+      icon: '✍️',
+      title: 'AI Scribe',
+      content: `
+        <p><strong>AI Scribe</strong> (Arcane Workshop) generates campaign-aware markdown: lore, quests, dungeons, magic items, and traps. Output uses your towns, NPCs, and campaign rules as context.</p>
+
+        <div class="help-feature">
+          <strong>🛠️ Tools (tabs)</strong>
+          <p><strong>Lore Scribe</strong> — places, factions, histories. <strong>Quest Forge</strong> — adventure hooks and quest outlines. <strong>Dungeon Architect</strong> — keyed locations and encounters. <strong>Item Enchanter</strong> and <strong>Trap Designer</strong> — gear and hazards. Each tab has its own parameters; click <strong>Generate Content</strong> when ready.</p>
+        </div>
+        <div class="help-feature">
+          <strong>📚 Your library</strong>
+          <p>Save the current output with <strong>Save current output</strong>. Open any saved piece to read, <strong>Edit as markdown</strong>, save edits, or delete. Library entries are per campaign.</p>
+        </div>
+        <div class="help-feature">
+          <strong>🏘️ Add to town roster</strong>
+          <p>For some generators (e.g. dungeons, or lore when scoped as a location), you may see <strong>Add to town roster</strong>. This path creates a <strong>new town</strong> for the import and attaches generated buildings or creatures — it does not merge into a town you have open elsewhere. Confirm dialogs may apply when AI credits are used for creature intake.</p>
+        </div>
+        <div class="help-tip">
+          💡 <strong>Tip:</strong> Large generations cost AI credits (see <strong>Campaign Settings</strong> in this guide). The sidebar shows your 🪙 balance and monthly usage.
+        </div>
+        <div class="help-incomplete">
+          <span class="help-incomplete-label">Expanding</span>
+          <p>Import rules for dungeons vs. lore vary by tab and content shape. If roster actions do not appear, try another generator or a clearer location-themed output.</p>
+        </div>
+      `
+    },
+    {
       id: 'party',
       icon: '🛡️',
       title: 'Party',
@@ -548,23 +616,65 @@ export default function HelpView(container) {
       `
     },
     {
+      id: 'homebrew',
+      icon: '🧪',
+      title: 'Homebrew',
+      content: `
+        <p>Create <strong>campaign-specific</strong> content that supplements the SRD: custom races, classes, feats, spells, equipment, and monsters.</p>
+
+        <div class="help-feature">
+          <strong>📑 Tabs & CRUD</strong>
+          <p>Switch tabs for each content type. Use <strong>+ New …</strong> to add an entry, open a card to edit, and save or delete. Homebrew is stored on your account and used where the app allows custom options (e.g. future character options hooks).</p>
+        </div>
+        <div class="help-incomplete">
+          <span class="help-incomplete-label">Integration depth varies</span>
+          <p>Not every intake or simulation path references every homebrew type yet. Prefer SRD options when you need guaranteed simulation coverage; homebrew is ideal for table-facing reference and planned hooks.</p>
+        </div>
+      `
+    },
+    {
+      id: 'content-library',
+      icon: '📁',
+      title: 'Content Library',
+      content: `
+        <p>Personal file storage for maps, handouts, and assets — drag-and-drop or browse uploads with optional descriptions.</p>
+
+        <div class="help-feature">
+          <strong>📤 Uploads</strong>
+          <p>Supports JPG, PNG, WEBP, GIF, PDF, TXT, MD, and JSON. Choose a file type (map, handout, asset, document), optionally describe it, then upload. Files are scoped to your account with usage feedback on the page.</p>
+        </div>
+        <div class="help-feature">
+          <strong>🗺️ vs World Map</strong>
+          <p>The Content Library is general-purpose storage. The <strong>World Map</strong> page is for the interactive campaign map that pins towns and drives travel math.</p>
+        </div>
+      `
+    },
+    {
       id: 'calendar',
       icon: '📅',
       title: 'Calendar',
       content: `
-        <p>Track in-game time with a fully customizable calendar system.</p>
+        <p>Track in-game time with a fully customizable calendar system. Open <strong>📅 Calendar</strong> in the sidebar to edit structure and the current date.</p>
         
         <div class="help-feature">
-          <strong>📆 Custom Calendar</strong>
-          <p>Configure the number of months per year, days per month, year number, era name, and set custom month names to match your campaign world (e.g. Forgotten Realms calendar).</p>
+          <strong>📆 Current date & structure</strong>
+          <p>Edit <strong>day</strong>, <strong>month index</strong>, <strong>year</strong>, and <strong>era</strong> name. Configure how many <strong>months</strong> exist and how many <strong>days</strong> each month has. Add or remove months with the +/− controls.</p>
+        </div>
+        <div class="help-feature">
+          <strong>📆 Week layout</strong>
+          <p>Set <strong>days per week</strong> and name each weekday plus abbreviations (used in Town History and other calendar grids).</p>
         </div>
         <div class="help-feature">
           <strong>⏩ Auto-Advance</strong>
-          <p>The calendar automatically advances when you run simulations. The current date is always shown in the sidebar.</p>
+          <p>The calendar advances when you run <strong>World Simulate</strong> (and related pipelines). The formatted date stays visible in the sidebar.</p>
         </div>
         <div class="help-feature">
           <strong>📊 History Integration</strong>
-          <p>History entries use calendar month names in their headings, so you can see exactly when events happened in your world's timeline.</p>
+          <p>History entries use calendar month names in their headings, so you can see when events happened in your world's timeline.</p>
+        </div>
+        <div class="help-incomplete">
+          <span class="help-incomplete-label">Diagnostics</span>
+          <p>The <strong>Test: advance 1 day</strong> button on the Calendar page is for troubleshooting (it calls the advance API once). It is not the normal way to progress your campaign — use simulation for story time.</p>
         </div>
       `
     },
@@ -620,6 +730,10 @@ export default function HelpView(container) {
         <div class="help-feature">
           <strong>📜 Campaign Management</strong>
           <p>Create, rename, and delete campaigns. Switch between campaigns from the sidebar dropdown.</p>
+        </div>
+        <div class="help-feature">
+          <strong>🪙 AI credits (TC)</strong>
+          <p>The sidebar shows your credit balance (🪙) and usage this month. AI-powered actions (scribe, simulation, imports that call the model, etc.) consume credits; procedural intake does not. Confirm dialogs appear when a step has a meaningful cost.</p>
         </div>
         <div class="help-tip">
           💡 <strong>Tip:</strong> Set Conflict Frequency to "Frequent" for a grittier, more dangerous world. Set it to "Rare" for a peaceful farming village vibe.
@@ -677,6 +791,7 @@ export default function HelpView(container) {
             <li>Configure <strong>intake level</strong> (0 = AI decides, or set a specific level)</li>
             <li>Write <strong>Campaign Description & House Rules</strong> in Settings for lore-consistent generation</li>
             <li>Generate initial settlers, then <strong>simulate several months</strong> to build up the town organically</li>
+            <li>Optional: use <strong>🗺️ World Map</strong> for pins and travel, and <strong>✍️ AI Scribe</strong> / <strong>📁 Content Library</strong> for prep materials</li>
           </ul>
         </div>
         <div class="help-feature">

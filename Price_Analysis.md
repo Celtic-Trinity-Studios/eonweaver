@@ -1,193 +1,165 @@
-# Ashenholm — Price Analysis
+# Eon Weaver — Price & economics analysis
 
-> AI cost breakdown, competitor research, subscription tiers, and sustainability strategy.
-
----
-
-## 1. AI Cost Structure
-
-Ashenholm uses **Gemini 2.5 Flash** via **OpenRouter** for all AI simulation calls.
-
-### OpenRouter Pricing (March 2026)
-
-| Metric | Cost |
-|---|---|
-| Input tokens | **$0.30 / 1M tokens** |
-| Output tokens | **$2.50 / 1M tokens** |
-
-### API Calls Per Simulation
-
-| Operation | Model Tier | max_tokens | When Triggered |
-|---|---|---|---|
-| Story Events | Smart (Gemini 2.5 Flash) | 2,048 | Per town, per month |
-| Population Changes | Cheap | 2,048 | Per town, per month |
-| Character Build | Cheap | 2,048 | Per new character |
-| Social/Relationships | Cheap | 2,048 | Per town, per month |
-| Stat/XP Updates | Cheap | 2,048 | Per town, per month |
-| Full Simulation (legacy) | Smart | 65,536 | Single-town sim |
-| Single Town Sim | Smart | 8,192 | Multi-town path |
+> AI cost assumptions, competitor context, subscription tiers, **Eon Credits (EC)** / raw-token wallet behavior, and sustainability notes.  
+> **Source of truth for live numbers:** `town-directory/tier_limits.php`, `town-directory/tier_economics.php`, `town-directory/tier_policy.php`, `town-directory/helpers.php` (`trackTokenUsage`), and `town-directory/src/constants/credits.js`.
 
 ---
 
-## 2. Cost Per Simulation
+## 1. AI stack and models
 
-Each simulation sends the full character roster + SRD reference data + rules in the prompt.  
-Bigger towns = more input tokens = slightly higher cost.
+All OpenRouter chat traffic uses models chosen in **`config.php`** (see **`town-directory/config.example.php`**). Defaults in the example config:
 
-### Chunked Path (4 API calls per town per simulated month)
+| Role | Constant | Example model id |
+|------|----------|-------------------|
+| Default / fallback | `OPENROUTER_MODEL` | `google/gemini-2.5-flash` |
+| “Smart” (story, single-town sim, world sim, etc.) | `OPENROUTER_MODEL_SMART` | `google/gemini-2.5-flash` |
+| Cheaper structured calls | `OPENROUTER_MODEL_CHEAP` | `google/gemini-2.5-flash-lite` |
 
-| Town Population | Input Cost | Output Cost | Char Builds (~2 new) | **Total / Sim** |
-|---|---|---|---|---|
-| 10 characters | $0.0014 | $0.005 | $0.003 | **$0.009** |
-| 30 characters | $0.003 | $0.005 | $0.003 | **$0.011** |
-| 50 characters | $0.005 | $0.005 | $0.003 | **$0.013** |
-| 100 characters | $0.008 | $0.006 | $0.003 | **$0.017** |
-| 200 characters | $0.016 | $0.007 | $0.003 | **$0.026** |
-| 500 characters | $0.036 | $0.010 | $0.003 | **$0.049** |
-| 1,000 characters | $0.072 | $0.013 | $0.003 | **$0.088** |
+Chunked town simulation (`simulate.php`): **story** uses the smart model; **population**, **character_build**, **social**, and **stats** use the cheap model, each with **`max_tokens` 2048** (plus other code paths with different ceilings for planner, intake, legacy branches—see repo for exact call sites).
 
-### Character Intake (0-month mode)
+**BYOK:** If the user sets their own OpenRouter key in Settings, the platform does **not** deduct from `credit_balance` and monthly EC caps do not apply to that usage.
 
-| Characters Generated | Cost |
-|---|---|
-| 5 | ~$0.015 |
-| 10 | ~$0.025 |
-| 25 | ~$0.050 |
-| 50 | ~$0.090 |
+**Pricing $/M:** OpenRouter’s per-model input/output rates change; use [OpenRouter model pages](https://openrouter.ai/models) for current $/M before updating internal cost spreadsheets. The sections below use **order-of-magnitude** examples, not a guaranteed quote.
 
 ---
 
-## 3. Competitor Pricing
+## 2. Eon Credits (EC) and raw tokens (what actually runs today)
 
-| Product | Free Tier | Entry Price | Mid Tier | Top Tier | AI? |
-|---|---|---|---|---|---|
-| **WorldAnvil** | ✅ 2 worlds, 42 articles | $5/mo | $12/mo | $25/mo | ❌ No |
-| **Worldsmith** | ❌ (7-day trial) | $5/mo | $15/mo | — | ✅ Yes (Mana credits) |
-| **LitRPG Adventures** | ❌ | $5/mo (700 credits) | $50/yr | $120 lifetime | ✅ Yes (GPT) |
-| **AI Game Master** | ✅ (5 tokens/4hrs) | $15/mo | $25/mo | $25/mo unlimited | ✅ Yes (GPT) |
-| **Kassoon** | ✅ Basic tools | $1/mo (Patreon) | — | — | ❌ No |
-| **Foundry VTT** | ❌ | $50 one-time | — | — | ❌ (modules) |
+### Display vs storage
 
-**Key takeaways:**
-- $5/mo is the universal entry point for TTRPG tools
-- $12–15/mo is the "serious hobbyist" sweet spot
-- $25/mo is the ceiling for individual users
-- NO competitor offers continuous AI town simulation — Ashenholm is unique
+- **`users.credit_balance`** is stored as **raw LLM tokens** (integer).
+- **Displayed EC** = `credit_balance ÷ TOKENS_PER_CREDIT` with **`TOKENS_PER_CREDIT = 200_000`** (`town-directory/src/constants/credits.js`, optional PHP `TOKENS_PER_CREDIT` in `config.php`).
+- **Wallet deductions** round usage **up** to **0.01 EC** buckets (2000 raw tokens per bucket at default TC) so the balance stays aligned with fine-grained UI (`helpers.php` → `trackTokenUsage()`).
 
----
+### Monthly platform ceiling (per tier)
 
-## 4. Finalized Subscription Tiers
+Usage is summed in **`user_token_usage`** by calendar month (`year_month`). On the **platform wallet**, **`ew_monthly_raw_cap_for_tier()`** is the monthly raw-token ceiling when that value is **greater than zero**; **zero** means no monthly ceiling (wallet-only—**Free** defaults to **0**). Override in MySQL **`site_settings`** as **`token_limit_{tier}`** (non-negative integer).
 
-| Tier | Price | Towns | Sims/Month | Max Chars/Town |
-|---|---|---|---|---|
-| **Free** | $0 | 3 | 4 (1/week) | 100 |
-| **Adventurer** | $5/mo ($50/yr) | 5 | 12 (3/week) | 200 |
-| **Dungeon Master** | $12/mo ($120/yr) | 15 | 40 (~daily) | 500 |
-| **World Builder** | $20/mo ($200/yr) | Unlimited | 120 (4/day) | 1,000 |
+**Default caps (no DB override)** come from **`tier_economics.php`**: **Apprentice** uses list price × **`EW_MONTHLY_CAP_ARPU_FRACTION`** (default **0.45**) ÷ **`EW_EC_MAINTAINER_COST_USD`** (default **0.15**) × **`TOKENS_PER_CREDIT`** (default **200_000**). **Adventurer / Guild Master / World Builder** use fixed monthly EC allowances (**40 / 85 / 150** EC) × TC. **Free** has **no** monthly raw cap (**0**); platform AI uses the **starter ~1.5 EC** wallet only until empty or BYOK.
 
-**All tiers include:** SRD browser, simulation settings, character management, calendar, town history, trade routes.
+| Tier id | Default monthly raw-token cap | ≈ EC/mo (÷ 200,000) | Implied max variable @ $0.15/EC |
+|---------|-------------------------------|---------------------|----------------------------------|
+| `free` | 0 (no monthly cap) | — | wallet-only @ ~1.5 EC starter |
+| `apprentice` | 3,000,000 | 15.0 | ~$2.25 (= 45% of $5 list) |
+| `adventurer` | 8,000,000 | 40 | ~$6.00 (fixed cap) |
+| `guild_master` | 17,000,000 | 85 | ~$12.75 (fixed cap) |
+| `world_builder` | 30,000,000 | 150 | ~$22.50 (fixed cap) |
 
-### Why This Structure Works
+Retail top-up anchors (e.g. **US$0.22 per 1.5 EC**) are a separate consumer story—**maintainer** economics for caps should follow **your** measured $/EC and desired ARPU fraction, then re-run or adjust **`site_settings`** on existing hosts if you already seeded old limits.
 
-- **Free tier is generous** — 3 towns lets users experience multi-town features (trade routes, inter-city dynamics) before paying. This is a better hook than most competitors.
-- **Sim caps are the safety valve** — not character counts. A user can grow their town organically; they just can't run the simulation an unlimited number of times.
-- **Natural upgrade moments:**
-  - Free → Adventurer: "I want to sim more than once a week"
-  - Adventurer → DM: "I have more than 5 towns in my world"
-  - DM → World Builder: "I want to sim daily and build massive cities"
+### Gating rules
+
+- **Empty wallet** (`credit_balance <= 0`) → platform-wallet AI blocked (unless BYOK).
+- **Over monthly cap** → blocked until next calendar month, upgrade, top-up (if you allow), or BYOK.
+- **Free tier:** large **town / world AI simulation** is not included (`tier_policy.php` → `ew_require_non_free_for_major_ai_simulation`). Free demo towns are capped at **`FREE_TIER_MAX_RESIDENTS`** (default **15** in `tier_policy.php`).
 
 ---
 
-## 5. Margin Analysis
+## 3. Subscription tiers (campaigns, towns, content) — current defaults
 
-### Per-Tier Costs
+Non-AI limits come from **`ew_tier_default_limits_by_id()`** in `tier_limits.php`. Monthly AI caps are in §2.
 
-| Tier | Revenue | Worst-Case AI Cost | Realistic AI Cost | Gross Margin |
-|---|---|---|---|---|
-| Free | $0 | $0.18/mo | $0.03/mo | Loss leader |
-| Adventurer | $5/mo | $0.36/mo | $0.12/mo | **97.6%** |
-| Dungeon Master | $12/mo | $2.40/mo | $0.50/mo | **95.8%** |
-| World Builder | $20/mo | $10.20/mo | $1.20/mo | **94.0%** |
+| Tier | Price (USD/mo) | Max campaigns | Max towns / campaign | Content library caps (files / storage) |
+|------|----------------|---------------|------------------------|------------------------------------------|
+| Free | $0 | 1 | 3 | 10 files, 20 MB total (per row defaults) |
+| Apprentice | $5 | 2 | 4 | 25 files, 50 MB |
+| Adventurer | $10 | 3 | 5 | 50 files, 100 MB |
+| Guild Master | $20 | 10 | 10 | 200 files, 500 MB |
+| World Builder | $40 | 999 | 999 | 9999 files, 2 GB |
 
-**Worst-case** = every town at max characters, every sim slot used.  
-**Realistic** = typical usage patterns (not all towns maxed, not all sims used).
+The Settings UI and the **Plans** app route (`/subscription` when logged in with a campaign) load the same catalog from the API (`subscription_catalog` or `campaigns` → `ew_tier_public_catalog()` plus monthly raw cap → ≈ EC) and list **per-tier includes** from `ew_tier_included_feature_bullets()` as `tier_catalog[].includes`. **Billing integration** for Stripe (or similar) is not assumed wired; tiers are still set manually / by admin in production unless you add checkout.
 
-### Cost Per 1,000 Free Users
+### 3.1 What each subscription includes (product)
 
-| Scenario | Monthly AI Cost | Annual Cost |
-|---|---|---|
-| Realistic (~20% active, light usage) | **$6** | $72 |
-| All active, light usage | **$30** | $360 |
-| All active, ALL maxing out | **$180** | $2,160 |
+**Every tier**
 
----
+- Campaign / town / content **limits** from the table above (enforced in `tier_limits.php` + upload paths).
+- **SRD** rules reference (edition follows the active campaign).
+- **Towns:** roster, relationships, buildings, town history, **in-game calendar**, campaign rules & lore.
+- **Wiki, Scribe, homebrew**, world map, trade routes, calendar tooling, and **exports** where enabled in the deployed build.
+- **Platform AI:** draws **Eon Credits** from `credit_balance` (stored as raw tokens) and counts toward a **calendar-month raw-token ceiling** per tier (§2), unless the account uses **BYOK** (own OpenRouter key in Settings), which skips the platform wallet and that ceiling.
 
-## 6. Sustainability Strategy — The AI Endowment Fund
+**Free ($0)**
 
-AI costs are so low that **investment interest can pay for free users permanently**.
+- Same core app surfaces as above within the **smallest** quotas.
+- **No** AI **town** or **multi-town world simulation** on the free demo tier (`tier_policy.php`); users may still use other AI features that respect the **EC wallet** (no monthly cap on Free) or attach **BYOK**.
+- **Resident cap** per town: `FREE_TIER_MAX_RESIDENTS` (default **15**).
 
-### How It Works
+**Apprentice ($5), Adventurer ($10), Guild Master ($20), World Builder ($40)**
 
-Put crowdfund money into a high-yield savings account (HYSA, ~4.5% APY).  
-The interest pays for AI tokens. The principal is never touched.
-
-| Principal | Annual Interest | Monthly Interest | Free Users Covered (realistic) | Free Users Covered (worst-case) |
-|---|---|---|---|---|
-| $1,000 | $45 | $3.75 | 125 | ~20 |
-| $2,000 | $90 | $7.50 | 250 | ~42 |
-| $5,000 | $225 | $18.75 | 625 | ~104 |
-| **$8,000** | **$360** | **$30** | **1,000** ✅ | ~167 |
-| $10,000 | $450 | $37.50 | 1,250 | ~208 |
-| $48,000 | $2,160 | $180 | 6,000 | **1,000** ✅ |
-
-**$8,000 in savings → interest covers 1,000 free users forever.**  
-**$48,000 in savings → interest covers 1,000 worst-case free users forever.**
-
-This is a powerful Kickstarter message:  
-> *"Your pledge enters a sustainability fund. Ashenholm runs on interest — your world lives forever."*
+- Everything in **Every tier**, with **higher** campaign, town, library, and monthly AI ceilings per row.
+- **AI town and multi-town world simulation** on the platform wallet (still subject to **EC balance + monthly cap**, or unconstrained on your side with **BYOK**).
 
 ---
 
-## 7. Kickstarter Backer Tiers
+## 4. Illustrative API cost (order of magnitude)
 
-| Tier | Pledge | Reward |
-|---|---|---|
-| **Supporter** | $5 | Name in credits + beta access |
-| **Early Adventurer** | $25 | 6 months Adventurer (saves $5) |
-| **Early DM** | $60 | 6 months Dungeon Master (saves $12) |
-| **Founding World Builder** | $99 | 12 months World Builder (saves $141) |
-| **Lifetime Adventurer** | $150 | Lifetime Adventurer access |
-| **Lifetime World Builder** | $300 | Lifetime World Builder + name a town |
+Each run sends roster + rules + SRD context; cost scales with **input size** and **output length**. Older tables in this file assumed a single Flash price for everything; today **Flash + Flash-Lite** mix and different **`max_tokens`** per endpoint change the curve.
 
-> ⚠️ Lifetime tiers: limit quantities (e.g. 50–100 slots). At these AI costs a lifetime user is sustainable, but hosting costs accumulate over years.
+Use this only for **rough** margin math; reconcile against **OpenRouter usage logs** and **`user_token_usage`** for real averages.
+
+- **Chunked month per town:** on the order of a few **tenths of a cent to a few cents** USD per simulated month for typical rosters, before retail markup.
+- **Intake / Scribe / weather / level-up:** smaller calls; total depends on batch sizes and retries.
 
 ---
 
-## 8. Summary
+## 5. Competitor pricing (unchanged gist)
+
+| Product | Free tier | Entry | Mid | Top | AI? |
+|---------|-----------|-------|-----|-----|-----|
+| WorldAnvil | ✅ limited | ~$5/mo | ~$12/mo | ~$25/mo | ❌ |
+| Worldsmith | trial | ~$5/mo | ~$15/mo | — | ✅ credits |
+| LitRPG Adventures | ❌ | low $/mo packs | — | lifetime options | ✅ |
+| AI Game Master | ✅ throttled | ~$15/mo | — | higher tiers | ✅ |
+| Foundry VTT | purchase | — | — | — | ❌ core |
+
+**Positioning:** $5–12/mo is the hobbyist band; continuous **living town** simulation plus roster tooling is still relatively rare—price against value and your **EC + cap** safety rail, not only raw API fractions.
+
+---
+
+## 6. Margin analysis (high level)
+
+Platform margin for paid tiers depends on:
+
+1. **Actual raw tokens** per active user (sim frequency, roster size, world sim).
+2. **Retail price** vs **your effective $/M** after OpenRouter + any provider discounts.
+3. **EC top-up** and **monthly caps** preventing a single account from burning unlimited platform keys.
+
+Older “worst-case per tier” dollar tables assumed **unlimited sims** and old tier names; those are retired here until you refresh them from production aggregates. **Default caps** tie full-burn variable cost to **EW_MONTHLY_CAP_ARPU_FRACTION × list ARPU** at **EW_EC_MAINTAINER_COST_USD** per displayed EC (see §2)—tighten the fraction (e.g. 0.30) or raise list price if you need more headroom for Stripe, hosting, and support.
+
+---
+
+## 7. Sustainability — AI endowment (optional narrative)
+
+If you still like the **“interest pays free-tier AI”** story for Kickstarter or patrons, the structure in the previous version of this doc still applies: park a principal in low-risk yield, use **only yield** toward a **fixed monthly** free-user AI budget. Size the principal from **measured** `user_token_usage` on free accounts, not from the retired static tables.
+
+---
+
+## 8. Kickstarter-style rewards (product-agnostic)
+
+Backer tiers (names, pledge levels, “X months of Guild Master”) can still follow §3 price points: **$5 / $10 / $20 / $40** monthly anchors plus optional lifetime SKUs with **strict quantity caps** and a clear ToS cap on abuse.
+
+---
+
+## 9. Summary (current model)
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                                                              │
-│  AI cost per user:    $0.03 – $1.20/month (realistic)        │
-│  Subscription price:  $0 / $5 / $12 / $20 per month         │
-│  Gross margins:       94 – 98%                               │
-│                                                              │
-│  1,000 free users cost ~$30/month in AI.                     │
-│  $8K in savings covers that with interest alone.             │
-│                                                              │
-│  Free tier: 3 towns, 100 chars, 4 sims/mo — costs pennies.  │
-│  Sim caps are the safety valve, not character limits.         │
-│  AI prices only go down — margins improve over time.         │
-│                                                              │
-└──────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────┐
+│  Product: Eon Weaver                                            │
+│  Wallet: raw tokens in DB; UI EC = raw ÷ 200,000                │
+│  Deductions: rounded up to 0.01 EC buckets                      │
+│  Monthly limit: per-tier raw cap (+ site_settings overrides)   │
+│  BYOK: user key → no platform wallet charge or monthly cap      │
+│  Free: demo population cap; major AI sim not on free tier       │
+│  Tiers: free, apprentice, adventurer, guild_master, world_builder│
+│  Code refs: tier_limits.php, tier_economics.php, helpers.php    │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### Action Items
+### Action items (refresh vs legacy list)
 
-1. Implement tier enforcement in the DB (sim counter, town/char limits)
-2. Add per-user usage tracking (tokens consumed per month)
-3. Set up OpenRouter billing alerts
-4. Structure Kickstarter tiers based on table above
-5. Earmark portion of crowdfund as AI endowment fund
-6. Offer annual pricing (17% discount) to reduce churn
-7. Marketing angle: *"3 towns free — build your world before you pay"*
+1. ~~Per-user usage tracking~~ — **`user_token_usage`** + wallet in **`helpers.php`**.
+2. ~~Tier defaults in code~~ — **`tier_limits.php`** / **`tier_economics.php`**; keep **`Price_Analysis.md`** in sync when you change them.
+3. **OpenRouter billing alerts** — still recommended in ops.
+4. **Recompute §4–§6** with 30/90-day production token averages when you have data.
+5. **Checkout** — wire Stripe (or similar) to tier ids above; keep **`token_limit_{tier}`** admin overrides documented for support.

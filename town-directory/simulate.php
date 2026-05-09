@@ -43,6 +43,8 @@ require_once $baseDir . '/config.php';
 require_once $baseDir . '/db.php';
 require_once $baseDir . '/llm_local.php';
 require_once $baseDir . '/helpers.php';
+require_once $baseDir . '/tier_policy.php';
+require_once $baseDir . '/sim_prompt_lib.php';
 
 $action = $_GET['action'] ?? '';
 $input = json_decode(file_get_contents('php://input'), true) ?? [];
@@ -184,7 +186,8 @@ try {
     }
     
     // Handle AI Scribe actions
-    if ($action === 'scribe_generate' || $action === 'scribe_save' || $action === 'scribe_get_history') {
+    if ($action === 'scribe_generate' || $action === 'scribe_save' || $action === 'scribe_get_history'
+        || $action === 'scribe_library_get' || $action === 'scribe_delete') {
         require __DIR__ . '/scribe_actions.php';
         exit;
     }
@@ -197,7 +200,7 @@ try {
             $apiKey = '';
             $keySource = 'none';
             try {
-                $apiKey = resolveApiKey('OPENROUTER_API_KEY', $userId);
+                $apiKey = resolveApiKey('OPENROUTER_API_KEY', $userId, false);
                 $keySource = 'resolved successfully';
             } catch (Exception $e) {
                 $keySource = 'NOT FOUND';
@@ -247,14 +250,25 @@ try {
            PLAN SIMULATION — Lightweight AI roadmap for multi-month sim
            ═══════════════════════════════════════════════════════════ */
         case 'plan_simulation':
+            ew_require_non_free_for_major_ai_simulation($userId);
             require __DIR__ . '/sim_plan.php';
             break;
         case 'run_simulation':
+            ew_require_non_free_for_major_ai_simulation($userId);
             require __DIR__ . '/sim_run.php';
             break;
         case 'apply_simulation':
             require __DIR__ . '/sim_apply.php';
             break;
+
+        case 'advance_calendar':
+            require_once __DIR__ . '/calendar_advance_lib.php';
+            $monthsElapsedAc = (int) ($input['months_elapsed'] ?? 0);
+            $daysElapsedAc = (int) ($input['days_elapsed'] ?? 0);
+            $calAdv = ew_advance_campaign_calendar($userId, $monthsElapsedAc, $daysElapsedAc);
+            simRespond(array_merge(['ok' => true], $calAdv));
+            break;
+
         case 'simulate_chunk':
             $tId = (int) ($input['town_id'] ?? 0);
             $monthNum = (int) ($input['month_num'] ?? 1);   // current month (1-based)
@@ -265,6 +279,7 @@ try {
             $priorContext = trim($input['prior_context'] ?? '');
             if (!$tId)
                 throw new Exception('Missing town_id');
+            ew_require_non_free_for_major_ai_simulation($userId);
             if (!in_array($category, ['story', 'population', 'character_build', 'social', 'stats']))
                 throw new Exception("Unknown category: $category");
 
@@ -307,18 +322,14 @@ try {
             $xpMax = $xpCaps[$xpSpeed] ?? 50;
             $popText = $deathThreshold === 'unlimited' ? 'No population cap.' : "Pop over {$deathThreshold} increases death rate.";
 
-            // Build roster
+            // Build roster (tiered when large — same names, less verbatim stats per call)
             $chars = query('SELECT * FROM characters WHERE town_id = ? ORDER BY name', [$tId], $uid);
-            $roster = [];
-            foreach ($chars as $c) {
-                $e = "{$c['name']} — {$c['race']} {$c['class']}, Age {$c['age']}, {$c['gender']}, Status:{$c['status']}";
-                if ($c['role'])
-                    $e .= ", Role:{$c['role']}";
-                $e .= ", XP:{$c['xp']}";
-                $roster[] = $e;
-            }
-            $rosterText = implode("\n", $roster);
             $charCount = count($chars);
+            $rosterText = $charCount > 22
+                ? ew_sim_tiered_roster_simple($chars, 12)
+                : implode("\n", array_map(function ($c) {
+                    return ew_sim_roster_line_simple($c);
+                }, $chars));
 
             $biomeBlock = $biome ? " | Biome: {$biome}" : '';
             $ctx = $priorContext ? "Prior events:\n{$priorContext}\n\n" : '';
@@ -353,7 +364,7 @@ try {
             $stLabel = $stLabels[$stType] ?? '';
             $stBlock = $stLabel ? " | Type: {$stLabel}" : '';
 
-            $base = "D&D {$dndEdition} | Town: \"{$tName}\"{$biomeBlock}{$stBlock} | Month {$monthNum} of {$totalMonths}\n{$ctx}{$buildingText}\n\nCURRENT ROSTER (CRITICAL: Do NOT reuse any names from this roster. Use highly unique D&D names):\n{$rosterText}";
+            $base = "D&D {$dndEdition} | Town: \"{$tName}\"{$biomeBlock}{$stBlock} | Month {$monthNum} of {$totalMonths}\n{$ctx}{$buildingText}\n\nCURRENT ROSTER (each line starts with NPC_<id> = characters.id; CRITICAL: Do NOT reuse any names from this roster. Use highly unique D&D names):\n{$rosterText}";
 
             // Category-specific prompt
             switch ($category) {
@@ -510,9 +521,11 @@ Respond ONLY with valid JSON:
 
 
         case 'simulate_single_town':
+            ew_require_non_free_for_major_ai_simulation($userId);
             require __DIR__ . '/sim_single_town.php';
             break;
         case 'simulate_world':
+            ew_require_non_free_for_major_ai_simulation($userId);
             require __DIR__ . '/sim_world.php';
             break;
         case 'generate_portrait_prompt':
@@ -765,39 +778,103 @@ PROMPT;
             break;
 
         /* ═══════════════════════════════════════════════════════
-           GENERATE WEATHER — Full year weather via single AI call
-           Saved to town_meta key 'weather_year'
+           GENERATE WEATHER — Full year monthly climate via single AI call
+           (town_meta 'weather_year'). Day-scale detail: weather_daily_lib.php at sim time.
            ═══════════════════════════════════════════════════════ */
         case 'generate_weather':
             $townId = (int) ($input['town_id'] ?? 0);
-            if (!$townId) throw new Exception('Missing town_id');
-            verifyTownOwnership($userId, $townId, $uid);
+            $campaignOnlyId = (int) ($input['campaign_id'] ?? 0);
+            if ($townId > 0 && $campaignOnlyId > 0) {
+                $campaignOnlyId = 0;
+            }
+            if (!$townId && !$campaignOnlyId) {
+                throw new Exception('Provide town_id or campaign_id');
+            }
 
             // Token budget check
             $uTierRows = query('SELECT subscription_tier FROM users WHERE id = ?', [$userId], 0);
             $uTier = $uTierRows ? ($uTierRows[0]['subscription_tier'] ?? 'free') : 'free';
-            if (checkTokenBudget($userId, $uTier)) {
-                throw new Exception('Token budget exceeded. Usage resets on the 1st.');
+            if (($bw = ew_platform_wallet_blocked($userId, $uTier)) !== null) {
+                throw new Exception($bw);
             }
 
-            // API key
             $apiKey = resolveApiKey('OPENROUTER_KEY_WEATHER', $userId);
 
-            // Load town meta for biome
-            $metaRows = query('SELECT `key`, value FROM town_meta WHERE town_id = ?', [$townId], $uid);
-            $townMeta = [];
-            foreach ($metaRows as $m) $townMeta[$m['key']] = $m['value'];
-            $biome = trim($townMeta['biome'] ?? 'Temperate Forest');
+            $town = null;
+            $townName = '';
+            $biome = '';
+            $placeLabel = '';
+            $settlementHint = '';
+            $campIdForCal = null;
 
-            // Load town info
-            $town = query('SELECT * FROM towns WHERE id = ?', [$townId], $uid);
-            if (!$town) throw new Exception('Town not found.');
-            $townName = $town[0]['name'];
+            if ($townId > 0) {
+                verifyTownOwnership($userId, $townId, $uid);
+                $metaRows = query('SELECT `key`, value FROM town_meta WHERE town_id = ?', [$townId], $uid);
+                $townMeta = [];
+                foreach ($metaRows as $m) {
+                    $townMeta[$m['key']] = $m['value'];
+                }
+                $biome = trim($townMeta['biome'] ?? 'Temperate Forest');
+                $town = query('SELECT * FROM towns WHERE id = ?', [$townId], $uid);
+                if (!$town) {
+                    throw new Exception('Town not found.');
+                }
+                $townName = $town[0]['name'];
+                $placeLabel = $townName;
+                $st = trim($townMeta['settlement_type'] ?? '');
+                if ($st !== '') {
+                    $settlementHint = 'Settlement type context: ' . $st;
+                }
+                $campIdForCal = $town[0]['campaign_id'] ?? null;
+            } else {
+                $campRows = query(
+                    'SELECT id, name FROM campaigns WHERE id = ? AND user_id = ? LIMIT 1',
+                    [$campaignOnlyId, $userId],
+                    $uid
+                );
+                if (!$campRows) {
+                    throw new Exception('Campaign not found.');
+                }
+                $campaignName = $campRows[0]['name'] ?? 'Campaign';
+                $campIdForCal = $campaignOnlyId;
 
-            // Load calendar
-            $campId = $town[0]['campaign_id'] ?? null;
-            if ($campId) {
-                $calRows = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id = ?', [$userId, $campId], $uid);
+                $seedRow = query(
+                    'SELECT value_json FROM integration_settings WHERE user_id = ? AND campaign_id = ? AND key_name = ? LIMIT 1',
+                    [$userId, $campaignOnlyId, 'world_weather_seed'],
+                    0
+                );
+                $seedObj = [];
+                if ($seedRow && !empty($seedRow[0]['value_json'])) {
+                    $decodedSeed = json_decode($seedRow[0]['value_json'], true);
+                    if (is_array($decodedSeed)) {
+                        $seedObj = $decodedSeed;
+                    }
+                }
+
+                $biome = trim((string) ($input['seed_biome'] ?? ''));
+                if ($biome === '' && isset($seedObj['biome'])) {
+                    $biome = trim((string) $seedObj['biome']);
+                }
+                if ($biome === '') {
+                    $biome = 'Grassland / Plains';
+                }
+
+                $placeLabel = trim((string) ($input['seed_place_name'] ?? ''));
+                if ($placeLabel === '' && isset($seedObj['place_label'])) {
+                    $placeLabel = trim((string) $seedObj['place_label']);
+                }
+                if ($placeLabel === '') {
+                    $placeLabel = $campaignName;
+                }
+
+                $settlementHint = trim((string) ($input['seed_settlement_context'] ?? ''));
+                if ($settlementHint === '' && isset($seedObj['settlement_context'])) {
+                    $settlementHint = trim((string) $seedObj['settlement_context']);
+                }
+            }
+
+            if ($campIdForCal) {
+                $calRows = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id = ?', [$userId, (int) $campIdForCal], $uid);
             } else {
                 $calRows = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id IS NULL', [$userId], $uid);
             }
@@ -812,35 +889,40 @@ PROMPT;
                 $curYear = (int) ($calData['current_year'] ?? 1490);
                 $eraName = trim($calData['era_name'] ?? 'DR');
                 $mpy = (int) ($calData['months_per_year'] ?? 12);
-                // days_per_month: JSON array or legacy single int
                 $dpmRaw = $calData['days_per_month'] ?? '30';
                 $dpmDecoded = json_decode($dpmRaw, true);
                 if (is_array($dpmDecoded)) {
                     $daysPerMonthArr = $dpmDecoded;
                 } else {
-                    $daysPerMonthArr = array_fill(0, $mpy, (int)($dpmRaw ?: 30));
+                    $daysPerMonthArr = array_fill(0, $mpy, (int) ($dpmRaw ?: 30));
                 }
                 $decoded = json_decode($calData['month_names'] ?? '[]', true);
-                if (!empty($decoded)) $monthNamesList = $decoded;
+                if (!empty($decoded)) {
+                    $monthNamesList = $decoded;
+                }
             }
 
-            // Build month names JSON for the prompt
-            $monthNamesJson = [];
             $monthInfoLines = [];
             for ($mi = 0; $mi < $mpy; $mi++) {
                 $mName = $monthNamesList[$mi] ?? "Month " . ($mi + 1);
                 $mDays = $daysPerMonthArr[$mi] ?? 30;
-                $monthNamesJson[] = $mName;
                 $monthInfoLines[] = ($mi + 1) . ". {$mName} ({$mDays} days)";
             }
             $monthInfoStr = implode("\n", $monthInfoLines);
 
+            $geoFocus = $townId > 0
+                ? "Generate a FULL YEAR of weather patterns for the settlement \"{$placeLabel}\"."
+                : "Generate a FULL YEAR of regional climate and weather for the campaign world / region \"{$placeLabel}\" (not one building — broad area climate suitable for many settlements).";
+            $settlementLine = $settlementHint !== ''
+                ? "- Extra context: {$settlementHint}\n"
+                : '';
+
             $weatherPrompt = <<<WPROMPT
-You are a D&D weather and climate expert. Generate a FULL YEAR of weather patterns for the settlement "{$townName}".
+You are a D&D weather and climate expert. {$geoFocus}
 
 ## ENVIRONMENT:
 - Biome/Terrain: {$biome}
-- Calendar Year: {$curYear} {$eraName}
+{$settlementLine}- Calendar Year: {$curYear} {$eraName}
 - Calendar: {$mpy} months per year (each month may have different day counts)
 - Months:
 {$monthInfoStr}
@@ -874,7 +956,6 @@ You are a D&D weather and climate expert. Generate a FULL YEAR of weather patter
 Generate EXACTLY {$mpy} months using the month names listed above, in order. Every month entry MUST have all fields shown.
 WPROMPT;
 
-            // Make AI call
             $openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
             $model = defined("OPENROUTER_MODEL_CHEAP") ? OPENROUTER_MODEL_CHEAP : (defined("OPENROUTER_MODEL") ? OPENROUTER_MODEL : "google/gemini-2.5-flash");
             $payload = json_encode([
@@ -915,20 +996,83 @@ WPROMPT;
                 throw new Exception('AI returned invalid weather data. Try again.');
             }
 
-            // Save to town_meta
             $weatherJson = json_encode($weatherData, JSON_UNESCAPED_UNICODE);
-            // Upsert
-            $existing = query('SELECT id FROM town_meta WHERE town_id = ? AND `key` = ?', [$townId, 'weather_year'], $uid);
-            if ($existing) {
-                query('UPDATE town_meta SET value = ? WHERE town_id = ? AND `key` = ?', [$weatherJson, $townId, 'weather_year'], $uid);
+            $worldSaved = false;
+
+            if ($townId > 0) {
+                $existing = query('SELECT id FROM town_meta WHERE town_id = ? AND `key` = ?', [$townId, 'weather_year'], $uid);
+                if ($existing) {
+                    query('UPDATE town_meta SET value = ? WHERE town_id = ? AND `key` = ?', [$weatherJson, $townId, 'weather_year'], $uid);
+                } else {
+                    query('INSERT INTO town_meta (town_id, `key`, value) VALUES (?, ?, ?)', [$townId, 'weather_year', $weatherJson], $uid);
+                }
+
+                $townCampId = (int) ($town[0]['campaign_id'] ?? 0);
+                if ($townCampId > 0) {
+                    try {
+                        $worldPayload = [
+                            'weather' => $weatherData,
+                            'generated_from_town_id' => $townId,
+                            'generated_from_town' => $townName,
+                            'generated_from_biome' => $biome,
+                            'generated_at' => gmdate('c'),
+                        ];
+                        execute(
+                            'INSERT INTO integration_settings (user_id, campaign_id, key_name, value_json)
+                             VALUES (?, ?, ?, ?)
+                             ON DUPLICATE KEY UPDATE value_json = VALUES(value_json), updated_at = NOW()',
+                            [$userId, $townCampId, 'world_weather_year', json_encode($worldPayload, JSON_UNESCAPED_UNICODE)],
+                            0
+                        );
+                        $worldSaved = true;
+                    } catch (Exception $e) {
+                        // Keep legacy save working even if integration_settings is unavailable.
+                    }
+                }
             } else {
-                query('INSERT INTO town_meta (town_id, `key`, value) VALUES (?, ?, ?)', [$townId, 'weather_year', $weatherJson], $uid);
+                try {
+                    $worldPayload = [
+                        'weather' => $weatherData,
+                        'generated_from_campaign_id' => $campaignOnlyId,
+                        'generated_from_campaign' => $placeLabel,
+                        'generated_from_biome' => $biome,
+                        'generated_at' => gmdate('c'),
+                    ];
+                    execute(
+                        'INSERT INTO integration_settings (user_id, campaign_id, key_name, value_json)
+                         VALUES (?, ?, ?, ?)
+                         ON DUPLICATE KEY UPDATE value_json = VALUES(value_json), updated_at = NOW()',
+                        [$userId, $campaignOnlyId, 'world_weather_year', json_encode($worldPayload, JSON_UNESCAPED_UNICODE)],
+                        0
+                    );
+                    $worldSaved = true;
+
+                    $seedSave = [
+                        'biome' => $biome,
+                        'place_label' => $placeLabel,
+                    ];
+                    if ($settlementHint !== '') {
+                        $seedSave['settlement_context'] = $settlementHint;
+                    }
+                    execute(
+                        'INSERT INTO integration_settings (user_id, campaign_id, key_name, value_json)
+                         VALUES (?, ?, ?, ?)
+                         ON DUPLICATE KEY UPDATE value_json = VALUES(value_json), updated_at = NOW()',
+                        [$userId, $campaignOnlyId, 'world_weather_seed', json_encode($seedSave, JSON_UNESCAPED_UNICODE)],
+                        0
+                    );
+                } catch (Exception $e) {
+                    throw new Exception('Could not save campaign weather: ' . $e->getMessage());
+                }
             }
 
             simRespond([
                 'ok' => true,
                 'weather' => $weatherData,
                 'months_generated' => count($weatherData['months']),
+                'scope' => $worldSaved ? 'campaign_world' : 'town_legacy',
+                'world_saved' => $worldSaved,
+                'mode' => $townId > 0 ? 'town' : 'campaign',
             ]);
             break;
 
@@ -947,8 +1091,8 @@ WPROMPT;
             // Token budget check
             $uTierRows = query('SELECT subscription_tier FROM users WHERE id = ?', [$userId], 0);
             $uTier = $uTierRows ? ($uTierRows[0]['subscription_tier'] ?? 'free') : 'free';
-            if (checkTokenBudget($userId, $uTier)) {
-                throw new Exception('Token budget exceeded. Usage resets on the 1st.');
+            if (($bw = ew_platform_wallet_blocked($userId, $uTier)) !== null) {
+                throw new Exception($bw);
             }
 
             $apiKey = resolveApiKey('OPENROUTER_KEY_SIM_STRUCTURED', $userId);
@@ -1075,8 +1219,8 @@ REPROMPT;
             // Token budget check
             $uTierRows = query('SELECT subscription_tier FROM users WHERE id = ?', [$userId], 0);
             $uTier = $uTierRows ? ($uTierRows[0]['subscription_tier'] ?? 'free') : 'free';
-            if (checkTokenBudget($userId, $uTier)) {
-                throw new Exception('Token budget exceeded. Usage resets on the 1st.');
+            if (($bw = ew_platform_wallet_blocked($userId, $uTier)) !== null) {
+                throw new Exception($bw);
             }
 
             $apiKey = resolveApiKey('OPENROUTER_KEY_SIM_STRUCTURED', $userId);
@@ -1172,8 +1316,8 @@ LPROMPT;
             // Token budget check
             $uTierRows = query('SELECT subscription_tier FROM users WHERE id = ?', [$userId], 0);
             $uTier = $uTierRows ? ($uTierRows[0]['subscription_tier'] ?? 'free') : 'free';
-            if (checkTokenBudget($userId, $uTier)) {
-                throw new Exception('Token budget exceeded. Usage resets on the 1st.');
+            if (($bw = ew_platform_wallet_blocked($userId, $uTier)) !== null) {
+                throw new Exception($bw);
             }
 
             $apiKey = resolveApiKey('OPENROUTER_KEY_SIM_STRUCTURED', $userId);

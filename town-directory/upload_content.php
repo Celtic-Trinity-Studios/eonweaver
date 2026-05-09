@@ -19,6 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/tier_limits.php';
 require_once __DIR__ . '/user_db.php';
 
 function respond(array $data): void
@@ -60,13 +61,11 @@ try {
 
     // Check tier-based limits (tier from shared MySQL)
     $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
-    $tier = $udata[0]['subscription_tier'] ?? 'free';
-    $maxFileSizes = ['free' => 2 * 1024 * 1024, 'apprentice' => 3 * 1024 * 1024, 'adventurer' => 5 * 1024 * 1024, 'guild_master' => 10 * 1024 * 1024, 'world_builder' => 20 * 1024 * 1024];
-    $maxFilesCounts = ['free' => 10, 'apprentice' => 25, 'adventurer' => 50, 'guild_master' => 200, 'world_builder' => 9999];
-    $maxStorages = ['free' => 20 * 1024 * 1024, 'apprentice' => 50 * 1024 * 1024, 'adventurer' => 100 * 1024 * 1024, 'guild_master' => 500 * 1024 * 1024, 'world_builder' => 2048 * 1024 * 1024];
-    $maxFileSize = $maxFileSizes[$tier] ?? $maxFileSizes['free'];
-    $maxFiles = $maxFilesCounts[$tier] ?? $maxFilesCounts['free'];
-    $maxStorage = $maxStorages[$tier] ?? $maxStorages['free'];
+    $tier = ew_normalize_subscription_tier((string) ($udata[0]['subscription_tier'] ?? 'free'));
+    $lim = ew_tier_limits_for_user_tier($tier);
+    $maxFileSize = (int) $lim['content_max_file_bytes'];
+    $maxFiles = (int) $lim['content_max_files'];
+    $maxStorage = (int) $lim['content_max_storage_bytes'];
 
     if ($file['size'] > $maxFileSize) {
         $limitMB = $maxFileSize / (1024 * 1024);

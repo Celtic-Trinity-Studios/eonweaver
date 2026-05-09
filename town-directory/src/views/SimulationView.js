@@ -15,6 +15,7 @@ import {
 } from '../api/simulation.js';
 import { apiGetCalendar } from '../api/settings.js';
 import { confirmAiCost } from '../components/AiCostConfirm.js';
+import { MAX_INTAKE_ARRIVALS } from '../constants/intakeLimits.js';
 
 export default function SimulationView(container) {
   const state = getState();
@@ -55,13 +56,13 @@ export default function SimulationView(container) {
             <label>📅 Days (Partial Month)</label>
             <div style="display:flex;align-items:center;gap:0.5rem;">
               <input type="number" id="sim-days" class="form-input" min="0" max="30" value="0" style="width:70px;text-align:center;" title="Days to simulate within the month (0 = full month)">
-              <span style="font-size:0.75rem;color:var(--text-muted)">0 = full month</span>
+              <span style="font-size:0.75rem;color:var(--text-muted)">0 = full month. For multi-month runs, simulation executes one API call per month; partial days apply only to single-month runs.</span>
             </div>
           </div>
           <div class="sim-field">
             <label>👥 Intake (Force Arrivals)</label>
             <div style="display:flex;align-items:center;gap:0.5rem;">
-              <input type="number" id="sim-intake-count" class="form-input" min="0" max="50" value="0" style="width:70px;text-align:center;" title="Number of people to force move in (0 = natural only)">
+              <input type="number" id="sim-intake-count" class="form-input" min="0" max="${MAX_INTAKE_ARRIVALS}" value="0" style="width:70px;text-align:center;" title="Number of people to force move in (0 = natural only)">
               <span style="font-size:0.75rem;color:var(--text-muted)">0 = natural arrivals only</span>
             </div>
           </div>
@@ -274,7 +275,7 @@ export default function SimulationView(container) {
     const configEl = cont.querySelector('#sim-config');
 
     let fullInstructions = instructions;
-    let intakeCount = Math.max(0, Math.min(50, parseInt(cont.querySelector('#sim-intake-count')?.value) || 0));
+    let intakeCount = Math.max(0, Math.min(MAX_INTAKE_ARRIVALS, parseInt(cont.querySelector('#sim-intake-count')?.value) || 0));
     let daysCount = Math.max(0, Math.min(30, parseInt(cont.querySelector('#sim-days')?.value) || 0));
 
     // Estimate population for cost display
@@ -325,6 +326,8 @@ export default function SimulationView(container) {
         progressText.textContent = 'Simulation complete!';
         log('✅ Simulation completed successfully!', 'success');
 
+        cont._lastSimPartialDays = daysCount;
+
         if (result.simulation) {
           const ch = result.simulation.changes || {};
           log(`New chars: ${(ch.new_characters || []).length}, Deaths: ${(ch.deaths || []).length}, XP: ${(ch.xp_gains || []).length}`, 'info');
@@ -335,8 +338,10 @@ export default function SimulationView(container) {
         showResults(cont, result);
 
       } else {
-        // Multi-month: iterate month by month for detailed simulation
-        log(`Running ${selectedMonths} months month-by-month...`, 'info');
+        // Multi-month: one API call per month (smaller prompts, less context bloat).
+        const effectiveBatchSize = 1;
+        const totalBatches = Math.ceil(selectedMonths / effectiveBatchSize);
+        log(`Running ${selectedMonths} month(s) in ${totalBatches} API call(s) (1 month per call)...`, 'info');
 
         // Accumulated result
         const merged = {
@@ -356,28 +361,27 @@ export default function SimulationView(container) {
         };
         const summaries = [];
 
-        // Run month by month — more realistic, and with the trimmed prompt
-        // the cost difference vs batching is negligible (<$0.01 for 24 months)
-        const BATCH_SIZE = 1;
-        const totalBatches = selectedMonths;
+        cont._lastSimPartialDays = 0;
 
-        for (let batch = 0; batch < totalBatches; batch++) {
-          const batchStart = batch * BATCH_SIZE + 1;
-          const batchEnd = Math.min((batch + 1) * BATCH_SIZE, selectedMonths);
+        let batch = 0;
+        for (let batchStart = 1; batchStart <= selectedMonths; batchStart += effectiveBatchSize) {
+          const batchEnd = Math.min(batchStart + effectiveBatchSize - 1, selectedMonths);
           const batchMonths = batchEnd - batchStart + 1;
 
           const pct = Math.round(((batch + 1) / totalBatches) * 90) + 5;
           progressFill.style.width = `${pct}%`;
           progressText.textContent = `Simulating months ${batchStart}-${batchEnd} of ${selectedMonths}... (batch ${batch + 1}/${totalBatches})`;
-          log(`Batch ${batch + 1}/${totalBatches}: months ${batchStart}-${batchEnd} (${batchMonths} months)...`, 'info');
+          log(`Batch ${batch + 1}/${totalBatches}: months ${batchStart}-${batchEnd} (${batchMonths} month(s) per call)...`, 'info');
 
           // Only pass intake count on the first batch
           const batchIntake = batch === 0 ? intakeCount : 0;
-          // Only pass user instructions on the first batch
-          const batchInstructions = batch === 0 ? fullInstructions : '';
+          const batchInstructions = batch === 0
+            ? fullInstructions
+            : `[Continuing prior simulation — cover ONLY calendar months ${batchStart}-${batchEnd} of ${selectedMonths} total. Earlier months are already applied in the database. Stay consistent with existing town state.]\n`;
 
           try {
-            const batchResult = await apiRunSimulation(townId, batchMonths, rules, batchInstructions, batchIntake);
+            const partialDaysArg = (daysCount > 0 && selectedMonths === 1) ? daysCount : 0;
+            const batchResult = await apiRunSimulation(townId, batchMonths, rules, batchInstructions, batchIntake, partialDaysArg);
             const sim = batchResult.simulation || {};
             const ch = sim.changes || {};
 
@@ -412,7 +416,9 @@ export default function SimulationView(container) {
             // Apply this batch's changes immediately so
             // the next batch sees updated building state, population, etc.
             try {
-              const applyRes = await apiApplySimulation(townId, ch, sim.new_history_entry || null, batchMonths);
+              const applyMonthsElapsed = partialDaysArg > 0 ? 0 : batchMonths;
+              const applyDaysElapsed = partialDaysArg > 0 ? partialDaysArg : 0;
+              const applyRes = await apiApplySimulation(townId, ch, sim.new_history_entry || null, applyMonthsElapsed, applyDaysElapsed);
               log(`  Applied batch ${batch + 1} changes`, 'success');
               // Capture level-up details from apply response
               const ad = applyRes.applied || {};
@@ -440,6 +446,7 @@ export default function SimulationView(container) {
             log(`  ❌ Batch ${batch + 1} (months ${batchStart}-${batchEnd}) failed: ${batchErr.message}`, 'error');
             // Continue with remaining batches
           }
+          batch++;
         }
 
         // Build final merged result
@@ -687,11 +694,13 @@ export default function SimulationView(container) {
         applyBtn.textContent = '⏳ Applying...';
         log('Applying simulation changes...', 'info');
         try {
+          const partialDays = Math.max(0, Math.min(31, parseInt(cont._lastSimPartialDays, 10) || 0));
           const applyRes = await apiApplySimulation(
             state.currentTownId,
             changes,
             sim.new_history_entry || null,
-            selectedMonths
+            partialDays > 0 ? 0 : selectedMonths,
+            partialDays
           );
 
           // Show what was actually applied

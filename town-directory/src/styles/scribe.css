@@ -153,6 +153,111 @@
     50% { transform: translateY(-15px) rotate(10deg); }
 }
 
+.scribe-library-panel {
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.scribe-library-heading {
+    font-family: var(--font-display, 'Cinzel', serif);
+    font-size: 1rem;
+    margin: 0 0 0.35rem;
+    color: var(--text-color);
+}
+
+.scribe-library-help {
+    font-size: 0.85rem;
+    margin: 0 0 0.75rem;
+    line-height: 1.45;
+}
+
+.scribe-library-list {
+    margin-top: 0.75rem;
+    max-height: 220px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.scribe-library-empty {
+    font-size: 0.85rem;
+    margin: 0;
+    line-height: 1.45;
+}
+
+.scribe-library-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding: 0.45rem 0.55rem;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-color);
+    background: rgba(0, 0, 0, 0.15);
+}
+
+.scribe-library-open {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--accent, var(--primary-color));
+    font-weight: 600;
+    font-size: 0.9rem;
+    cursor: pointer;
+    padding: 0;
+    font-family: inherit;
+}
+
+.scribe-library-open:hover {
+    text-decoration: underline;
+}
+
+.scribe-library-meta {
+    font-size: 0.72rem;
+    line-height: 1.3;
+}
+
+.scribe-library-view-bar {
+    flex-shrink: 0;
+    padding-bottom: 0.75rem;
+    margin-bottom: 0.75rem;
+    border-bottom: 1px solid var(--border-color);
+    font-family: var(--font-body, 'Inter', sans-serif);
+}
+
+.scribe-library-view-bar-inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.65rem;
+}
+
+.scribe-library-view-title {
+    font-weight: 600;
+    color: var(--accent, var(--primary-color));
+    font-size: 0.95rem;
+}
+
+.scribe-library-view-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.scribe-markdown-editor {
+    width: 100%;
+    min-height: 280px;
+    resize: vertical;
+    font-family: ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+    font-size: 0.88rem;
+    line-height: 1.45;
+}
+
 @media (max-width: 900px) {
     .scribe-workspace {
         flex-direction: column;

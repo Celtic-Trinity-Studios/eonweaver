@@ -1,17 +1,87 @@
 /**
  * Eon Weaver — Town Setup Wizard
- * Modal wizard for town population, building generation, weather, and spell assignment.
- * Replaces the old inline intake bar.
+ * Modal wizard for town population, building generation, and spell assignment.
+ * Yearly world climate is generated under Settings → World climate.
  */
-import { getState, setState } from '../stores/appState.js';
 import { showModal } from './Modal.js';
+import { confirmAiCost } from './AiCostConfirm.js';
 import { apiGetCharacters, normalizeCharacter } from '../api/characters.js';
 import { apiGetTownMeta, apiSaveTownMeta } from '../api/towns.js';
-import { apiApplySimulation, apiIntakeRoster, apiIntakeFlesh, apiIntakeCreature, apiGetCampaignRules, apiAutoAssignSpellsTown, apiSaveCampaignRules } from '../api/simulation.js';
-import { apiGenerateWeather } from '../api/simulation.js';
+import { apiApplySimulation, apiIntakeRoster, apiIntakeFlesh, apiIntakeCreature, apiGetCampaignRules, apiAutoAssignSpellsTown } from '../api/simulation.js';
 import { apiGetCalendar } from '../api/settings.js';
 import { apiGetBuildings, apiSaveBuilding } from '../api/buildings.js';
-import { confirmAiCost } from './AiCostConfirm.js';
+import {
+  SHARED_SETTLEMENT_TYPE_OPTIONS,
+  SHARED_BIOME_VALUES,
+  SHARED_DIFFICULTY_OPTIONS,
+  DEFAULT_DEMOGRAPHICS,
+  parseDemographicsRows,
+} from '../constants/sharedTownSettings.js';
+import { MAX_INTAKE_ARRIVALS } from '../constants/intakeLimits.js';
+
+/** Preserve explicit empty strings from town_meta (matches Town Settings modal selects). */
+function pickTownMetaStr(meta, key, defaultVal) {
+  if (!Object.prototype.hasOwnProperty.call(meta, key) || meta[key] == null) return defaultVal;
+  return String(meta[key]);
+}
+
+function populateSharedTownSettingsForm(el, meta) {
+  const settlementEl = el.querySelector('#sw-settlement-type');
+  const biomeEl = el.querySelector('#sw-shared-biome');
+  const difficultyEl = el.querySelector('#sw-shared-difficulty');
+  if (!settlementEl || !biomeEl || !difficultyEl) return;
+
+  settlementEl.value = pickTownMetaStr(meta, 'settlement_type', '');
+  biomeEl.value = pickTownMetaStr(meta, 'biome', '');
+  let dlv = Object.prototype.hasOwnProperty.call(meta, 'difficulty_level') ? meta.difficulty_level : null;
+  if (dlv == null || dlv === '') dlv = 'struggling';
+  difficultyEl.value = String(dlv);
+}
+
+function parseGenRules(meta) {
+  try {
+    return meta.gen_rules ? JSON.parse(meta.gen_rules) || {} : {};
+  } catch {
+    return {};
+  }
+}
+
+function applyWizardGenRules(el, gen) {
+  const g = gen || {};
+  const setVal = (id, v) => {
+    const n = el.querySelector(`#${id}`);
+    if (n) n.value = v ?? '';
+  };
+  setVal('sw-ts-intake-level', g.intake_level ?? '');
+  setVal('sw-ts-max-level', g.max_level ?? '');
+  setVal('sw-ts-hp-rule', g.hp_rule ?? '');
+  setVal('sw-ts-sources', g.sources ?? '');
+  setVal('sw-ts-starting-equip', g.starting_equip ?? '');
+  setVal('sw-ts-class-dist', g.class_dist ?? '');
+  setVal('sw-ts-name-style', g.name_style ?? '');
+  setVal('sw-ts-bg-complexity', g.bg_complexity ?? '');
+  setVal('sw-ts-age-dist', g.age_dist ?? '');
+}
+
+function collectWizardGenRules(el) {
+  const v = (id) => el.querySelector(`#${id}`)?.value ?? '';
+  const m = {};
+  if (v('sw-ts-intake-level') !== '') m.intake_level = v('sw-ts-intake-level');
+  if (v('sw-ts-max-level')) m.max_level = v('sw-ts-max-level');
+  if (v('sw-ts-hp-rule')) m.hp_rule = v('sw-ts-hp-rule');
+  if (v('sw-ts-sources')) m.sources = v('sw-ts-sources');
+  if (v('sw-ts-starting-equip')) m.starting_equip = v('sw-ts-starting-equip');
+  if (v('sw-ts-class-dist')) m.class_dist = v('sw-ts-class-dist');
+  if (v('sw-ts-name-style')) m.name_style = v('sw-ts-name-style');
+  if (v('sw-ts-bg-complexity')) m.bg_complexity = v('sw-ts-bg-complexity');
+  if (v('sw-ts-age-dist')) m.age_dist = v('sw-ts-age-dist');
+  return m;
+}
+
+/** Wizard does not edit closed_borders — merge so Town Settings (simulation) value is preserved. */
+function genRulesJsonForWizardSave(el, meta) {
+  return JSON.stringify({ ...parseGenRules(meta), ...collectWizardGenRules(el) });
+}
 
 // ═══════════════════════════════════════════════════════════
 // D&D BUILDING TEMPLATES — randomized per town setup
@@ -216,7 +286,15 @@ function generateBuildingList(age, population, biome, existingBuildings = []) {
 // ═══════════════════════════════════════════════════════════
 
 export function openTownSetupWizard(townId, onRefresh) {
-  const state = getState();
+  const settlementOptsHtml = SHARED_SETTLEMENT_TYPE_OPTIONS.map(
+    o => `<option value="${o.value.replace(/"/g, '&quot;')}">${o.label}</option>`
+  ).join('');
+  const biomeOptsHtml = SHARED_BIOME_VALUES.map(
+    b => `<option value="${String(b).replace(/"/g, '&quot;')}">${b || '— Not Set —'}</option>`
+  ).join('');
+  const diffOptsHtml = SHARED_DIFFICULTY_OPTIONS.map(
+    d => `<option value="${d.value}">${d.label} — ${d.desc}</option>`
+  ).join('');
 
   const { el, close } = showModal({
     title: '🏗️ Town Setup Wizard',
@@ -225,33 +303,143 @@ export function openTownSetupWizard(townId, onRefresh) {
       <div class="setup-wizard">
         <div class="setup-tabs" id="setup-tabs">
           <button class="setup-tab active" data-tab="populate">👥 Populate</button>
+          <button class="setup-tab" data-tab="demographics">📊 Demographics</button>
           <button class="setup-tab" data-tab="buildings">🏛️ Buildings</button>
-          <button class="setup-tab" data-tab="weather">🌦️ Weather</button>
-
           <button class="setup-tab" data-tab="settings">⚙️ Settings</button>
         </div>
 
         <!-- POPULATE TAB -->
         <div class="setup-panel active" data-panel="populate">
           <h3 style="margin-bottom:0.5rem;">👥 Add Population</h3>
-          <p class="setup-desc">Generate new residents for this town using AI. No simulation is run — characters are created and added directly.</p>
+          <p class="setup-desc">Configure who gets generated and how, then run AI intake. No simulation step — characters are created and added directly. These fields match <strong>Town Settings</strong> (⚙️) and stay saved for later edits.</p>
 
-          <div class="setup-row">
-            <div class="form-group" style="flex:0 0 100px;">
-              <label>Count</label>
-              <input type="number" id="sw-pop-count" class="form-input" min="1" max="50" value="5" style="text-align:center;">
-            </div>
-            <div class="form-group" style="flex:1;">
-              <label>Instructions <span style="color:var(--text-muted);font-weight:400;">(optional)</span></label>
-              <input type="text" id="sw-pop-instructions" class="form-input"
-                placeholder="e.g. 'all dwarves', 'merchants only', 'a family of 4', 'goblin 5'...">
-            </div>
-          </div>
+          <div id="sw-populate-loading" style="color:var(--text-muted);padding:0.75rem 0;">Loading population settings…</div>
+          <div id="sw-populate-body" style="display:none;">
 
-          <div class="setup-actions">
-            <button class="btn-primary" id="sw-pop-generate">🎲 Generate Characters</button>
+            <h3 class="settings-section-title" style="margin-top:0;">🎲 Generation Rules</h3>
+            <p class="settings-desc">Per-town rules for new NPCs in this location (saved with demographics).</p>
+            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem .75rem;margin-bottom:1rem;">
+              <div class="form-group">
+                <label for="sw-ts-intake-level">🎚️ Default Intake Level</label>
+                <input type="number" id="sw-ts-intake-level" class="form-input" min="0" max="20" placeholder="— Default (0) —" style="width:100%">
+                <small class="settings-hint">0 = AI picks appropriate level</small>
+              </div>
+              <div class="form-group">
+                <label for="sw-ts-max-level">🏔️ Max NPC Level</label>
+                <input type="number" id="sw-ts-max-level" class="form-input" min="1" max="20" placeholder="— Default (20) —" style="width:100%">
+              </div>
+              <div class="form-group">
+                <label for="sw-ts-hp-rule">❤️ HP at Level Up</label>
+                <select id="sw-ts-hp-rule" class="form-select">
+                  <option value="">— Default —</option>
+                  <option value="max">Max HP every level</option>
+                  <option value="average">Average (rounded up)</option>
+                  <option value="rolled">Rolled (random)</option>
+                  <option value="max_first">Max at L1, roll after</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="sw-ts-sources">📚 Allowed Sources</label>
+                <select id="sw-ts-sources" class="form-select">
+                  <option value="">— Default —</option>
+                  <option value="phb_only">PHB Only</option>
+                  <option value="phb_xge">PHB + Xanathar's</option>
+                  <option value="phb_xge_tce">PHB + XGE + Tasha's</option>
+                  <option value="all_official">All Official Books</option>
+                  <option value="homebrew">All + Homebrew Allowed</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="sw-ts-starting-equip">🪙 Starting Equipment</label>
+                <select id="sw-ts-starting-equip" class="form-select">
+                  <option value="">— Default —</option>
+                  <option value="class_default">Class Default</option>
+                  <option value="rolled_gold">Rolled Gold</option>
+                  <option value="minimal">Minimal</option>
+                  <option value="wealthy">Wealthy</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="sw-ts-class-dist">🧑‍🤝‍🧑 Class Distribution</label>
+                <select id="sw-ts-class-dist" class="form-select">
+                  <option value="">— Default —</option>
+                  <option value="commoner">Mostly Commoners</option>
+                  <option value="balanced">Balanced Mix</option>
+                  <option value="adventurer">Adventurer-Heavy</option>
+                  <option value="elite">Elite</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="sw-ts-name-style">🎭 NPC Name Style</label>
+                <select id="sw-ts-name-style" class="form-select">
+                  <option value="">— Default —</option>
+                  <option value="high_fantasy">High Fantasy</option>
+                  <option value="cultural">Cultural / Ethnic</option>
+                  <option value="real_world">Real-World Inspired</option>
+                  <option value="whimsical">Whimsical</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="sw-ts-bg-complexity">👤 Background Complexity</label>
+                <select id="sw-ts-bg-complexity" class="form-select">
+                  <option value="">— Default —</option>
+                  <option value="simple">Simple</option>
+                  <option value="standard">Standard</option>
+                  <option value="detailed">Detailed</option>
+                  <option value="epic">Epic Origins</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="sw-ts-age-dist">📅 Age Distribution</label>
+                <select id="sw-ts-age-dist" class="form-select">
+                  <option value="">— Default —</option>
+                  <option value="young">Young Adults Only</option>
+                  <option value="prime">Prime Age</option>
+                  <option value="full_range">Full Range</option>
+                  <option value="elder">Elder-Heavy</option>
+                </select>
+              </div>
+            </div>
+
+            <h3 style="margin:1.25rem 0 0.5rem;font-size:1rem;">Roll intake</h3>
+            <div class="setup-row">
+              <div class="form-group" style="flex:0 0 100px;">
+                <label>Count</label>
+                <input type="number" id="sw-pop-count" class="form-input" min="1" max="${MAX_INTAKE_ARRIVALS}" value="5" style="text-align:center;">
+              </div>
+              <div class="form-group" style="flex:1;">
+                <label>Instructions <span style="color:var(--text-muted);font-weight:400;">(optional)</span></label>
+                <input type="text" id="sw-pop-instructions" class="form-input"
+                  placeholder="e.g. 'all dwarves', 'merchants only', 'a family of 4', 'goblin 5'...">
+              </div>
+            </div>
+
+            <div class="setup-actions">
+              <button type="button" class="btn-secondary" id="sw-pop-save-rules">💾 Save generation rules</button>
+              <button class="btn-primary" id="sw-pop-generate">🎲 Generate Characters</button>
+            </div>
+            <div class="setup-status" id="sw-pop-status"></div>
           </div>
-          <div class="setup-status" id="sw-pop-status"></div>
+        </div>
+
+        <!-- DEMOGRAPHICS TAB -->
+        <div class="setup-panel" data-panel="demographics">
+          <h3 style="margin-bottom:0.5rem;">📊 Population Demographics</h3>
+          <p class="setup-desc">Target race percentages for new NPCs and simulations. Matches <strong>Town Settings</strong> (⚙️ → demographics). Totals should reach <strong>100%</strong> for predictable mixes.</p>
+
+          <div id="sw-demographics-loading" style="color:var(--text-muted);padding:0.75rem 0;">Loading demographics…</div>
+          <div id="sw-demographics-body" style="display:none;">
+            <div class="demographics-grid" id="sw-demo-grid"></div>
+            <div class="demo-footer" style="margin-top:0.5rem;">
+              <button type="button" class="btn-secondary btn-sm" id="sw-demo-add-btn">+ Add Race</button>
+              <button type="button" class="btn-secondary btn-sm" id="sw-demo-reset-btn">Reset to Default</button>
+              <span class="demo-total" id="sw-demo-total">Total: <strong>0%</strong></span>
+            </div>
+            <div class="setup-actions" style="margin-top:1rem;">
+              <button type="button" class="btn-primary" id="sw-demo-save-btn">💾 Save demographics</button>
+            </div>
+            <div class="setup-status" id="sw-demo-status"></div>
+          </div>
         </div>
 
         <!-- BUILDINGS TAB -->
@@ -287,117 +475,29 @@ export function openTownSetupWizard(townId, onRefresh) {
           <div class="setup-status" id="sw-bld-status"></div>
         </div>
 
-        <!-- WEATHER TAB -->
-        <div class="setup-panel" data-panel="weather">
-          <h3 style="margin-bottom:0.5rem;">🌦️ Generate Weather</h3>
-          <p class="setup-desc">AI generates a full year of weather patterns based on this town's biome and climate. The result is saved and used during simulations for immersive, thematic events.</p>
-
-          <div class="setup-row">
-            <div class="form-group">
-              <label>Biome</label>
-              <span id="sw-wx-biome" class="setup-info-value">Loading...</span>
-            </div>
-            <div class="form-group">
-              <label>Calendar</label>
-              <span id="sw-wx-calendar" class="setup-info-value">Loading...</span>
-            </div>
-            <div class="form-group">
-              <label>Status</label>
-              <span id="sw-wx-existing" class="setup-info-value">Checking...</span>
-            </div>
-          </div>
-
-          <div class="setup-actions">
-            <button class="btn-primary" id="sw-wx-generate">🌤️ Generate Full Year Weather</button>
-          </div>
-          <div id="sw-wx-preview" class="setup-weather-preview"></div>
-          <div class="setup-status" id="sw-wx-status"></div>
-        </div>
-
-
-
         <!-- SETTINGS TAB -->
         <div class="setup-panel" data-panel="settings">
-          <h3 style="margin-bottom:0.5rem;">⚙️ Campaign Rules</h3>
-          <p class="setup-desc">These settings control how the AI simulation generates content. Changes are saved to your active campaign and affect all towns.</p>
+          <h3 style="margin-bottom:0.5rem;">⚙️ Town Environment</h3>
+          <p class="setup-desc">Settlement type, biome, and XP difficulty — shared with <strong>Town Settings</strong> (⚙️). Generation rules are on <strong>Populate</strong>; race mix is on <strong>Demographics</strong>.</p>
 
           <div id="sw-settings-loading" style="color:var(--text-muted);padding:1rem;">Loading settings...</div>
-          <div id="sw-settings-content" style="display:none;">
+          <div id="sw-settings-content" style="display:none;" class="town-settings-body">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;">
-              <div>
-                <h4 style="color:var(--accent);margin-bottom:0.5rem;font-size:0.85rem;">🌍 World Simulation</h4>
-                <div class="form-group"><label>Relationship Formation</label>
-                  <select id="sw-rel-speed" class="form-select">
-                    <option value="very slow">Very Slow</option><option value="slow">Slow</option>
-                    <option value="normal" selected>Normal</option><option value="fast">Fast</option>
-                  </select></div>
-                <div class="form-group"><label>Birth Rate</label>
-                  <select id="sw-birth-rate" class="form-select">
-                    <option value="rare">Rare</option><option value="low">Low</option>
-                    <option value="normal" selected>Normal</option><option value="high">High</option>
-                  </select></div>
-                <div class="form-group"><label>Death Threshold</label>
-                  <select id="sw-death-threshold" class="form-select">
-                    <option value="25">25</option><option value="50" selected>50</option>
-                    <option value="75">75</option><option value="100">100</option>
-                    <option value="150">150</option><option value="unlimited">Unlimited</option>
-                  </select></div>
-                <div class="form-group"><label>Child Growth</label>
-                  <select id="sw-child-growth" class="form-select">
-                    <option value="realistic" selected>Realistic (18 yr)</option>
-                    <option value="accelerated">Accelerated</option><option value="instant">Instant</option>
-                  </select></div>
-                <div class="form-group"><label>Conflict & Events</label>
-                  <select id="sw-conflict" class="form-select">
-                    <option value="peaceful">Peaceful</option><option value="occasional" selected>Occasional</option>
-                    <option value="frequent">Frequent</option><option value="brutal">Brutal</option>
-                  </select></div>
+              <div class="form-group">
+                <label>🏗️ Settlement Type</label>
+                <select id="sw-settlement-type" class="form-select">${settlementOptsHtml}</select>
               </div>
-              <div>
-                <h4 style="color:var(--accent);margin-bottom:0.5rem;font-size:0.85rem;">🧪 Homebrew & World</h4>
-                <div class="form-group"><label>✨ Magic Level</label>
-                  <select id="sw-hb-magic-level" class="form-select">
-                    <option value="">— Default —</option><option value="none">No Magic</option>
-                    <option value="low">Low Magic</option><option value="standard">Standard</option>
-                    <option value="high">High Magic</option><option value="wild">Wild Magic</option>
-                  </select></div>
-                <div class="form-group"><label>🎭 World Tone</label>
-                  <select id="sw-hb-tone" class="form-select">
-                    <option value="">— Default —</option><option value="grimdark">Grimdark</option>
-                    <option value="dark_fantasy">Dark Fantasy</option><option value="standard">Standard</option>
-                    <option value="lighthearted">Lighthearted</option><option value="horror">Horror</option>
-                    <option value="intrigue">Political Intrigue</option>
-                  </select></div>
-                <div class="form-group"><label>🗣️ NPC Depth</label>
-                  <select id="sw-hb-npc-depth" class="form-select">
-                    <option value="">— Default —</option><option value="simple">Simple</option>
-                    <option value="standard">Standard</option><option value="deep">Deep</option>
-                    <option value="literary">Literary</option>
-                  </select></div>
-                <div class="form-group"><label>💕 Romance</label>
-                  <select id="sw-hb-romance" class="form-select">
-                    <option value="">— Default —</option><option value="none">None</option>
-                    <option value="subtle">Subtle</option><option value="present">Present</option>
-                    <option value="focus">Focus</option>
-                  </select></div>
-                <div class="form-group"><label>☠️ NPC Mortality</label>
-                  <select id="sw-hb-mortality" class="form-select">
-                    <option value="">— Default —</option><option value="lethal">Lethal</option>
-                    <option value="impactful">Impactful</option><option value="rare">Rare</option>
-                  </select></div>
+              <div class="form-group">
+                <label>🌍 Town Biome / Terrain</label>
+                <select id="sw-shared-biome" class="form-select">${biomeOptsHtml}</select>
+              </div>
+              <div class="form-group" style="grid-column:1 / -1;max-width:420px;">
+                <label>⚔️ Town Difficulty Level</label>
+                <select id="sw-shared-difficulty" class="form-select">${diffOptsHtml}</select>
               </div>
             </div>
 
-            <div class="form-group" style="margin-top:0.75rem;">
-              <label>📜 Campaign Description</label>
-              <textarea id="sw-campaign-desc" class="form-input" rows="2" placeholder="Describe your world..."></textarea>
-            </div>
-            <div class="form-group">
-              <label>📋 House Rules</label>
-              <textarea id="sw-house-rules" class="form-input" rows="2" placeholder="House rules for simulations..."></textarea>
-            </div>
-
-            <div class="form-group" style="margin-top:0.5rem;">
+            <div class="form-group" style="margin-top:1rem;">
               <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;">
                 <input type="checkbox" id="sw-auto-spells" checked style="width:18px;height:18px;accent-color:var(--accent);cursor:pointer;">
                 ✨ Auto-Assign Spells After Populate
@@ -405,8 +505,8 @@ export function openTownSetupWizard(townId, onRefresh) {
               <p class="setup-desc" style="margin:0.25rem 0 0 1.75rem;font-size:0.75rem;">When enabled, SRD-optimal spells are automatically assigned to all casters after populating the town.</p>
             </div>
 
-            <div class="setup-actions">
-              <button class="btn-primary" id="sw-settings-save">💾 Save Settings</button>
+            <div class="setup-actions" style="margin-top:1rem;">
+              <button type="button" class="btn-primary" id="sw-settings-save">💾 Save Settings</button>
             </div>
             <div class="setup-status" id="sw-settings-status"></div>
           </div>
@@ -425,11 +525,104 @@ export function openTownSetupWizard(townId, onRefresh) {
     });
   });
 
+  /** Race row targets — kept in sync with `town_meta.demographics`. */
+  let demoRows = [];
+
+  function escDemoRace(s) {
+    return String(s ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  }
+
+  function renderWizardDemoGrid() {
+    const grid = el.querySelector('#sw-demo-grid');
+    const totalEl = el.querySelector('#sw-demo-total');
+    if (!grid) return;
+
+    const totalPct = () => demoRows.reduce((sum, r) => sum + (parseInt(r.pct, 10) || 0), 0);
+
+    grid.innerHTML = demoRows.map((m, b) => `
+      <div class="demo-row" data-index="${b}">
+        <input type="text" class="form-input demo-race" value="${escDemoRace(m.race)}" placeholder="Race name">
+        <div class="demo-pct-wrap">
+          <input type="range" class="demo-slider" min="0" max="100" value="${m.pct}" data-index="${b}">
+          <input type="number" class="form-input demo-pct" value="${m.pct}" min="0" max="100" data-index="${b}">
+          <span class="demo-pct-sign">%</span>
+        </div>
+        <button type="button" class="btn-danger btn-sm demo-remove" data-index="${b}" title="Remove">&#10006;</button>
+      </div>
+    `).join('');
+
+    const paintTotal = () => {
+      const t = totalPct();
+      if (totalEl) {
+        totalEl.innerHTML = `Total: <strong style="color:${t === 100 ? 'var(--success)' : t > 100 ? 'var(--error)' : 'var(--warning)'}">${t}%</strong>`;
+      }
+    };
+    paintTotal();
+
+    grid.querySelectorAll('.demo-slider').forEach((slider) => {
+      slider.addEventListener('input', (ev) => {
+        const y = parseInt(ev.target.dataset.index, 10);
+        demoRows[y].pct = parseInt(ev.target.value, 10);
+        const pc = grid.querySelector(`.demo-pct[data-index="${y}"]`);
+        if (pc) pc.value = ev.target.value;
+        paintTotal();
+      });
+    });
+    grid.querySelectorAll('.demo-pct').forEach((inp) => {
+      inp.addEventListener('input', (ev) => {
+        const y = parseInt(ev.target.dataset.index, 10);
+        const f = Math.max(0, Math.min(100, parseInt(ev.target.value, 10) || 0));
+        demoRows[y].pct = f;
+        const sl = grid.querySelector(`.demo-slider[data-index="${y}"]`);
+        if (sl) sl.value = f;
+        paintTotal();
+      });
+    });
+    grid.querySelectorAll('.demo-race').forEach((inp, idx) => {
+      inp.addEventListener('input', (ev) => {
+        demoRows[idx].race = ev.target.value;
+      });
+    });
+    grid.querySelectorAll('.demo-remove').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const y = parseInt(btn.dataset.index, 10);
+        demoRows.splice(y, 1);
+        renderWizardDemoGrid();
+      });
+    });
+  }
+
+  el.querySelector('#sw-demo-add-btn')?.addEventListener('click', () => {
+    demoRows.push({ race: '', pct: 0 });
+    renderWizardDemoGrid();
+  });
+  el.querySelector('#sw-demo-reset-btn')?.addEventListener('click', () => {
+    demoRows = JSON.parse(JSON.stringify(DEFAULT_DEMOGRAPHICS));
+    renderWizardDemoGrid();
+  });
+
   // ── Load context data ──
   let townMeta = {};
   let biome = '';
   let calendarData = null;
   let existingBuildings = [];
+
+  function buildWizardDemoStr() {
+    return demoRows
+      .filter((w) => w.race && w.pct > 0)
+      .map((w) => `${w.race.trim()} ${w.pct}%`)
+      .join(', ');
+  }
+
+  async function persistPopulationRulesToServer() {
+    const demoStr = buildWizardDemoStr();
+    const genRulesJson = genRulesJsonForWizardSave(el, townMeta);
+    await Promise.all([
+      apiSaveTownMeta(townId, 'demographics', demoStr),
+      apiSaveTownMeta(townId, 'gen_rules', genRulesJson),
+    ]);
+    townMeta = { ...townMeta, demographics: demoStr, gen_rules: genRulesJson };
+  }
 
   (async () => {
     try {
@@ -439,37 +632,54 @@ export function openTownSetupWizard(townId, onRefresh) {
         apiGetBuildings(townId).catch(() => ({ buildings: [] })),
       ]);
       townMeta = metaRes.meta || {};
-      biome = townMeta.biome || 'Grassland / Plains';
+      biome = pickTownMetaStr(townMeta, 'biome', '');
       calendarData = calRes?.calendar || null;
       existingBuildings = bldRes.buildings || [];
 
-      // Populate biome displays
-      el.querySelector('#sw-bld-biome').textContent = biome || '(not set)';
+      populateSharedTownSettingsForm(el, townMeta);
+      applyWizardGenRules(el, parseGenRules(townMeta));
+      demoRows = parseDemographicsRows(townMeta);
+      renderWizardDemoGrid();
+
+      const loadingEl = el.querySelector('#sw-settings-loading');
+      const contentEl = el.querySelector('#sw-settings-content');
+      const popLoad = el.querySelector('#sw-populate-loading');
+      const popBody = el.querySelector('#sw-populate-body');
+      const demoLoad = el.querySelector('#sw-demographics-loading');
+      const demoBody = el.querySelector('#sw-demographics-body');
+      if (loadingEl) loadingEl.style.display = 'none';
+      if (contentEl) contentEl.style.display = '';
+      if (popLoad) popLoad.style.display = 'none';
+      if (popBody) popBody.style.display = '';
+      if (demoLoad) demoLoad.style.display = 'none';
+      if (demoBody) demoBody.style.display = '';
+
+      const biomeLabel = biome === '' ? '(not set)' : biome;
+      el.querySelector('#sw-bld-biome').textContent = biomeLabel;
       el.querySelector('#sw-bld-existing').textContent = `${existingBuildings.length} buildings`;
-      el.querySelector('#sw-wx-biome').textContent = biome || '(not set)';
-
-      // Calendar info
-      if (calendarData) {
-        const monthNames = calendarData.month_names || calendarData.months || [];
-        el.querySelector('#sw-wx-calendar').textContent =
-          `${monthNames.length || calendarData.months_per_year || 12} months, ${calendarData.days_per_month || 30} days/month`;
-      }
-
-      // Check existing weather
-      if (townMeta.weather_year) {
-        try {
-          const wx = JSON.parse(townMeta.weather_year);
-          el.querySelector('#sw-wx-existing').innerHTML =
-            `<span style="color:var(--success);">✅ Weather generated (${wx.months?.length || 0} months)</span>`;
-          renderWeatherPreview(el, wx);
-        } catch {
-          el.querySelector('#sw-wx-existing').textContent = '❌ Invalid weather data';
-        }
-      } else {
-        el.querySelector('#sw-wx-existing').textContent = 'No weather generated yet';
-      }
     } catch (err) {
       console.warn('[SetupWizard] Failed to load context:', err);
+      const loadingEl = el.querySelector('#sw-settings-loading');
+      if (loadingEl) {
+        loadingEl.textContent = '❌ Failed to load town settings';
+        loadingEl.style.display = '';
+      }
+      const contentEl = el.querySelector('#sw-settings-content');
+      if (contentEl) contentEl.style.display = 'none';
+      const popLoad = el.querySelector('#sw-populate-loading');
+      const popBody = el.querySelector('#sw-populate-body');
+      const demoLoad = el.querySelector('#sw-demographics-loading');
+      const demoBody = el.querySelector('#sw-demographics-body');
+      if (popLoad) {
+        popLoad.textContent = '❌ Failed to load population settings';
+        popLoad.style.display = '';
+      }
+      if (popBody) popBody.style.display = 'none';
+      if (demoLoad) {
+        demoLoad.textContent = '❌ Failed to load demographics';
+        demoLoad.style.display = '';
+      }
+      if (demoBody) demoBody.style.display = 'none';
     }
   })();
 
@@ -483,8 +693,38 @@ export function openTownSetupWizard(townId, onRefresh) {
   // Creature/monster keyword regex for instruction-based detection
   const CREATURE_KEYWORD_REGEX = /\b(stirge|goblin|kobold|orc|skeleton|zombie|rat|wolf|spider|bat|snake|bear|ogre|troll|undead|beast|creature|monster|animal|vermin|aberration|ooze|elemental|fiend|fey|dragon|worg|hyena|dire|ghoul|wight|wraith|gnoll|lizardfolk|bugbear|hobgoblin|minotaur|harpy|imp|demon|devil|slime|ant|scorpion|centipede|crocodile|shark|owl|hawk|eagle|boar|lion|tiger|ape|horse|mule|donkey|cat|dog|badger|wolverine|weasel|raven|toad|lizard|squid|octopus|crab|wasp|beetle|moth|gryphon|griffon|basilisk|cockatrice|chimera|manticore|hydra|gargoyle|golem|treant|dryad|nymph|satyr|pegasus|unicorn|wyvern|drake|giant)\b/i;
 
+  el.querySelector('#sw-pop-save-rules')?.addEventListener('click', async () => {
+    const btn = el.querySelector('#sw-pop-save-rules');
+    const statusEl = el.querySelector('#sw-pop-status');
+    if (!btn || !statusEl) return;
+    btn.disabled = true;
+    try {
+      await persistPopulationRulesToServer();
+      statusEl.innerHTML = '<span style="color:var(--success)">✅ Generation rules saved (Town Settings ⚙️).</span>';
+    } catch (err) {
+      statusEl.innerHTML = `<span style="color:var(--error)">❌ ${err.message}</span>`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  el.querySelector('#sw-demo-save-btn')?.addEventListener('click', async () => {
+    const btn = el.querySelector('#sw-demo-save-btn');
+    const statusEl = el.querySelector('#sw-demo-status');
+    if (!btn || !statusEl) return;
+    btn.disabled = true;
+    try {
+      await persistPopulationRulesToServer();
+      statusEl.innerHTML = '<span style="color:var(--success)">✅ Demographics saved (Town Settings ⚙️).</span>';
+    } catch (err) {
+      statusEl.innerHTML = `<span style="color:var(--error)">❌ ${err.message}</span>`;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   el.querySelector('#sw-pop-generate').addEventListener('click', async () => {
-    const count = Math.max(1, Math.min(50, parseInt(el.querySelector('#sw-pop-count').value) || 5));
+    const count = Math.max(1, Math.min(MAX_INTAKE_ARRIVALS, parseInt(el.querySelector('#sw-pop-count').value) || 5));
     const instructions = el.querySelector('#sw-pop-instructions').value.trim();
     const btn = el.querySelector('#sw-pop-generate');
     const statusEl = el.querySelector('#sw-pop-status');
@@ -493,6 +733,8 @@ export function openTownSetupWizard(townId, onRefresh) {
     btn.textContent = '⏳ Generating...';
 
     try {
+      await persistPopulationRulesToServer();
+
       // Get campaign rules for context
       let rules = '';
       try {
@@ -874,81 +1116,9 @@ export function openTownSetupWizard(townId, onRefresh) {
 
 
   // ═══════════════════════════════════════════════════════
-  // WEATHER TAB
+  // SETTINGS TAB — shared town settings (also used by Town Settings modal)
+  // (Form values are applied in the async load block after apiGetTownMeta finishes.)
   // ═══════════════════════════════════════════════════════
-  el.querySelector('#sw-wx-generate').addEventListener('click', async () => {
-    const btn = el.querySelector('#sw-wx-generate');
-    const statusEl = el.querySelector('#sw-wx-status');
-    btn.disabled = true;
-    btn.textContent = '⏳ Generating weather...';
-    statusEl.innerHTML = '<span style="color:var(--text-secondary)">🌤️ AI is generating a full year of weather patterns...</span>';
-
-    try {
-      // Show AI cost confirmation
-      const proceed = await confirmAiCost('scribe', { generatorType: 'weather' });
-      if (!proceed) {
-        btn.disabled = false;
-        btn.textContent = '🌤️ Generate Full Year Weather';
-        statusEl.innerHTML = '<span style="color:var(--text-muted)">Cancelled by user.</span>';
-        return;
-      }
-
-      const result = await apiGenerateWeather(townId);
-      if (result.ok && result.weather) {
-        statusEl.innerHTML = `<span style="color:var(--success)">✅ Weather generated! ${result.weather.months?.length || 0} months of weather data saved.</span>`;
-        el.querySelector('#sw-wx-existing').innerHTML =
-          `<span style="color:var(--success);">✅ Weather generated (${result.weather.months?.length || 0} months)</span>`;
-        renderWeatherPreview(el, result.weather);
-      } else {
-        statusEl.innerHTML = `<span style="color:var(--error)">❌ ${result.error || 'Weather generation failed'}</span>`;
-      }
-    } catch (err) {
-      statusEl.innerHTML = `<span style="color:var(--error)">❌ ${err.message}</span>`;
-    } finally {
-      btn.disabled = false;
-      btn.textContent = '🌤️ Generate Full Year Weather';
-    }
-  });
-
-
-
-
-  // ═══════════════════════════════════════════════════════
-  // SETTINGS TAB — load & save campaign rules inline
-  // ═══════════════════════════════════════════════════════
-  (async () => {
-    try {
-      const rules = await apiGetCampaignRules();
-      const content = el.querySelector('#sw-settings-content');
-      const loading = el.querySelector('#sw-settings-loading');
-      if (!content) return;
-
-      // World sim
-      if (rules.relationship_speed) el.querySelector('#sw-rel-speed').value = rules.relationship_speed;
-      if (rules.birth_rate) el.querySelector('#sw-birth-rate').value = rules.birth_rate;
-      if (rules.death_threshold) el.querySelector('#sw-death-threshold').value = rules.death_threshold;
-      if (rules.child_growth) el.querySelector('#sw-child-growth').value = rules.child_growth;
-      if (rules.conflict_frequency) el.querySelector('#sw-conflict').value = rules.conflict_frequency;
-
-      // Homebrew
-      const hb = rules.homebrew_settings || {};
-      if (hb.magic_level) el.querySelector('#sw-hb-magic-level').value = hb.magic_level;
-      if (hb.tone) el.querySelector('#sw-hb-tone').value = hb.tone;
-      if (hb.npc_depth) el.querySelector('#sw-hb-npc-depth').value = hb.npc_depth;
-      if (hb.romance) el.querySelector('#sw-hb-romance').value = hb.romance;
-      if (hb.mortality) el.querySelector('#sw-hb-mortality').value = hb.mortality;
-
-      // Lore
-      if (rules.campaign_description) el.querySelector('#sw-campaign-desc').value = rules.campaign_description;
-      if (rules.rules_text) el.querySelector('#sw-house-rules').value = rules.rules_text;
-
-      loading.style.display = 'none';
-      content.style.display = '';
-    } catch (e) {
-      const loading = el.querySelector('#sw-settings-loading');
-      if (loading) loading.textContent = '❌ Failed to load settings';
-    }
-  })();
 
   el.querySelector('#sw-settings-save')?.addEventListener('click', async () => {
     const btn = el.querySelector('#sw-settings-save');
@@ -957,32 +1127,35 @@ export function openTownSetupWizard(townId, onRefresh) {
     btn.textContent = '⏳ Saving...';
 
     try {
-      const houseRules = el.querySelector('#sw-house-rules').value.trim();
-      const campDesc = el.querySelector('#sw-campaign-desc').value.trim();
+      const rawSet = el.querySelector('#sw-settlement-type').value;
+      const settlement = rawSet === '' ? '' : rawSet;
+      const rawBio = el.querySelector('#sw-shared-biome').value;
+      const nextBiome = rawBio === '' ? '' : rawBio;
+      const difficulty = el.querySelector('#sw-shared-difficulty').value || 'struggling';
+      const demoStr = buildWizardDemoStr();
+      const genRulesJson = genRulesJsonForWizardSave(el, townMeta);
 
-      const homebrewSettings = {};
-      const hbMap = {
-        'sw-hb-magic-level': 'magic_level',
-        'sw-hb-tone': 'tone',
-        'sw-hb-npc-depth': 'npc_depth',
-        'sw-hb-romance': 'romance',
-        'sw-hb-mortality': 'mortality',
+      await Promise.all([
+        apiSaveTownMeta(townId, 'demographics', demoStr),
+        apiSaveTownMeta(townId, 'settlement_type', settlement),
+        apiSaveTownMeta(townId, 'biome', nextBiome),
+        apiSaveTownMeta(townId, 'difficulty_level', difficulty),
+        apiSaveTownMeta(townId, 'gen_rules', genRulesJson),
+      ]);
+
+      biome = nextBiome;
+      townMeta = {
+        ...townMeta,
+        demographics: demoStr,
+        settlement_type: settlement,
+        biome: nextBiome,
+        difficulty_level: difficulty,
+        gen_rules: genRulesJson,
       };
-      for (const [elId, key] of Object.entries(hbMap)) {
-        const val = el.querySelector(`#${elId}`)?.value || '';
-        if (val) homebrewSettings[key] = val;
-      }
+      const biomeLabel = biome === '' ? '(not set)' : biome;
+      el.querySelector('#sw-bld-biome').textContent = biomeLabel;
 
-      const worldSimSettings = {
-        relationship_speed: el.querySelector('#sw-rel-speed').value,
-        birth_rate: el.querySelector('#sw-birth-rate').value,
-        death_threshold: el.querySelector('#sw-death-threshold').value,
-        child_growth: el.querySelector('#sw-child-growth').value,
-        conflict_frequency: el.querySelector('#sw-conflict').value,
-      };
-
-      await apiSaveCampaignRules(houseRules, campDesc, homebrewSettings, worldSimSettings);
-      statusEl.innerHTML = '<span style="color:var(--success)">✅ Settings saved!</span>';
+      statusEl.innerHTML = '<span style="color:var(--success)">✅ Settings saved — same data as Town Settings (⚙️).</span>';
     } catch (err) {
       statusEl.innerHTML = `<span style="color:var(--error)">❌ ${err.message}</span>`;
     } finally {
@@ -990,43 +1163,4 @@ export function openTownSetupWizard(townId, onRefresh) {
       btn.textContent = '💾 Save Settings';
     }
   });
-}
-
-// ═══════════════════════════════════════════════════════
-// WEATHER PREVIEW RENDERER
-// ═══════════════════════════════════════════════════════
-function renderWeatherPreview(el, weather) {
-  const previewEl = el.querySelector('#sw-wx-preview');
-  if (!previewEl || !weather?.months) return;
-
-  const weatherIcons = {
-    clear: '☀️', sunny: '☀️', fair: '🌤️', cloudy: '☁️', overcast: '☁️',
-    rain: '🌧️', heavy_rain: '🌧️', light_rain: '🌦️', drizzle: '🌦️',
-    storm: '⛈️', thunderstorm: '⛈️', snow: '❄️', heavy_snow: '🌨️',
-    blizzard: '🌨️', fog: '🌫️', mist: '🌫️', wind: '💨', hot: '🔥',
-    cold: '🥶', mild: '🌤️', warm: '🌞', freezing: '🥶',
-  };
-
-  function getWeatherIcon(pattern) {
-    if (!pattern) return '🌤️';
-    const lower = pattern.toLowerCase();
-    for (const [key, icon] of Object.entries(weatherIcons)) {
-      if (lower.includes(key)) return icon;
-    }
-    return '🌤️';
-  }
-
-  previewEl.innerHTML = `
-    <h4 style="margin:0.75rem 0 0.5rem;color:var(--text-secondary);">📅 Year ${weather.year || '—'} Weather</h4>
-    <div class="setup-weather-grid">
-      ${weather.months.map(m => `
-        <div class="setup-weather-card">
-          <div class="setup-weather-month">${getWeatherIcon(m.weather_pattern)} ${m.name || 'Month ' + m.month}</div>
-          <div class="setup-weather-temp">${m.avg_temp || '—'}</div>
-          <div class="setup-weather-pattern">${m.weather_pattern || '—'}</div>
-          ${m.notable_events?.length ? `<div class="setup-weather-events">${m.notable_events.map(e => `<span class="setup-weather-event">• ${e}</span>`).join('')}</div>` : ''}
-        </div>
-      `).join('')}
-    </div>
-  `;
 }

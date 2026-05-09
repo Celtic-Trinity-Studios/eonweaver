@@ -25,6 +25,18 @@ export function apiSaveCalendar(calendar) {
     return apiFetch('save_calendar', { method: 'POST', body: { calendar } });
 }
 
+/** Per-day hybrid weather + lunar phase for a month grid (no LLM). */
+export function apiGetCalendarWeatherMoon(townId, year, month, lunarCycleDays = 28) {
+    return apiFetch('calendar_weather_moon', {
+        params: {
+            town_id: townId,
+            year,
+            month,
+            lunar_cycle_days: lunarCycleDays,
+        },
+    });
+}
+
 /**
  * Format a calendar object to a readable string.
  */

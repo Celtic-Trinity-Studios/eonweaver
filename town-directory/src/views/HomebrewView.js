@@ -1,12 +1,12 @@
 /**
  * Eon Weaver — Homebrew Content View
- * Create and manage custom races, classes, feats, spells, and equipment.
+ * Create and manage custom races, classes, feats, spells, equipment, and monsters.
  */
 import { showToast } from '../components/Toast.js';
 import {
     apiGetCustomContent,
     apiSaveCustomRace, apiSaveCustomClass, apiSaveCustomFeat,
-    apiSaveCustomSpell, apiSaveCustomEquipment,
+    apiSaveCustomSpell, apiSaveCustomEquipment, apiSaveCustomMonster,
     apiDeleteCustomContent
 } from '../api/content.js';
 import { clearCustomContentCache } from '../api/srd.js';
@@ -17,6 +17,7 @@ const CONTENT_TYPES = [
     { key: 'custom_feats', label: 'Feats', icon: '⚔️', singular: 'Feat' },
     { key: 'custom_spells', label: 'Spells', icon: '✨', singular: 'Spell' },
     { key: 'custom_equipment', label: 'Equipment', icon: '🛡️', singular: 'Item' },
+    { key: 'custom_monsters', label: 'Monsters', icon: '👹', singular: 'Monster' },
 ];
 
 let currentTab = 'custom_races';
@@ -27,7 +28,7 @@ export default function HomebrewView(container) {
     <div class="view-homebrew">
       <header class="view-header">
         <h1>🧪 Homebrew Content</h1>
-        <p class="view-subtitle">Create custom races, classes, feats, spells, and equipment for your campaign.</p>
+        <p class="view-subtitle">Create custom races, classes, feats, spells, equipment, and monsters for your campaign.</p>
       </header>
 
       <div class="homebrew-tabs" id="homebrew-tabs">
@@ -158,6 +159,8 @@ function getItemDetails(item, typeKey) {
             return `<span>Level ${item.level}</span> · <span>${item.school || 'Universal'}</span>${item.classes ? ` · <span>${item.classes}</span>` : ''}`;
         case 'custom_equipment':
             return `<span>${item.category || 'Gear'}</span>${item.cost ? ` · <span>${item.cost}</span>` : ''}${item.damage ? ` · <span>${item.damage}</span>` : ''}`;
+        case 'custom_monsters':
+            return `<span>CR ${item.cr || '—'}</span>${item.type_line ? ` · <span>${item.type_line}</span>` : ''}`;
         default:
             return '';
     }
@@ -195,6 +198,7 @@ function showForm(container, type, existing) {
                 custom_feats: apiSaveCustomFeat,
                 custom_spells: apiSaveCustomSpell,
                 custom_equipment: apiSaveCustomEquipment,
+                custom_monsters: apiSaveCustomMonster,
             };
             await saveMap[type.key](data);
             clearCustomContentCache(); // Invalidate merged cache so Creator picks up new content
@@ -323,6 +327,21 @@ function getFormFields(typeKey, item) {
             </div>
             <div class="form-group"><label>Properties</label><textarea class="form-input" id="hf-properties" rows="2" placeholder="Special properties, notes...">${v.properties || ''}</textarea></div>`;
 
+        case 'custom_monsters':
+            return `
+            <div class="form-group"><label>Name *</label><input class="form-input" id="hf-name" value="${v.name || ''}" required placeholder="Exact name for AI Scribe + roster import (e.g. Murkwight Stalker)"></div>
+            <p class="muted" style="font-size:0.85rem;margin:-0.25rem 0 0.5rem;">Dungeon Architect and “Add to town roster” match this string. Use the same spelling in your dungeon text.</p>
+            <div class="hb-form-row">
+              <div class="form-group"><label>CR</label><input class="form-input" id="hf-cr" value="${v.cr || '1'}" placeholder="e.g. 3 or 1/2"></div>
+              <div class="form-group"><label>Type line</label><input class="form-input" id="hf-type_line" value="${v.type_line || ''}" placeholder="e.g. Medium Undead"></div>
+            </div>
+            <div class="hb-form-row">
+              <div class="form-group"><label>Hit Dice</label><input class="form-input" id="hf-hit_dice" value="${v.hit_dice || '2d8'}" placeholder="e.g. 4d8+8"></div>
+              <div class="form-group"><label>AC</label><input class="form-input" id="hf-armor_class" value="${v.armor_class || '14'}" placeholder="e.g. 16"></div>
+            </div>
+            <div class="form-group"><label>Abilities</label><input class="form-input" id="hf-abilities" value="${v.abilities || ''}" placeholder="Str 16, Dex 12, Con 14, Int —, Wis 10, Cha 6"></div>
+            <div class="form-group"><label>Stat summary / attacks</label><textarea class="form-input" id="hf-stat_summary" rows="4" placeholder="Attacks, specials, skills — shown on imported character">${v.stat_summary || ''}</textarea></div>`;
+
         default:
             return '<p>Unknown content type</p>';
     }
@@ -347,6 +366,17 @@ function collectFormData(typeKey, formArea, existing) {
             return { ...base, name: get('name'), level: parseInt(get('level')) || 0, school: get('school'), casting_time: get('casting_time'), range: get('range'), duration: get('duration'), components: get('components'), description: get('description'), classes: get('classes') };
         case 'custom_equipment':
             return { ...base, name: get('name'), category: get('category'), cost: get('cost'), weight: get('weight'), damage: get('damage'), critical: get('critical'), properties: get('properties') };
+        case 'custom_monsters':
+            return {
+                ...base,
+                name: get('name'),
+                cr: get('cr') || '1',
+                type_line: get('type_line'),
+                hit_dice: get('hit_dice') || '2d8',
+                armor_class: get('armor_class') || '14',
+                abilities: get('abilities'),
+                stat_summary: get('stat_summary')
+            };
         default:
             return base;
     }

@@ -17,6 +17,7 @@ town-directory/src/live_build/
 town-directory/config.php
 town-directory/discord.php
 town-directory/llm_local.php
+town-directory/.env.discord
 
 # ── Deploy manifests ─────────────────────────────────────
 town-directory/.deploy_manifest.json
@@ -42,11 +43,12 @@ _agent/
 
 # ── Deploy scripts (may contain FTP creds) ───────────────
 town-directory/deploy_ftp.ps1
-town-directory/deploy_live.ps1
 kickstarter/deploy.ps1
 
 # FTP / local deploy secrets
 town-directory/deploy.env
+town-directory/deploy.env.worldscribe
+town-directory/deploy.env.eonweaver
 cookies.txt
 town-directory/ftp.txt
 
@@ -56,3 +58,4 @@ town-directory/portraits/
 # ── Misc temp files ──────────────────────────────────────
 *.log
 migration_out.txt
+town-directory/tmp_ftp_probe.*

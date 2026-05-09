@@ -1,4 +1,6 @@
 <?php
+            require_once __DIR__ . '/sim_prompt_lib.php';
+
             $townId = (int) ($input['town_id'] ?? 0);
             $changes = $input['changes'] ?? [];
 
@@ -691,34 +693,36 @@
             if (!empty($changes['xp_gains'])) {
                 foreach ($changes['xp_gains'] as $x) {
                     $gain = (int) ($x['xp_gained'] ?? 0);
-                    if ($gain > 0) {
-                        // Apply level-based diminishing returns
-                        $charLevelRow = query('SELECT id, level FROM characters WHERE town_id = ? AND name = ? LIMIT 1', [$townId, $x['name']], $uid);
-                        $charLevel = $charLevelRow ? (int) ($charLevelRow[0]['level'] ?? 1) : 1;
-                        $charDbId = $charLevelRow ? (int) $charLevelRow[0]['id'] : 0;
-                        $gain = applyXpDiminishing($gain, $charLevel);
+                    if ($gain <= 0) {
+                        continue;
+                    }
+                    $resolved = ew_sim_resolve_character_ref_row($townId, $uid, $x);
+                    if (!$resolved) {
+                        continue;
+                    }
+                    $charDbId = (int) $resolved['id'];
+                    $recvName = $resolved['name'];
+                    $charLevelRow = query('SELECT id, level FROM characters WHERE id = ? AND town_id = ? LIMIT 1', [$charDbId, $townId], $uid);
+                    $charLevel = $charLevelRow ? (int) ($charLevelRow[0]['level'] ?? 1) : 1;
+                    $gain = applyXpDiminishing($gain, $charLevel);
 
-                        if ($gain > 0) {
+                    if ($gain > 0) {
+                        execute(
+                            'UPDATE characters SET xp = COALESCE(xp, 0) + ? WHERE id = ? AND town_id = ?',
+                            [$gain, $charDbId, $townId],
+                            $uid
+                        );
+                        $applied['xp']++;
+                        $xpReceivedNames[] = $recvName;
+
+                        try {
+                            $tagsJson = !empty($x['tags']) ? json_encode($x['tags']) : null;
                             execute(
-                                'UPDATE characters SET xp = COALESCE(xp, 0) + ? WHERE town_id = ? AND name = ?',
-                                [$gain, $townId, $x['name']],
+                                'INSERT INTO character_xp_log (character_id, town_id, xp_gained, reason, source, game_date, xp_tags) VALUES (?, ?, ?, ?, ?, ?, ?)',
+                                [$charDbId, $townId, $gain, trim($x['reason'] ?? 'Simulation activity'), 'ai', $gameDate, $tagsJson],
                                 $uid
                             );
-                            $applied['xp']++;
-                            $xpReceivedNames[] = $x['name'];
-
-                            // Log to XP log with tags
-                            if ($charDbId) {
-                                try {
-                                    $tagsJson = !empty($x['tags']) ? json_encode($x['tags']) : null;
-                                    execute(
-                                        'INSERT INTO character_xp_log (character_id, town_id, xp_gained, reason, source, game_date, xp_tags) VALUES (?, ?, ?, ?, ?, ?, ?)',
-                                        [$charDbId, $townId, $gain, trim($x['reason'] ?? 'Simulation activity'), 'ai', $gameDate, $tagsJson],
-                                        $uid
-                                    );
-                                } catch (Exception $logE) { /* table may not exist yet */ }
-                            }
-                        }
+                        } catch (Exception $logE) { /* table may not exist yet */ }
                     }
                 }
             }
@@ -863,10 +867,14 @@
                     $field = $s['field'] ?? '';
                     if (!in_array($field, $allowedFields))
                         continue;
+                    $resolved = ew_sim_resolve_character_ref_row($townId, $uid, $s);
+                    if (!$resolved) {
+                        continue;
+                    }
                     $newVal = $s['new_value'] ?? '';
                     execute(
-                        "UPDATE characters SET {$field} = ? WHERE town_id = ? AND name = ?",
-                        [$newVal, $townId, $s['name']],
+                        "UPDATE characters SET {$field} = ? WHERE id = ? AND town_id = ?",
+                        [$newVal, $resolved['id'], $townId],
                         $uid
                     );
                     $applied['stats']++;
@@ -876,9 +884,13 @@
             // Role changes
             if (!empty($changes['role_changes'])) {
                 foreach ($changes['role_changes'] as $rc) {
+                    $resolved = ew_sim_resolve_character_ref_row($townId, $uid, $rc);
+                    if (!$resolved) {
+                        continue;
+                    }
                     execute(
-                        'UPDATE characters SET role = ? WHERE town_id = ? AND name = ?',
-                        [$rc['new_role'], $townId, $rc['name']],
+                        'UPDATE characters SET role = ? WHERE id = ? AND town_id = ?',
+                        [$rc['new_role'], $resolved['id'], $townId],
                         $uid
                     );
                     $applied['roles']++;
@@ -1056,15 +1068,20 @@
 
             // NPC-NPC Relationships (from social simulation)
             if (!empty($changes['new_relationships'])) {
-                // Check if these are the new social format (with character1/character2 keys)
                 foreach ($changes['new_relationships'] as $r) {
-                    $name1 = trim($r['character1'] ?? $r['char1'] ?? '');
-                    $name2 = trim($r['character2'] ?? $r['char2'] ?? '');
+                    $p1 = ew_sim_resolve_relationship_endpoint($townId, $uid, $r, 1);
+                    $p2 = ew_sim_resolve_relationship_endpoint($townId, $uid, $r, 2);
+                    if (!$p1 || !$p2) {
+                        continue;
+                    }
+                    $name1 = $p1['name'];
+                    $name2 = $p2['name'];
+                    $cid1 = (int) $p1['id'];
+                    $cid2 = (int) $p2['id'];
                     $relType = trim($r['type'] ?? 'acquaintance');
 
                     // If it's a spouse-type relationship, handle the old way (update spouse fields)
                     if (in_array(strtolower($relType), ['husband', 'wife', 'spouse', 'husband/wife'])) {
-                        // Original spouse logic from existing code
                         $label1 = 'Spouse';
                         $label2 = 'Spouse';
                         $c1 = query('SELECT gender FROM characters WHERE town_id = ? AND name = ?', [$townId, $name1], $uid);
@@ -1085,8 +1102,6 @@
                         );
                         $applied['relationships']++;
 
-                        // ── Auto-add to Family Tree ──
-                        // Create a family link (spouse) so the family tree tab shows it
                         if ($cid1 && $cid2) {
                             try {
                                 execute(
@@ -1100,8 +1115,6 @@
                     }
 
                     // Also store in character_relationships table for all types
-                    $cid1 = $resolveCharId($name1);
-                    $cid2 = $resolveCharId($name2);
                     if ($cid1 && $cid2 && $cid1 !== $cid2) {
                         // Map spouse types to 'romantic' for the relationship table
                         $mappedType = in_array(strtolower($relType), ['husband', 'wife', 'spouse', 'husband/wife']) ? 'romantic' : strtolower($relType);
@@ -1133,6 +1146,11 @@
                     $uid
                 );
                 $applied['history'] = 1;
+                $hHead = trim((string) ($h['heading'] ?? ''));
+                $hBody = trim((string) ($h['content'] ?? ''));
+                if ($hHead !== '' || $hBody !== '') {
+                    ew_sim_rolling_summary_merge_from_apply($townId, $hHead, $hBody, $uid);
+                }
             }
 
             // Apply building changes
@@ -1187,118 +1205,45 @@
                 }
             }
 
-            // Advance calendar by months and/or days
-            $monthsElapsed = (int) ($input['months_elapsed'] ?? 0);
-            $daysElapsed = (int) ($input['days_elapsed'] ?? 0);
-            $debugInfo['calendar_input'] = ['months_elapsed' => $monthsElapsed, 'days_elapsed' => $daysElapsed, 'uid' => $uid];
-            if ($monthsElapsed > 0 || $daysElapsed > 0) {
-                // Get active campaign (same pattern as api.php get_calendar)
-                $activeCampApply = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
-                $campIdApply = $activeCampApply ? (int) $activeCampApply[0]['id'] : null;
-                $debugInfo['calendar_campaign'] = $campIdApply;
-
-                if ($campIdApply) {
-                    $cal = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id = ?', [$uid, $campIdApply]);
-                    // Fallback: check for legacy row with NULL campaign_id
-                    if (!$cal) {
-                        $cal = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id IS NULL', [$uid]);
-                        if ($cal) {
-                            // Auto-fix: link this calendar to the active campaign
-                            execute('UPDATE calendar SET campaign_id = ? WHERE id = ?', [$campIdApply, $cal[0]['id']]);
-                            $debugInfo['calendar_migrated'] = true;
-                        }
-                    }
-                } else {
-                    $cal = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id IS NULL', [$uid]);
+            // Advance calendar by months and/or days (skip when world-sim already advanced globally)
+            $monthsElapsedCal = (int) ($input['months_elapsed'] ?? 0);
+            $daysElapsedCal = (int) ($input['days_elapsed'] ?? 0);
+            $skipCalendar = !empty($input['skip_calendar']);
+            if (!$skipCalendar && ($monthsElapsedCal > 0 || $daysElapsedCal > 0)) {
+                require_once __DIR__ . '/calendar_advance_lib.php';
+                $calOut = ew_advance_campaign_calendar($uid, $monthsElapsedCal, $daysElapsedCal);
+                foreach (($calOut['applied'] ?? []) as $k => $v) {
+                    $applied[$k] = $v;
                 }
-                $debugInfo['calendar_found'] = !empty($cal);
-                $debugInfo['calendar_row_count'] = count($cal ?: []);
-
-                // If no calendar row, create one with defaults (IGNORE to prevent duplicate key)
-                if (!$cal) {
-                    try {
-                        execute(
-                            'INSERT IGNORE INTO calendar (user_id, campaign_id, current_year, current_month, current_day, era_name, months_per_year, month_names, days_per_month) VALUES (?, ?, 1490, 1, 1, ?, 12, ?, ?)',
-                            [$uid, $campIdApply, 'DR', '["Hammer","Alturiak","Ches","Tarsakh","Mirtul","Kythorn","Flamerule","Eleasis","Eleint","Marpenoth","Uktar","Nightal"]', '[30,30,30,30,30,30,30,30,30,30,30,30]']
-                        );
-                        $debugInfo['calendar_inserted'] = true;
-                    } catch (Exception $e) {
-                        $debugInfo['calendar_insert_err'] = $e->getMessage();
-                    }
-                    if ($campIdApply) {
-                        $cal = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id = ?', [$uid, $campIdApply]);
-                    } else {
-                        $cal = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id IS NULL', [$uid]);
-                    }
-                    $debugInfo['calendar_found_after_insert'] = !empty($cal);
+                foreach (($calOut['debug_info'] ?? []) as $k => $v) {
+                    $debugInfo[$k] = $v;
                 }
-
-                if ($cal) {
-                    $mpy = (int) ($cal[0]['months_per_year'] ?? 12);
-                    $year = (int) ($cal[0]['current_year'] ?? 1490);
-                    $month = (int) ($cal[0]['current_month'] ?? 1);
-                    $day = (int) ($cal[0]['current_day'] ?? 1);
-                    $debugInfo['calendar_before'] = ['year' => $year, 'month' => $month, 'day' => $day, 'mpy' => $mpy];
-
-                    // Parse per-month days array
-                    $dpmRaw = $cal[0]['days_per_month'] ?? '30';
-                    $dpmDecoded = json_decode($dpmRaw, true);
-                    $daysPerMonthArr = is_array($dpmDecoded) ? $dpmDecoded : array_fill(0, $mpy, (int)($dpmRaw ?: 30));
-
-                    // First: advance by whole months
-                    $month += $monthsElapsed;
-                    while ($month > $mpy) {
-                        $month -= $mpy;
-                        $year++;
-                    }
-
-                    // Then: advance by days (overflow into months/years)
-                    if ($daysElapsed > 0) {
-                        $day += $daysElapsed;
-                        $maxDay = $daysPerMonthArr[$month - 1] ?? 30;
-                        while ($day > $maxDay) {
-                            $day -= $maxDay;
-                            $month++;
-                            if ($month > $mpy) {
-                                $month = 1;
-                                $year++;
-                            }
-                            $maxDay = $daysPerMonthArr[$month - 1] ?? 30;
-                        }
-                    }
-
-                    // Clamp day to new month's max days
-                    $maxDay = $daysPerMonthArr[$month - 1] ?? 30;
-                    if ($day > $maxDay) $day = $maxDay;
-                    if ($day < 1) $day = 1;
-
-                    $debugInfo['calendar_after'] = ['year' => $year, 'month' => $month, 'day' => $day];
-
-                    if ($campIdApply) {
-                        $rowsUpdated = execute(
-                            'UPDATE calendar SET current_year=?, current_month=?, current_day=? WHERE user_id=? AND campaign_id=?',
-                            [$year, $month, $day, $uid, $campIdApply]
-                        );
-                    } else {
-                        $rowsUpdated = execute(
-                            'UPDATE calendar SET current_year=?, current_month=?, current_day=? WHERE user_id=? AND campaign_id IS NULL',
-                            [$year, $month, $day, $uid]
-                        );
-                    }
-                    $debugInfo['calendar_rows_updated'] = $rowsUpdated;
-                    $mNames = json_decode($cal[0]['month_names'] ?? '[]', true) ?: [];
-                    $monthName = $mNames[$month - 1] ?? "Month $month";
-                    $applied['calendar'] = "Advanced to day $day of $monthName, year $year";
-                    $applied['calendar_date'] = [
-                        'month' => $month,
-                        'year' => $year,
-                        'day' => $day,
-                        'era' => trim($cal[0]['era_name'] ?? 'DR'),
-                        'month_name' => $monthName
-                    ];
-                }
-            } else {
+            } elseif ($skipCalendar) {
+                $debugInfo['calendar_skipped'] = 'skip_calendar=true';
+            } elseif ($monthsElapsedCal <= 0 && $daysElapsedCal <= 0) {
                 $debugInfo['calendar_skipped'] = 'months_elapsed=0 and days_elapsed=0';
+            }
+
+            // Campaign macro tick: one framework month per in-game month when this apply advances the calendar.
+            // World sim uses skip_calendar + advance_calendar; macro runs in calendar_advance_lib instead.
+            if (!$skipCalendar && $monthsElapsedCal > 0) {
+                try {
+                    require_once __DIR__ . '/macro_framework_lib.php';
+                    ensureMacroFrameworkTables();
+                    $macroCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+                    if ($macroCamp) {
+                        $macroCampId = (int) $macroCamp[0]['id'];
+                        $macroState = runMacroTicksForSimulatedMonths(
+                            $macroCampId,
+                            $monthsElapsedCal,
+                            'Town simulation (town ' . $townId . ')'
+                        );
+                        $debugInfo['macro_tick_months'] = $monthsElapsedCal;
+                        $debugInfo['macro_state_after'] = $macroState;
+                    }
+                } catch (Exception $e) {
+                    $debugInfo['macro_tick_error'] = $e->getMessage();
+                }
             }
 
             simRespond(['ok' => true, 'applied' => $applied, 'debug_info' => $debugInfo]);

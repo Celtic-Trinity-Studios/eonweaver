@@ -19,6 +19,65 @@ require_once __DIR__ . '/auth.php';
 
 // Ensure is_encounter_town column exists (one-time migration)
 try { execute('ALTER TABLE towns ADD COLUMN is_encounter_town TINYINT(1) NOT NULL DEFAULT 0', [], 0); } catch (Exception $e) { /* already exists */ }
+// Admin Accounts + Discord tier sync; see setup_mysql.php users migrations
+try { execute('ALTER TABLE users ADD COLUMN discord_user_id VARCHAR(32) DEFAULT NULL', [], 0); } catch (Exception $e) { /* already exists */ }
+try {
+    execute(
+        'CREATE TABLE IF NOT EXISTS world_maps (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            campaign_id INT NULL,
+            map_image_url VARCHAR(500) DEFAULT NULL,
+            map_image_width INT NOT NULL DEFAULT 0,
+            map_image_height INT NOT NULL DEFAULT 0,
+            miles_per_pixel DECIMAL(12,6) NOT NULL DEFAULT 1.000000,
+            travel_hours_per_day DECIMAL(6,2) NOT NULL DEFAULT 8.00,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_world_map_user_campaign (user_id, campaign_id),
+            KEY idx_world_maps_user (user_id),
+            KEY idx_world_maps_campaign (campaign_id)
+        )',
+        [],
+        0
+    );
+} catch (Exception $e) { /* table exists or unsupported migration */ }
+try {
+    execute(
+        'CREATE TABLE IF NOT EXISTS world_map_locations (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            campaign_id INT NULL,
+            town_id INT NOT NULL,
+            location_name VARCHAR(200) NOT NULL,
+            x_pct DECIMAL(8,5) NOT NULL,
+            y_pct DECIMAL(8,5) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_world_map_pin (user_id, campaign_id, town_id),
+            KEY idx_world_map_locations_user (user_id),
+            KEY idx_world_map_locations_campaign (campaign_id),
+            KEY idx_world_map_locations_town (town_id)
+        )',
+        [],
+        0
+    );
+} catch (Exception $e) { /* table exists or unsupported migration */ }
+try {
+    execute(
+        'CREATE TABLE IF NOT EXISTS world_map_skipped_towns (
+            user_id INT NOT NULL,
+            campaign_id INT NOT NULL,
+            town_id INT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (user_id, campaign_id, town_id),
+            KEY idx_wm_skip_campaign (campaign_id),
+            KEY idx_wm_skip_town (town_id)
+        )',
+        [],
+        0
+    );
+} catch (Exception $e) { /* already exists */ }
 
 $action = $_GET['action'] ?? '';
 $input = null;
@@ -31,7 +90,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' || $_SERVER['REQUEST_METHOD'] === 'DEL
 try {
 
     require_once __DIR__ . '/helpers.php';
+    require_once __DIR__ . '/tier_limits.php';
+    require_once __DIR__ . '/sim_prompt_lib.php';
+    require_once __DIR__ . '/macro_framework_lib.php';
     require_once __DIR__ . '/user_db.php';
+    ensureMacroFrameworkTables();
 
     switch ($action) {
 
@@ -39,8 +102,27 @@ try {
            AUTH — uses shared DB (userId=0)
            ═══════════════════════════════════════════════════ */
         case 'register':
-            $user = register($input['username'] ?? '', $input['email'] ?? '', $input['password'] ?? '', $input['beta_key'] ?? '');
-            respond(['ok' => true, 'user' => $user]);
+            $user = register($input['username'] ?? '', $input['email'] ?? '', $input['password'] ?? '');
+            $payload = ['ok' => true, 'user' => $user];
+            if (!empty($user['needs_verification'])) {
+                $payload['needs_verification'] = true;
+            }
+            respond($payload);
+            break;
+
+        case 'resend_verification':
+            resendVerificationEmail($input['email'] ?? '');
+            respond(['ok' => true, 'message' => 'If an unverified account exists for this email, a confirmation message has been sent.']);
+            break;
+
+        /* Public — anonymous server-side metrics ping (no auth). Each visit is one row. */
+        case 'ping_visit':
+            require_once __DIR__ . '/metrics_lib.php';
+            $route = (string) ($input['route'] ?? 'unknown');
+            $referrer = (string) ($input['referrer'] ?? ($_SERVER['HTTP_REFERER'] ?? ''));
+            $u = currentUser();
+            ew_record_pageview($route, $referrer, $u ? (int) $u['id'] : null);
+            respond(['ok' => true]);
             break;
 
         case 'login':
@@ -57,9 +139,18 @@ try {
             $user = currentUser();
             if ($user) {
                 // Add subscription tier + role + active campaign
-                $udata = query('SELECT subscription_tier, role FROM users WHERE id = ?', [(int) $user['id']], 0);
+                $udata = query(
+                    'SELECT subscription_tier, role, COALESCE(email_verified, 1) AS email_verified FROM users WHERE id = ?',
+                    [(int) $user['id']],
+                    0
+                );
                 $user['subscription_tier'] = $udata[0]['subscription_tier'] ?? 'free';
                 $user['role'] = $udata[0]['role'] ?? 'user';
+                $user['email_verified'] = (int) ($udata[0]['email_verified'] ?? 1);
+                $tier = $user['subscription_tier'];
+                $user['show_free_tier_ads'] = ($tier === 'free' && defined('ADSENSE_FREE_TIER_CLIENT') && ADSENSE_FREE_TIER_CLIENT);
+                $user['adsense_client_id'] = (defined('ADSENSE_FREE_TIER_CLIENT') && ADSENSE_FREE_TIER_CLIENT) ? ADSENSE_FREE_TIER_CLIENT : '';
+                $user['adsense_slot_sidebar'] = defined('ADSENSE_FREE_TIER_SLOT_SIDEBAR') ? ADSENSE_FREE_TIER_SLOT_SIDEBAR : '';
                 // Get active campaign
                 $camps = query('SELECT id, name, dnd_edition, description FROM campaigns WHERE user_id = ? AND is_active = 1 ORDER BY id LIMIT 1', [(int) $user['id']], 0);
                 $user['active_campaign'] = $camps[0] ?? null;
@@ -70,9 +161,10 @@ try {
         case 'get_usage':
             $user = requireAuth();
             $uid = (int) $user['id'];
-            $udata = query('SELECT subscription_tier, credit_balance FROM users WHERE id = ?', [$uid], 0);
+            $udata = query('SELECT subscription_tier, credit_balance, gemini_api_key FROM users WHERE id = ?', [$uid], 0);
             $tier = $udata[0]['subscription_tier'] ?? 'free';
             $creditBalance = (int) ($udata[0]['credit_balance'] ?? 0);
+            $hasByok = trim((string) ($udata[0]['gemini_api_key'] ?? '')) !== '';
             $yearMonth = date('Y-m');
 
             // Get usage this month (for analytics display)
@@ -83,13 +175,22 @@ try {
             $tokensUsed = (int) ($usageRows[0]['tokens_used'] ?? 0);
             $callCount = (int) ($usageRows[0]['call_count'] ?? 0);
 
+            $tokenLimit = $hasByok ? 0 : ew_monthly_raw_cap_for_tier($tier);
+            $percentage = (!$hasByok && $tokenLimit > 0)
+                ? (int) min(100, floor(($tokensUsed * 100) / $tokenLimit))
+                : 0;
+
             $tierLabels = ['free' => 'Free', 'apprentice' => 'Apprentice', 'adventurer' => 'Adventurer', 'guild_master' => 'Guild Master', 'world_builder' => 'World Builder'];
             respond([
                 'ok' => true,
                 'tier' => $tier,
                 'tier_label' => $tierLabels[$tier] ?? $tier,
                 'credit_balance' => $creditBalance,
+                'has_byok_key' => $hasByok,
                 'tokens_used_this_month' => $tokensUsed,
+                'tokens_used' => $tokensUsed,
+                'token_limit' => $tokenLimit,
+                'percentage' => $percentage,
                 'call_count' => $callCount,
                 'year_month' => $yearMonth,
             ]);
@@ -107,12 +208,38 @@ try {
                 $cnt = query('SELECT COUNT(*) as c FROM towns WHERE campaign_id = ? AND (is_party_base = 0 OR is_party_base IS NULL)', [(int) $c['id']], $uid);
                 $c['town_count'] = (int) ($cnt[0]['c'] ?? 0);
             }
-            // Tier info — four tiers: free, adventurer, guild_master, world_builder
             $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
-            $tier = $udata[0]['subscription_tier'] ?? 'free';
-            $limits = ['free' => 1, 'apprentice' => 2, 'adventurer' => 3, 'guild_master' => 10, 'world_builder' => 999];
-            $townLimits = ['free' => 3, 'apprentice' => 4, 'adventurer' => 5, 'guild_master' => 10, 'world_builder' => 999];
-            respond(['ok' => true, 'campaigns' => $camps, 'tier' => $tier, 'max_campaigns' => $limits[$tier] ?? 1, 'max_towns' => $townLimits[$tier] ?? 3]);
+            $tier = ew_normalize_subscription_tier((string) ($udata[0]['subscription_tier'] ?? 'free'));
+            $tierCatalog = ew_tier_public_catalog();
+            foreach ($tierCatalog as &$tcRow) {
+                $tcRow['monthly_raw_token_cap'] = ew_monthly_raw_cap_for_tier($tcRow['id']);
+            }
+            unset($tcRow);
+            respond([
+                'ok' => true,
+                'campaigns' => $camps,
+                'tier' => $tier,
+                'max_campaigns' => ew_tier_max_campaigns($tier),
+                'max_towns' => ew_tier_max_towns_per_campaign($tier),
+                'tier_catalog' => $tierCatalog,
+            ]);
+            break;
+
+        case 'subscription_catalog':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
+            $tier = ew_normalize_subscription_tier((string) ($udata[0]['subscription_tier'] ?? 'free'));
+            $tierCatalog = ew_tier_public_catalog();
+            foreach ($tierCatalog as &$tcRow) {
+                $tcRow['monthly_raw_token_cap'] = ew_monthly_raw_cap_for_tier($tcRow['id']);
+            }
+            unset($tcRow);
+            respond([
+                'ok' => true,
+                'tier' => $tier,
+                'tier_catalog' => $tierCatalog,
+            ]);
             break;
 
         case 'create_campaign':
@@ -125,11 +252,9 @@ try {
                 throw new Exception('Campaign name is required.');
             if (!in_array($edition, ['3.5e', '5e', '5e2024']))
                 $edition = '3.5e';
-            // Check tier limit — four tiers: free, adventurer, guild_master, world_builder
             $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
-            $tier = $udata[0]['subscription_tier'] ?? 'free';
-            $limits = ['free' => 1, 'apprentice' => 2, 'adventurer' => 3, 'guild_master' => 10, 'world_builder' => 999];
-            $maxCamps = $limits[$tier] ?? 1;
+            $tier = ew_normalize_subscription_tier((string) ($udata[0]['subscription_tier'] ?? 'free'));
+            $maxCamps = ew_tier_max_campaigns($tier);
             $existing = query('SELECT COUNT(*) as c FROM campaigns WHERE user_id = ?', [$uid], 0);
             $currentCount = (int) ($existing[0]['c'] ?? 0);
             if ($currentCount >= $maxCamps)
@@ -279,9 +404,8 @@ try {
             // Check town limit per tier
             if ($campId) {
                 $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
-                $tier = $udata[0]['subscription_tier'] ?? 'free';
-                $townLimits = ['free' => 3, 'apprentice' => 4, 'adventurer' => 5, 'guild_master' => 10, 'world_builder' => 999];
-                $maxTowns = $townLimits[$tier] ?? 3;
+                $tier = ew_normalize_subscription_tier((string) ($udata[0]['subscription_tier'] ?? 'free'));
+                $maxTowns = ew_tier_max_towns_per_campaign($tier);
                 $existingTowns = query('SELECT COUNT(*) as c FROM towns WHERE campaign_id = ? AND (is_party_base = 0 OR is_party_base IS NULL) AND (is_encounter_town = 0 OR is_encounter_town IS NULL)', [$campId], $uid);
                 $currentTownCount = (int) ($existingTowns[0]['c'] ?? 0);
                 if ($currentTownCount >= $maxTowns)
@@ -412,6 +536,7 @@ try {
                 'name',
                 'race',
                 'class',
+                'level',
                 'status',
                 'title',
                 'gender',
@@ -466,6 +591,8 @@ try {
                 execute('UPDATE characters SET ' . implode(', ', $sets) . ' WHERE id = ? AND town_id = ?', $vals, $uid);
                 respond(['ok' => true, 'id' => $charId]);
             } else {
+                require_once __DIR__ . '/tier_policy.php';
+                ew_assert_free_tier_population_cap($uid, $townId, $uid);
                 $cols = ['town_id'];
                 $placeholders = ['?'];
                 $vals = [$townId];
@@ -615,12 +742,19 @@ try {
             $townId = (int) ($input['town_id'] ?? 0);
             verifyTownOwnership($uid, $townId, $uid);
             execute('DELETE FROM history WHERE town_id = ?', [$townId], $uid);
-            foreach (($input['entries'] ?? []) as $i => $e) {
+            $entries = $input['entries'] ?? [];
+            foreach ($entries as $i => $e) {
                 execute(
                     'INSERT INTO history (town_id, heading, content, sort_order) VALUES (?, ?, ?, ?)',
                     [$townId, $e['heading'] ?? '', $e['content'] ?? '', $i],
                     $uid
                 );
+            }
+            if (empty($entries)) {
+                ew_sim_rolling_summary_upsert($townId, '', $uid);
+            } else {
+                $rebuilt = ew_sim_rebuild_rolling_summary_from_editor_entries($entries);
+                ew_sim_rolling_summary_upsert($townId, $rebuilt, $uid);
             }
             respond(['ok' => true]);
             break;
@@ -856,8 +990,34 @@ try {
 
             if ($campId) {
                 $rows = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id = ?', [$uid, $campId], $uid);
+                // Legacy row stored before campaign_id existed — attach to active campaign once
+                if (empty($rows)) {
+                    $legacy = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id IS NULL LIMIT 1', [$uid], $uid);
+                    if (!empty($legacy)) {
+                        try {
+                            execute('UPDATE calendar SET campaign_id = ? WHERE id = ?', [$campId, (int) $legacy[0]['id']], $uid);
+                        } catch (Exception $e) { /* unique conflict — ignore, fall through to orphan rescue */ }
+                        $rows = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id = ?', [$uid, $campId], $uid);
+                    }
+                }
+                // Legacy single-row rescue: legacy schema had PRIMARY KEY on user_id, so there's
+                // only ONE calendar row per user. If campaign_id is stale, reattach to active
+                // campaign. Only do this when the user has exactly ONE calendar row total — once
+                // they have multiple (post-PK migration), each campaign keeps its own row.
+                if (empty($rows)) {
+                    $allRows = query('SELECT * FROM calendar WHERE user_id = ? ORDER BY id ASC', [$uid], $uid);
+                    if (count($allRows) === 1) {
+                        try {
+                            execute('UPDATE calendar SET campaign_id = ? WHERE id = ?', [$campId, (int) $allRows[0]['id']], $uid);
+                        } catch (Exception $e) { /* ignore */ }
+                        $rows = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id = ?', [$uid, $campId], $uid);
+                    }
+                }
             } else {
                 $rows = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id IS NULL', [$uid], $uid);
+                if (empty($rows)) {
+                    $rows = query('SELECT * FROM calendar WHERE user_id = ? ORDER BY id ASC LIMIT 1', [$uid], $uid);
+                }
             }
             $cal = $rows[0] ?? [
                 'current_year' => 1490,
@@ -879,7 +1039,175 @@ try {
                 $mpy = (int) ($cal['months_per_year'] ?? 12);
                 $cal['days_per_month'] = array_fill(0, $mpy, $dpmVal);
             }
+
+            $defaultWeekNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+            $defaultWeekAbbrev = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+            $dow = (int) ($cal['days_per_week'] ?? 7);
+            $dow = max(1, min(14, $dow));
+            $cal['days_per_week'] = $dow;
+            $wn = json_decode($cal['weekday_names'] ?? '', true);
+            $wa = json_decode($cal['weekday_abbrev'] ?? '', true);
+            if (!is_array($wn)) {
+                $wn = [];
+            }
+            if (!is_array($wa)) {
+                $wa = [];
+            }
+            if (count($wn) === 0 && count($wa) === 0) {
+                $wn = array_slice($defaultWeekNames, 0, min(7, $dow));
+                $wa = array_slice($defaultWeekAbbrev, 0, min(7, $dow));
+            }
+            while (count($wn) < $dow) {
+                $wn[] = 'Day ' . (count($wn) + 1);
+            }
+            while (count($wa) < $dow) {
+                $wa[] = 'D' . (count($wa) + 1);
+            }
+            $cal['weekday_names'] = array_slice(array_values($wn), 0, $dow);
+            $cal['weekday_abbrev'] = array_slice(array_values($wa), 0, $dow);
+
             respond(['ok' => true, 'calendar' => $cal]);
+            break;
+
+        case 'calendar_weather_moon':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            require_once __DIR__ . '/calendar_display_lib.php';
+            require_once __DIR__ . '/weather_daily_lib.php';
+
+            $townId = (int) ($_GET['town_id'] ?? $input['town_id'] ?? 0);
+            $year = max(1, (int) ($_GET['year'] ?? $input['year'] ?? 1490));
+            $month = max(1, (int) ($_GET['month'] ?? $input['month'] ?? 1));
+            $lunarCycle = max(4, min(64, (int) ($_GET['lunar_cycle_days'] ?? $input['lunar_cycle_days'] ?? 28)));
+
+            if ($townId <= 0) {
+                throw new Exception('Missing town_id.');
+            }
+            verifyTownOwnership($uid, $townId, $uid);
+
+            $cal = ew_calendar_load_for_user($uid);
+            $mpy = (int) ($cal['months_per_year'] ?? 12);
+            $month = min($month, $mpy);
+            $dpm = $cal['days_per_month'];
+            if (!is_array($dpm)) {
+                $dpm = array_fill(0, $mpy, 30);
+            }
+            $dim = (int) ($dpm[$month - 1] ?? 30);
+            $monthNames = $cal['month_names'];
+            $monthName = $monthNames[$month - 1] ?? "Month {$month}";
+            $dpw = (int) ($cal['days_per_week'] ?? 7);
+
+            $metaRows = query('SELECT `key`, value FROM town_meta WHERE town_id = ?', [$townId], $uid);
+            $townMeta = [];
+            foreach ($metaRows as $m) {
+                $townMeta[$m['key']] = $m['value'];
+            }
+
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : 0;
+
+            $weatherData = null;
+            $weatherSource = 'none';
+            if ($campId > 0) {
+                $worldRows = query(
+                    'SELECT value_json FROM integration_settings WHERE user_id = ? AND campaign_id = ? AND key_name = ? LIMIT 1',
+                    [$uid, $campId, 'world_weather_year'],
+                    0
+                );
+                if (!empty($worldRows[0]['value_json'])) {
+                    $worldPayload = json_decode($worldRows[0]['value_json'], true);
+                    $weatherData = ew_weather_from_integration_value($worldPayload);
+                    if ($weatherData) {
+                        $weatherSource = 'campaign_world';
+                    }
+                }
+            }
+            if (!$weatherData) {
+                $weatherJson = $townMeta['weather_year'] ?? '';
+                $legacy = $weatherJson ? json_decode($weatherJson, true) : null;
+                if (is_array($legacy) && !empty($legacy['months'])) {
+                    $weatherData = $legacy;
+                    $weatherSource = 'town_legacy';
+                }
+            }
+            $curMonthWeather = null;
+            if ($weatherData && !empty($weatherData['months'])) {
+                foreach ($weatherData['months'] as $wm) {
+                    if ((int) ($wm['month'] ?? 0) === $month) {
+                        $curMonthWeather = $wm;
+                        break;
+                    }
+                }
+            }
+
+            $cy = (int) ($cal['current_year'] ?? 1490);
+            $cm = (int) ($cal['current_month'] ?? 1);
+            $cd = (int) ($cal['current_day'] ?? 1);
+
+            $absFirst = ew_calendar_absolute_day($year, $month, 1, $dpm, $mpy);
+            $leading = (($absFirst - 1) % $dpw + $dpw) % $dpw;
+
+            $locY = null;
+            if ($campId > 0) {
+                $locRows = query(
+                    'SELECT y_pct FROM world_map_locations WHERE user_id = ? AND campaign_id = ? AND town_id = ? LIMIT 1',
+                    [$uid, $campId, $townId],
+                    0
+                );
+            } else {
+                $locRows = query(
+                    'SELECT y_pct FROM world_map_locations WHERE user_id = ? AND campaign_id IS NULL AND town_id = ? LIMIT 1',
+                    [$uid, $townId],
+                    0
+                );
+            }
+            if (!empty($locRows[0]['y_pct'])) {
+                $locY = (float) $locRows[0]['y_pct'];
+            }
+            if ($curMonthWeather) {
+                $curMonthWeather = ew_weather_localize_month_for_town($curMonthWeather, $locY, (string) ($townMeta['biome'] ?? ''));
+            }
+
+            $daysOut = [];
+            for ($d = 1; $d <= $dim; $d++) {
+                $abs = ew_calendar_absolute_day($year, $month, $d, $dpm, $mpy);
+                $moon = ew_moon_phase_for_absolute_day($abs, $lunarCycle);
+                $weatherItem = null;
+                if ($curMonthWeather) {
+                    $dw = ew_weather_build_daily_context($curMonthWeather, $townId, $year, $month, $d, $dim, 0);
+                    $det = $dw['detail'];
+                    $weatherItem = [
+                        'temp_display' => $det['temp_display'],
+                        'precipitation' => $det['precipitation'],
+                        'wind' => $det['wind'],
+                        'odd_event' => $det['odd_event'],
+                        'summary' => trim(($det['temp_display'] ?? '') . ' · ' . ($det['precipitation'] ?? '') . ', ' . ($det['wind'] ?? '')),
+                    ];
+                }
+                $daysOut[] = [
+                    'day' => $d,
+                    'is_today' => ($year === $cy && $month === $cm && $d === $cd),
+                    'weather' => $weatherItem,
+                    'moon' => $moon,
+                ];
+            }
+
+            respond([
+                'ok' => true,
+                'town_id' => $townId,
+                'year' => $year,
+                'month' => $month,
+                'month_name' => $monthName,
+                'days_in_month' => $dim,
+                'months_per_year' => $mpy,
+                'days_per_week' => $dpw,
+                'weekday_abbrev' => $cal['weekday_abbrev'],
+                'grid_leading_blanks' => $leading,
+                'has_weather_year' => $curMonthWeather !== null,
+                'weather_source' => $weatherSource,
+                'lunar_cycle_days' => $lunarCycle,
+                'days' => $daysOut,
+            ]);
             break;
 
         case 'save_calendar':
@@ -890,14 +1218,18 @@ try {
 
             $c = $input['calendar'] ?? [];
             $monthNames = $c['month_names'] ?? [];
+            $weekdayNames = $c['weekday_names'] ?? [];
+            $weekdayAbbrev = $c['weekday_abbrev'] ?? [];
+            $daysPerWeek = max(1, min(14, (int) ($c['days_per_week'] ?? 7)));
             execute(
-                'INSERT INTO calendar (user_id, campaign_id, current_year, current_month, current_day, era_name, months_per_year, month_names, days_per_month)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                'INSERT INTO calendar (user_id, campaign_id, current_year, current_month, current_day, era_name, months_per_year, month_names, days_per_month, days_per_week, weekday_names, weekday_abbrev)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE
                     current_year=VALUES(current_year), current_month=VALUES(current_month),
                     current_day=VALUES(current_day), era_name=VALUES(era_name),
                     months_per_year=VALUES(months_per_year), month_names=VALUES(month_names),
-                    days_per_month=VALUES(days_per_month)',
+                    days_per_month=VALUES(days_per_month),
+                    days_per_week=VALUES(days_per_week), weekday_names=VALUES(weekday_names), weekday_abbrev=VALUES(weekday_abbrev)',
                 [
                     $uid,
                     $campId,
@@ -908,6 +1240,9 @@ try {
                     (int) ($c['months_per_year'] ?? 12),
                     json_encode(array_values($monthNames)),
                     is_array($c['days_per_month'] ?? null) ? json_encode(array_values($c['days_per_month'])) : (string)((int)($c['days_per_month'] ?? 30)),
+                    $daysPerWeek,
+                    json_encode(array_values(is_array($weekdayNames) ? $weekdayNames : [])),
+                    json_encode(array_values(is_array($weekdayAbbrev) ? $weekdayAbbrev : [])),
                 ],
                 $uid
             );
@@ -2612,29 +2947,6 @@ try {
             respond(['ok' => true, 'message' => 'Bug report submitted! Thank you.']);
             break;
 
-        /* ═══════════════════════════════════════════════════
-           DEPLOY NOTIFICATIONS — Discord webhook (via server)
-           ═══════════════════════════════════════════════════ */
-        case 'send_deploy_notification':
-            // Simple key auth — not session-based since deploy scripts call this
-            $key = $_GET['key'] ?? ($input['key'] ?? '');
-            if ($key !== 'ew_deploy_2026') {
-                throw new Exception('Unauthorized');
-            }
-            $env = trim($input['environment'] ?? 'Dev');
-            $desc = trim($input['description'] ?? "A new version has been deployed to $env.");
-            $changes = $input['changes'] ?? [];
-
-            require_once __DIR__ . '/discord.php';
-            $result = sendDiscordUpdate("$env Deploy", $desc, $changes);
-
-            if (!$result['ok']) {
-                throw new Exception('Failed to send notification: ' . ($result['error'] ?? 'Unknown error'));
-            }
-
-            respond(['ok' => true, 'message' => 'Deploy notification sent to Discord.']);
-            break;
-
         case 'move_character':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -2659,7 +2971,335 @@ try {
             // Move: update town_id, reset months_in_town
             execute('UPDATE characters SET town_id = ?, months_in_town = 0 WHERE id = ?', [$toTownId, $charId], $uid);
 
-            respond(['ok' => true, 'message' => "{$charRow[0]['name']} moved to new town.", 'character_id' => $charId, 'to_town_id' => $toTownId]);
+            // Optional travel estimate context from world map pins.
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+            $travel = null;
+            if ($campId) {
+                $mapRows = query(
+                    'SELECT miles_per_pixel, travel_hours_per_day FROM world_maps WHERE user_id = ? AND campaign_id = ? LIMIT 1',
+                    [$uid, $campId],
+                    0
+                );
+                if ($mapRows) {
+                    $map = $mapRows[0];
+                    $pins = query(
+                        'SELECT town_id, x_pct, y_pct FROM world_map_locations WHERE user_id = ? AND campaign_id = ? AND town_id IN (?, ?)',
+                        [$uid, $campId, $fromTownId, $toTownId],
+                        0
+                    );
+                    if (count($pins) === 2) {
+                        $byTown = [];
+                        foreach ($pins as $p) {
+                            $byTown[(int) $p['town_id']] = $p;
+                        }
+                        if (isset($byTown[$fromTownId]) && isset($byTown[$toTownId])) {
+                            $dx = (float) $byTown[$toTownId]['x_pct'] - (float) $byTown[$fromTownId]['x_pct'];
+                            $dy = (float) $byTown[$toTownId]['y_pct'] - (float) $byTown[$fromTownId]['y_pct'];
+                            $pixelDistance = sqrt(($dx * $dx) + ($dy * $dy)) * 1000.0;
+                            $milesPerPixel = max(0.000001, (float) $map['miles_per_pixel']);
+                            $hoursPerDay = max(1.0, (float) $map['travel_hours_per_day']);
+                            $miles = $pixelDistance * $milesPerPixel;
+                            $days = $miles / (24.0 * ($hoursPerDay / 8.0));
+                            $travel = [
+                                'distance_miles' => round($miles, 2),
+                                'travel_days' => round($days, 2),
+                            ];
+                        }
+                    }
+                }
+            }
+
+            respond([
+                'ok' => true,
+                'message' => "{$charRow[0]['name']} moved to new town.",
+                'character_id' => $charId,
+                'to_town_id' => $toTownId,
+                'travel' => $travel,
+            ]);
+            break;
+
+        case 'get_world_map':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+
+            $mapRows = $campId
+                ? query(
+                    'SELECT map_image_url, map_image_width, map_image_height, miles_per_pixel, travel_hours_per_day FROM world_maps WHERE user_id = ? AND campaign_id = ? LIMIT 1',
+                    [$uid, $campId],
+                    0
+                )
+                : [];
+            $map = $mapRows ? $mapRows[0] : null;
+            $locations = $campId
+                ? query(
+                    'SELECT l.id, l.town_id, l.location_name, l.x_pct, l.y_pct, t.name AS town_name
+                     FROM world_map_locations l
+                     LEFT JOIN towns t ON t.id = l.town_id
+                     WHERE l.user_id = ? AND l.campaign_id = ?
+                     ORDER BY l.location_name',
+                    [$uid, $campId],
+                    0
+                )
+                : [];
+            $skippedRows = $campId
+                ? query(
+                    'SELECT town_id FROM world_map_skipped_towns WHERE user_id = ? AND campaign_id = ?',
+                    [$uid, $campId],
+                    0
+                )
+                : [];
+            $skippedTownIds = array_map(fn($r) => (int) $r['town_id'], $skippedRows ?: []);
+
+            respond([
+                'ok' => true,
+                'campaign_id' => $campId,
+                'map' => $map,
+                'locations' => $locations,
+                'skipped_town_ids' => $skippedTownIds,
+            ]);
+            break;
+
+        case 'save_world_map_settings':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+            if (!$campId)
+                throw new Exception('No active campaign selected.');
+
+            $mapImageUrl = trim((string) ($input['map_image_url'] ?? ''));
+            $width = (int) ($input['map_image_width'] ?? 0);
+            $height = (int) ($input['map_image_height'] ?? 0);
+            $milesPerPixel = max(0.000001, (float) ($input['miles_per_pixel'] ?? 1));
+            $hoursPerDay = max(1.0, (float) ($input['travel_hours_per_day'] ?? 8));
+
+            $existing = query('SELECT id FROM world_maps WHERE user_id = ? AND campaign_id = ? LIMIT 1', [$uid, $campId], 0);
+            if ($existing) {
+                execute(
+                    'UPDATE world_maps SET map_image_url = ?, map_image_width = ?, map_image_height = ?, miles_per_pixel = ?, travel_hours_per_day = ?, updated_at = NOW() WHERE id = ?',
+                    [$mapImageUrl ?: null, $width, $height, $milesPerPixel, $hoursPerDay, (int) $existing[0]['id']],
+                    0
+                );
+            } else {
+                execute(
+                    'INSERT INTO world_maps (user_id, campaign_id, map_image_url, map_image_width, map_image_height, miles_per_pixel, travel_hours_per_day) VALUES (?,?,?,?,?,?,?)',
+                    [$uid, $campId, $mapImageUrl ?: null, $width, $height, $milesPerPixel, $hoursPerDay],
+                    0
+                );
+            }
+
+            respond(['ok' => true]);
+            break;
+
+        case 'set_world_map_town_skip':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+            if (!$campId)
+                throw new Exception('No active campaign selected.');
+            $townId = (int) ($input['town_id'] ?? 0);
+            $skip = !empty($input['skip']);
+            if (!$townId)
+                throw new Exception('Town is required.');
+            verifyTownOwnership($uid, $townId, $uid);
+            if ($skip) {
+                execute(
+                    'DELETE FROM world_map_locations WHERE user_id = ? AND campaign_id = ? AND town_id = ?',
+                    [$uid, $campId, $townId],
+                    0
+                );
+                execute(
+                    'INSERT INTO world_map_skipped_towns (user_id, campaign_id, town_id) VALUES (?,?,?)
+                     ON DUPLICATE KEY UPDATE town_id = town_id',
+                    [$uid, $campId, $townId],
+                    0
+                );
+            } else {
+                execute(
+                    'DELETE FROM world_map_skipped_towns WHERE user_id = ? AND campaign_id = ? AND town_id = ?',
+                    [$uid, $campId, $townId],
+                    0
+                );
+            }
+            respond(['ok' => true, 'town_id' => $townId, 'skip' => $skip]);
+            break;
+
+        case 'apply_world_map_calibration':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+            if (!$campId)
+                throw new Exception('No active campaign selected.');
+            $x1 = (float) ($input['x1_pct'] ?? -1);
+            $y1 = (float) ($input['y1_pct'] ?? -1);
+            $x2 = (float) ($input['x2_pct'] ?? -1);
+            $y2 = (float) ($input['y2_pct'] ?? -1);
+            $miles = (float) ($input['miles'] ?? 0);
+            foreach ([$x1, $y1, $x2, $y2] as $v) {
+                if ($v < 0 || $v > 100)
+                    throw new Exception('Calibration points must use positions on the map (0–100%).');
+            }
+            if ($miles <= 0)
+                throw new Exception('Enter a positive distance in miles.');
+            $dx = $x2 - $x1;
+            $dy = $y2 - $y1;
+            $pixelDistance = sqrt(($dx * $dx) + ($dy * $dy)) * 1000.0;
+            if ($pixelDistance <= 0)
+                throw new Exception('Pick two different points on the map.');
+            $milesPerPixel = $miles / $pixelDistance;
+
+            $existing = query('SELECT id FROM world_maps WHERE user_id = ? AND campaign_id = ? LIMIT 1', [$uid, $campId], 0);
+            if ($existing) {
+                execute(
+                    'UPDATE world_maps SET miles_per_pixel = ?, updated_at = NOW() WHERE id = ?',
+                    [max(0.000001, $milesPerPixel), (int) $existing[0]['id']],
+                    0
+                );
+            } else {
+                throw new Exception('Upload and save a world map image before calibrating.');
+            }
+            respond([
+                'ok' => true,
+                'miles_per_pixel' => round($milesPerPixel, 8),
+                'segment_map_units' => round($pixelDistance, 4),
+            ]);
+            break;
+
+        case 'save_world_map_pin':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+            if (!$campId)
+                throw new Exception('No active campaign selected.');
+
+            $townId = (int) ($input['town_id'] ?? 0);
+            $x = (float) ($input['x_pct'] ?? -1);
+            $y = (float) ($input['y_pct'] ?? -1);
+            if (!$townId)
+                throw new Exception('Town is required.');
+            if ($x < 0 || $x > 100 || $y < 0 || $y > 100)
+                throw new Exception('Pin coordinates must be between 0 and 100.');
+
+            verifyTownOwnership($uid, $townId, $uid);
+            execute(
+                'DELETE FROM world_map_skipped_towns WHERE user_id = ? AND campaign_id = ? AND town_id = ?',
+                [$uid, $campId, $townId],
+                0
+            );
+            $townRows = query('SELECT name FROM towns WHERE id = ? LIMIT 1', [$townId], $uid);
+            $townName = $townRows ? (string) $townRows[0]['name'] : ('Town #' . $townId);
+
+            $existing = query(
+                'SELECT id FROM world_map_locations WHERE user_id = ? AND campaign_id = ? AND town_id = ? LIMIT 1',
+                [$uid, $campId, $townId],
+                0
+            );
+            if ($existing) {
+                execute(
+                    'UPDATE world_map_locations SET location_name = ?, x_pct = ?, y_pct = ?, updated_at = NOW() WHERE id = ?',
+                    [$townName, $x, $y, (int) $existing[0]['id']],
+                    0
+                );
+            } else {
+                execute(
+                    'INSERT INTO world_map_locations (user_id, campaign_id, town_id, location_name, x_pct, y_pct) VALUES (?,?,?,?,?,?)',
+                    [$uid, $campId, $townId, $townName, $x, $y],
+                    0
+                );
+            }
+
+            respond(['ok' => true, 'town_id' => $townId, 'location_name' => $townName, 'x_pct' => $x, 'y_pct' => $y]);
+            break;
+
+        case 'delete_world_map_pin':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+            if (!$campId)
+                throw new Exception('No active campaign selected.');
+            $townId = (int) ($input['town_id'] ?? 0);
+            if (!$townId)
+                throw new Exception('Town is required.');
+            execute(
+                'DELETE FROM world_map_locations WHERE user_id = ? AND campaign_id = ? AND town_id = ?',
+                [$uid, $campId, $townId],
+                0
+            );
+            respond(['ok' => true]);
+            break;
+
+        case 'estimate_travel_time':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $fromTownId = (int) ($_GET['from_town_id'] ?? ($input['from_town_id'] ?? 0));
+            $toTownId = (int) ($_GET['to_town_id'] ?? ($input['to_town_id'] ?? 0));
+            if (!$fromTownId || !$toTownId || $fromTownId === $toTownId)
+                throw new Exception('Valid source and destination towns are required.');
+            verifyTownOwnership($uid, $fromTownId, $uid);
+            verifyTownOwnership($uid, $toTownId, $uid);
+
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+            if (!$campId)
+                throw new Exception('No active campaign selected.');
+
+            $mapRows = query(
+                'SELECT miles_per_pixel, travel_hours_per_day FROM world_maps WHERE user_id = ? AND campaign_id = ? LIMIT 1',
+                [$uid, $campId],
+                0
+            );
+            if (!$mapRows)
+                throw new Exception('No world map configured for this campaign yet.');
+
+            $skipRows = query(
+                'SELECT town_id FROM world_map_skipped_towns WHERE user_id = ? AND campaign_id = ? AND town_id IN (?, ?)',
+                [$uid, $campId, $fromTownId, $toTownId],
+                0
+            );
+            if (!empty($skipRows)) {
+                throw new Exception('One or both towns are set to “not on map.” Turn that off for those towns or place pins to estimate travel.');
+            }
+
+            $pins = query(
+                'SELECT town_id, x_pct, y_pct FROM world_map_locations WHERE user_id = ? AND campaign_id = ? AND town_id IN (?, ?)',
+                [$uid, $campId, $fromTownId, $toTownId],
+                0
+            );
+            if (count($pins) !== 2)
+                throw new Exception('Both towns must be pinned on the world map.');
+            $byTown = [];
+            foreach ($pins as $p) {
+                $byTown[(int) $p['town_id']] = $p;
+            }
+            if (!isset($byTown[$fromTownId]) || !isset($byTown[$toTownId]))
+                throw new Exception('Could not resolve map pins for both towns.');
+
+            $dx = (float) $byTown[$toTownId]['x_pct'] - (float) $byTown[$fromTownId]['x_pct'];
+            $dy = (float) $byTown[$toTownId]['y_pct'] - (float) $byTown[$fromTownId]['y_pct'];
+            $pixelDistance = sqrt(($dx * $dx) + ($dy * $dy)) * 1000.0;
+
+            $milesPerPixel = max(0.000001, (float) $mapRows[0]['miles_per_pixel']);
+            $hoursPerDay = max(1.0, (float) $mapRows[0]['travel_hours_per_day']);
+            $miles = $pixelDistance * $milesPerPixel;
+            $daysAt24 = $miles / 24.0;
+            $daysAdjusted = $daysAt24 / ($hoursPerDay / 8.0);
+
+            respond([
+                'ok' => true,
+                'from_town_id' => $fromTownId,
+                'to_town_id' => $toTownId,
+                'distance_miles' => round($miles, 2),
+                'travel_days' => round($daysAdjusted, 2),
+                'travel_hours_per_day' => round($hoursPerDay, 2),
+                'miles_per_pixel' => round($milesPerPixel, 6),
+            ]);
             break;
 
         /* ═══════════════════════════════════════════════════
@@ -2766,7 +3406,7 @@ try {
             $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
 
             $result = [];
-            $tables = ['custom_races', 'custom_classes', 'custom_feats', 'custom_spells', 'custom_equipment'];
+            $tables = ['custom_races', 'custom_classes', 'custom_feats', 'custom_spells', 'custom_equipment', 'custom_monsters'];
             foreach ($tables as $tbl) {
                 try {
                     if ($campId) {
@@ -2927,13 +3567,46 @@ try {
             }
             break;
 
+        case 'save_custom_monster':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $d = $input['monster'] ?? [];
+            $itemId = (int) ($d['id'] ?? 0);
+            $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
+            $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
+
+            if ($itemId > 0) {
+                userExecute($uid, 'UPDATE custom_monsters SET name=?, cr=?, type_line=?, hit_dice=?, armor_class=?, abilities=?, stat_summary=? WHERE id=?', [
+                    trim($d['name'] ?? ''),
+                    trim($d['cr'] ?? '1'),
+                    trim($d['type_line'] ?? ''),
+                    trim($d['hit_dice'] ?? '2d8'),
+                    trim($d['armor_class'] ?? '14'),
+                    trim($d['abilities'] ?? ''),
+                    trim($d['stat_summary'] ?? ''),
+                    $itemId
+                ]);
+                respond(['ok' => true, 'id' => $itemId]);
+            } else {
+                $name = trim($d['name'] ?? '');
+                if (!$name) throw new Exception('Monster name is required.');
+                $newId = userInsert($uid,
+                    'INSERT INTO custom_monsters (campaign_id, name, cr, type_line, hit_dice, armor_class, abilities, stat_summary) VALUES (?,?,?,?,?,?,?,?)',
+                    [$campId, $name, trim($d['cr'] ?? '1'), trim($d['type_line'] ?? ''),
+                     trim($d['hit_dice'] ?? '2d8'), trim($d['armor_class'] ?? '14'),
+                     trim($d['abilities'] ?? ''), trim($d['stat_summary'] ?? '')]
+                );
+                respond(['ok' => true, 'id' => $newId]);
+            }
+            break;
+
         case 'delete_custom_content':
             $user = requireAuth();
             $uid = (int) $user['id'];
             $contentType = $input['content_type'] ?? '';
             $contentId = (int) ($input['content_id'] ?? 0);
             if (!$contentId) throw new Exception('Missing content_id.');
-            $validTypes = ['custom_races', 'custom_classes', 'custom_feats', 'custom_spells', 'custom_equipment'];
+            $validTypes = ['custom_races', 'custom_classes', 'custom_feats', 'custom_spells', 'custom_equipment', 'custom_monsters'];
             if (!in_array($contentType, $validTypes)) throw new Exception('Invalid content_type.');
             userExecute($uid, "DELETE FROM $contentType WHERE id = ?", [$contentId]);
             respond(['ok' => true]);
@@ -2968,16 +3641,15 @@ try {
             $totalSize = 0;
             foreach ($files as $f) $totalSize += (int) ($f['file_size'] ?? 0);
             $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
-            $tier = $udata[0]['subscription_tier'] ?? 'free';
-            $storageLimits = ['free' => 20 * 1024 * 1024, 'apprentice' => 50 * 1024 * 1024, 'adventurer' => 100 * 1024 * 1024, 'guild_master' => 500 * 1024 * 1024, 'world_builder' => 2048 * 1024 * 1024];
-            $fileLimits = ['free' => 10, 'apprentice' => 25, 'adventurer' => 50, 'guild_master' => 200, 'world_builder' => 9999];
+            $tier = ew_normalize_subscription_tier((string) ($udata[0]['subscription_tier'] ?? 'free'));
+            $lim = ew_tier_limits_for_user_tier($tier);
             respond([
                 'ok' => true,
                 'files' => $files,
                 'storage_used' => $totalSize,
-                'storage_limit' => $storageLimits[$tier] ?? $storageLimits['free'],
+                'storage_limit' => $lim['content_max_storage_bytes'],
                 'file_count' => count($files),
-                'file_limit' => $fileLimits[$tier] ?? $fileLimits['free'],
+                'file_limit' => $lim['content_max_files'],
             ]);
             break;
 
@@ -2999,6 +3671,175 @@ try {
         /* ═══════════════════════════════════════════════════
            ADMIN — cross-account database management
            ═══════════════════════════════════════════════════ */
+
+        case 'admin_metrics':
+            requireAdmin();
+            $period = max(7, min(180, (int) ($_GET['period'] ?? 30)));
+            $today = date('Y-m-d');
+            $start = date('Y-m-d', strtotime("-" . ($period - 1) . " days"));
+
+            // Helper — fill missing days with zero so chart x-axis is contiguous.
+            $fillDays = function (array $rows, string $valueKey) use ($period) {
+                $byDay = [];
+                foreach ($rows as $r) {
+                    $byDay[$r['day']] = (int) $r[$valueKey];
+                }
+                $out = [];
+                for ($i = $period - 1; $i >= 0; $i--) {
+                    $d = date('Y-m-d', strtotime("-{$i} days"));
+                    $out[] = ['day' => $d, 'value' => $byDay[$d] ?? 0];
+                }
+                return $out;
+            };
+
+            // Daily unique visitors (anon + logged-in dedupe via visitor_hash) ----------
+            try {
+                $vRows = query(
+                    "SELECT DATE(day) AS day, COUNT(DISTINCT visitor_hash) AS c
+                     FROM metrics_pageviews
+                     WHERE day >= ?
+                     GROUP BY day",
+                    [$start], 0
+                );
+                $dailyVisitors = $fillDays($vRows, 'c');
+            } catch (Throwable $e) { $dailyVisitors = []; }
+
+            // Daily signups -----------------------------------------------------------
+            $sRows = query(
+                "SELECT DATE(created_at) AS day, COUNT(*) AS c
+                 FROM users
+                 WHERE created_at >= ?
+                 GROUP BY DATE(created_at)",
+                [$start . ' 00:00:00'], 0
+            );
+            $dailySignups = $fillDays($sRows, 'c');
+
+            // Daily AI tokens ---------------------------------------------------------
+            try {
+                $tRows = query(
+                    "SELECT day, SUM(tokens) AS c
+                     FROM metrics_ai_calls
+                     WHERE day >= ?
+                     GROUP BY day",
+                    [$start], 0
+                );
+                $dailyTokens = $fillDays($tRows, 'c');
+            } catch (Throwable $e) { $dailyTokens = []; }
+
+            // Tier breakdown ----------------------------------------------------------
+            $tiers = query(
+                "SELECT subscription_tier AS tier, COUNT(*) AS c FROM users GROUP BY subscription_tier",
+                [], 0
+            );
+            $tierBreakdown = [];
+            foreach ($tiers as $t) {
+                $tierBreakdown[$t['tier'] ?: 'free'] = (int) $t['c'];
+            }
+
+            // Verification funnel -----------------------------------------------------
+            $totalUsers = (int) (query('SELECT COUNT(*) AS c FROM users', [], 0)[0]['c'] ?? 0);
+            $verified = (int) (query('SELECT COUNT(*) AS c FROM users WHERE COALESCE(email_verified,1) = 1', [], 0)[0]['c'] ?? 0);
+            $firstAi = (int) (query('SELECT COUNT(DISTINCT user_id) AS c FROM user_token_usage', [], 0)[0]['c'] ?? 0);
+            $paidAny = (int) (query("SELECT COUNT(*) AS c FROM users WHERE subscription_tier IS NOT NULL AND subscription_tier <> 'free'", [], 0)[0]['c'] ?? 0);
+            $verificationFunnel = [
+                'signups' => $totalUsers,
+                'verified' => $verified,
+                'first_ai_call' => $firstAi,
+                'paid' => $paidAny,
+            ];
+
+            // Abuse log (last 7 days, non-success) -----------------------------------
+            try {
+                $abuse = query(
+                    "SELECT DATE(created_at) AS day, outcome, email_domain, ip, created_at
+                     FROM signup_attempts
+                     WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                       AND outcome IS NOT NULL
+                       AND outcome NOT IN ('success', 'pending_verify', 'pending', 'unknown')
+                     ORDER BY id DESC
+                     LIMIT 200",
+                    [], 0
+                );
+                $abuseAgg = query(
+                    "SELECT outcome, COUNT(*) AS c
+                     FROM signup_attempts
+                     WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+                       AND outcome IS NOT NULL AND outcome <> 'unknown'
+                     GROUP BY outcome
+                     ORDER BY c DESC",
+                    [], 0
+                );
+            } catch (Throwable $e) {
+                $abuse = [];
+                $abuseAgg = [];
+            }
+
+            // Feature usage (current month) ------------------------------------------
+            $ym = date('Y-m');
+            $featureUsage = query(
+                "SELECT feature_key, COALESCE(SUM(tokens_used),0) AS tokens, COALESCE(SUM(call_count),0) AS calls
+                 FROM user_token_usage
+                 WHERE `year_month` = ?
+                 GROUP BY feature_key
+                 ORDER BY calls DESC",
+                [$ym], 0
+            );
+
+            // Retention (last 6 weeks) -----------------------------------------------
+            // For each cohort week, % of users who returned in week+1, +2, +3, +4.
+            try {
+                $cohorts = [];
+                for ($w = 5; $w >= 0; $w--) {
+                    $weekStart = date('Y-m-d', strtotime("monday this week -{$w} weeks"));
+                    $weekEnd = date('Y-m-d', strtotime($weekStart . ' +6 days'));
+                    $cohortUsers = query(
+                        "SELECT id FROM users WHERE created_at BETWEEN ? AND ?",
+                        [$weekStart . ' 00:00:00', $weekEnd . ' 23:59:59'], 0
+                    );
+                    $cohortIds = array_map(fn($r) => (int) $r['id'], $cohortUsers);
+                    $size = count($cohortIds);
+                    $row = ['week_start' => $weekStart, 'size' => $size, 'w1' => null, 'w2' => null, 'w3' => null, 'w4' => null];
+                    if ($size > 0) {
+                        $idsPh = implode(',', array_fill(0, $size, '?'));
+                        for ($n = 1; $n <= 4; $n++) {
+                            $rangeStart = date('Y-m-d', strtotime($weekStart . " +" . ($n * 7) . " days"));
+                            $rangeEnd = date('Y-m-d', strtotime($rangeStart . ' +6 days'));
+                            // Skip future windows
+                            if ($rangeStart > $today) {
+                                $row["w{$n}"] = null;
+                                continue;
+                            }
+                            $params = array_merge([$rangeStart, $rangeEnd . ' 23:59:59'], $cohortIds);
+                            try {
+                                $back = query(
+                                    "SELECT COUNT(DISTINCT user_id) AS c FROM metrics_pageviews
+                                     WHERE day BETWEEN ? AND ? AND user_id IN ($idsPh)",
+                                    $params, 0
+                                );
+                                $row["w{$n}"] = (int) ($back[0]['c'] ?? 0);
+                            } catch (Throwable $e) {
+                                $row["w{$n}"] = null;
+                            }
+                        }
+                    }
+                    $cohorts[] = $row;
+                }
+            } catch (Throwable $e) { $cohorts = []; }
+
+            respond([
+                'ok' => true,
+                'period_days' => $period,
+                'daily_visitors' => $dailyVisitors,
+                'daily_signups' => $dailySignups,
+                'daily_tokens' => $dailyTokens,
+                'tier_breakdown' => $tierBreakdown,
+                'verification_funnel' => $verificationFunnel,
+                'feature_usage' => $featureUsage,
+                'abuse_log' => $abuse,
+                'abuse_aggregate' => $abuseAgg,
+                'retention_cohorts' => $cohorts,
+            ]);
+            break;
 
         case 'admin_overview':
             requireAdmin();
@@ -3026,7 +3867,7 @@ try {
         case 'admin_members':
             requireAdmin();
             $members = query(
-                "SELECT u.id, u.username, u.email, u.subscription_tier, u.role, u.credit_balance, u.created_at,
+                "SELECT u.id, u.username, u.email, u.subscription_tier, u.role, u.credit_balance, u.created_at, u.discord_user_id,
                     (SELECT COUNT(*) FROM campaigns WHERE user_id = u.id) as campaign_count,
                     (SELECT COUNT(*) FROM towns WHERE user_id = u.id) as town_count,
                     COALESCE((SELECT SUM(tokens_used) FROM user_token_usage WHERE user_id = u.id AND `year_month` = ?), 0) as tokens_this_month,
@@ -3044,9 +3885,11 @@ try {
             if (!$targetId) throw new Exception('Missing user_id');
             $updates = [];
             $params = [];
+            $syncDiscordTier = false;
             if (isset($input['subscription_tier'])) {
                 $updates[] = 'subscription_tier = ?';
                 $params[] = $input['subscription_tier'];
+                $syncDiscordTier = true;
             }
             if (isset($input['role'])) {
                 $updates[] = 'role = ?';
@@ -3060,10 +3903,32 @@ try {
                 $updates[] = 'email = ?';
                 $params[] = trim($input['email']);
             }
+            if (array_key_exists('discord_user_id', $input)) {
+                $did = trim((string) $input['discord_user_id']);
+                if ($did === '') {
+                    $updates[] = 'discord_user_id = NULL';
+                } else {
+                    if (!preg_match('/^\d{7,30}$/', $did)) {
+                        throw new Exception('Invalid Discord user ID (numeric snowflake only).');
+                    }
+                    $updates[] = 'discord_user_id = ?';
+                    $params[] = $did;
+                }
+                $syncDiscordTier = true;
+            }
             if (empty($updates)) throw new Exception('No fields to update');
             $params[] = $targetId;
             execute('UPDATE users SET ' . implode(', ', $updates) . ' WHERE id = ?', $params, 0);
-            respond(['ok' => true]);
+            $discordSync = null;
+            if ($syncDiscordTier) {
+                require_once __DIR__ . '/discord_member_sync_lib.php';
+                $discordSync = ew_discord_member_tier_sync($targetId);
+            }
+            $out = ['ok' => true];
+            if ($discordSync !== null) {
+                $out['discord_sync'] = $discordSync;
+            }
+            respond($out);
             break;
 
         case 'admin_adjust_credits':
@@ -3228,6 +4093,11 @@ try {
 
         case 'admin_site_settings':
             requireAdmin();
+            execute(
+                "INSERT IGNORE INTO site_settings (`key`, value, updated_at) VALUES ('signup_rate_limit_ip_allowlist', '', NOW())",
+                [],
+                0
+            );
             $settings = query('SELECT * FROM site_settings ORDER BY `key`', [], 0);
             respond(['ok' => true, 'settings' => $settings]);
             break;
@@ -3376,79 +4246,710 @@ try {
             break;
 
         /* ═══════════════════════════════════════════════════
-           ADMIN — Beta Key Management
+           PHASE FRAMEWORK — Macro sim / player portal / wiki
            ═══════════════════════════════════════════════════ */
 
-        case 'admin_beta_keys':
-            requireAdmin();
-            $keys = query(
-                "SELECT bk.*, u.username as used_by_username
-                 FROM beta_keys bk
-                 LEFT JOIN users u ON u.id = bk.used_by_user_id
-                 ORDER BY bk.created_at DESC",
-                [], 0
-            );
-            respond(['ok' => true, 'keys' => $keys]);
+        case 'macro_framework_overview':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $state = ensureCampaignMacroBaseline($campaignId);
+            ensureTownMacroRows($campaignId);
+            $metrics = getMacroTownMetrics($campaignId);
+
+            $phaseRoadmap = [
+                ['phase' => 5, 'title' => 'Macro Simulation & World Dynamics', 'target' => 'Q2 2027', 'unlock' => 10000],
+                ['phase' => 6, 'title' => 'Usability, Players & Integration', 'target' => 'Q4 2027', 'unlock' => 15000],
+                ['phase' => 7, 'title' => 'Worldbuilding Wiki & Lore System', 'target' => 'Q4 2027', 'unlock' => 15000],
+            ];
+
+            respond([
+                'ok' => true,
+                'campaign_id' => $campaignId,
+                'macro_state' => $state,
+                'town_metrics' => $metrics,
+                'framework_flags' => [
+                    'dynamic_economy_trade' => true,
+                    'weather_seasons' => true,
+                    'medieval_demographics' => true,
+                    'player_portal' => true,
+                    'mobile_redesign' => true,
+                    'vtt_export' => true,
+                    'discord_bot_integration' => true,
+                    'wiki_articles' => true,
+                    'wiki_auto_linking' => true,
+                    'relationship_web_viz' => true,
+                ],
+                'phase_roadmap' => $phaseRoadmap,
+            ]);
             break;
 
-        case 'admin_create_beta_keys':
-            requireAdmin();
-            $count = min(50, max(1, (int) ($input['count'] ?? 1)));
-            $note = trim($input['note'] ?? '');
-            $customKey = trim($input['custom_key'] ?? '');
-            $created = [];
+        case 'macro_simulate_month':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $months = (int) ($input['months'] ?? 1);
+            $note = trim((string) ($input['note'] ?? ''));
+            $state = runMacroMonthTick($campaignId, $months, $note);
+            $metrics = getMacroTownMetrics($campaignId);
+            respond([
+                'ok' => true,
+                'campaign_id' => $campaignId,
+                'macro_state' => $state,
+                'town_metrics' => $metrics,
+                'note' => $note,
+                'engine' => 'framework_tick_v1',
+            ]);
+            break;
 
-            for ($i = 0; $i < $count; $i++) {
-                if ($customKey && $count === 1) {
-                    // Use custom key if provided (single key mode only)
-                    $code = $customKey;
-                } else {
-                    // Generate a random key: EW-BETA-XXXX-XXXX-XXXX
-                    $hex = strtoupper(bin2hex(random_bytes(6)));
-                    $code = 'EW-BETA-' . substr($hex, 0, 4) . '-' . substr($hex, 4, 4) . '-' . substr($hex, 8, 4);
-                }
+        case 'macro_town_metrics':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            ensureTownMacroRows($campaignId);
+            ensureMacroTradeRoutes($campaignId);
+            respond([
+                'ok' => true,
+                'campaign_id' => $campaignId,
+                'town_metrics' => getMacroTownMetrics($campaignId),
+                'trade_routes' => getMacroTradeRoutes($campaignId),
+            ]);
+            break;
 
-                try {
-                    $id = insertAndGetId(
-                        'INSERT INTO beta_keys (`key_code`, note) VALUES (?, ?)',
-                        [$code, $note],
-                        0
-                    );
-                    $created[] = ['id' => $id, 'key_code' => $code, 'note' => $note];
-                } catch (Exception $e) {
-                    // Duplicate key — skip and try again
-                    if (strpos($e->getMessage(), 'Duplicate') !== false && !$customKey) {
-                        $i--; // retry
-                        continue;
-                    }
-                    throw $e;
+        case 'macro_trade_routes':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            ensureMacroTradeRoutes($campaignId);
+            respond([
+                'ok' => true,
+                'campaign_id' => $campaignId,
+                'routes' => getMacroTradeRoutes($campaignId),
+            ]);
+            break;
+
+        case 'macro_weather_log':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $limit = max(10, min(240, (int) ($_GET['limit'] ?? 60)));
+            $rows = query(
+                'SELECT month_index, season, weather_pattern, severity, narrative, created_at
+                 FROM macro_weather_events
+                 WHERE campaign_id = ?
+                 ORDER BY month_index DESC, id DESC
+                 LIMIT ' . $limit,
+                [$campaignId],
+                0
+            );
+            respond(['ok' => true, 'campaign_id' => $campaignId, 'events' => $rows]);
+            break;
+
+        case 'macro_demographics':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $townId = (int) ($_GET['town_id'] ?? 0);
+            $limit = max(6, min(240, (int) ($_GET['limit'] ?? 48)));
+            $sql = 'SELECT d.*, t.name AS town_name
+                    FROM macro_demographics_snapshots d
+                    JOIN towns t ON t.id = d.town_id
+                    WHERE d.campaign_id = ?';
+            $params = [$campaignId];
+            if ($townId > 0) {
+                $sql .= ' AND d.town_id = ?';
+                $params[] = $townId;
+            }
+            $sql .= ' ORDER BY d.month_index DESC LIMIT ' . $limit;
+            $rows = query($sql, $params, 0);
+            respond(['ok' => true, 'campaign_id' => $campaignId, 'snapshots' => $rows]);
+            break;
+
+        case 'player_portal_snapshot':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $townId = (int) ($_GET['town_id'] ?? 0);
+            $townSql = 'SELECT id, name, subtitle FROM towns WHERE user_id = ? AND campaign_id = ?';
+            $townParams = [$uid, $campaignId];
+            if ($townId > 0) {
+                $townSql .= ' AND id = ?';
+                $townParams[] = $townId;
+            }
+            $towns = query($townSql . ' ORDER BY name', $townParams, 0);
+            $townIds = array_map(fn($t) => (int) $t['id'], $towns);
+            $characters = [];
+            if (!empty($townIds)) {
+                $in = implode(',', array_fill(0, count($townIds), '?'));
+                $characters = query(
+                    "SELECT id, town_id, name, race, class, level, status, title
+                     FROM characters
+                     WHERE town_id IN ($in) AND (status IS NULL OR status != 'deceased')
+                     ORDER BY town_id, name",
+                    $townIds,
+                    0
+                );
+            }
+            $history = [];
+            if (!empty($townIds)) {
+                $in = implode(',', array_fill(0, count($townIds), '?'));
+                $history = query(
+                    "SELECT id, town_id, heading, content, sort_order
+                     FROM history
+                     WHERE town_id IN ($in)
+                     ORDER BY sort_order DESC
+                     LIMIT 100",
+                    $townIds,
+                    0
+                );
+            }
+            respond([
+                'ok' => true,
+                'campaign_id' => $campaignId,
+                'read_only' => true,
+                'towns' => $towns,
+                'characters' => $characters,
+                'history' => $history,
+            ]);
+            break;
+
+        case 'player_portal_public_snapshot':
+            $token = trim((string) ($_GET['token'] ?? ''));
+            if ($token === '') {
+                throw new Exception('Missing token.');
+            }
+            $tokenHash = hash('sha256', $token);
+            $tokRows = query(
+                'SELECT * FROM player_portal_tokens
+                 WHERE token_hash = ? AND is_revoked = 0
+                   AND (expires_at IS NULL OR expires_at > NOW())
+                 LIMIT 1',
+                [$tokenHash],
+                0
+            );
+            if (!$tokRows) {
+                throw new Exception('Invalid or expired token.');
+            }
+            $tok = $tokRows[0];
+            $uid = (int) $tok['user_id'];
+            $campaignId = (int) $tok['campaign_id'];
+            $scope = json_decode($tok['scope_json'] ?? '{}', true) ?: [];
+            $townId = (int) ($_GET['town_id'] ?? 0);
+            $allowedTownIds = array_map('intval', $scope['town_ids'] ?? []);
+
+            $townSql = 'SELECT id, name, subtitle FROM towns WHERE user_id = ? AND campaign_id = ?';
+            $townParams = [$uid, $campaignId];
+            if (!empty($allowedTownIds)) {
+                $in = implode(',', array_fill(0, count($allowedTownIds), '?'));
+                $townSql .= " AND id IN ($in)";
+                foreach ($allowedTownIds as $tid) {
+                    $townParams[] = $tid;
                 }
             }
-            respond(['ok' => true, 'created' => $created, 'count' => count($created)]);
+            if ($townId > 0) {
+                $townSql .= ' AND id = ?';
+                $townParams[] = $townId;
+            }
+            $towns = query($townSql . ' ORDER BY name', $townParams, 0);
+            $townIds = array_map(fn($t) => (int) $t['id'], $towns);
+            $characters = [];
+            $history = [];
+            if (!empty($townIds)) {
+                $in = implode(',', array_fill(0, count($townIds), '?'));
+                $characters = query(
+                    "SELECT id, town_id, name, race, class, level, status, title
+                     FROM characters
+                     WHERE town_id IN ($in) AND (status IS NULL OR status != 'deceased')
+                     ORDER BY town_id, name",
+                    $townIds,
+                    0
+                );
+                $history = query(
+                    "SELECT id, town_id, heading, content, sort_order
+                     FROM history
+                     WHERE town_id IN ($in)
+                     ORDER BY sort_order DESC
+                     LIMIT 100",
+                    $townIds,
+                    0
+                );
+            }
+
+            execute(
+                'UPDATE player_portal_tokens SET last_accessed_at = NOW() WHERE id = ?',
+                [(int) $tok['id']],
+                0
+            );
+
+            respond([
+                'ok' => true,
+                'campaign_id' => $campaignId,
+                'token_label' => $tok['label'] ?? 'Player Portal',
+                'read_only' => true,
+                'towns' => $towns,
+                'characters' => $characters,
+                'history' => $history,
+            ]);
             break;
 
-        case 'admin_delete_beta_key':
-            requireAdmin();
-            $keyId = (int) ($input['key_id'] ?? 0);
-            if (!$keyId) throw new Exception('Missing key_id');
-            execute('DELETE FROM beta_keys WHERE id = ?', [$keyId], 0);
-            respond(['ok' => true]);
+        case 'player_portal_tokens':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $rows = query(
+                'SELECT id, label, scope_json, is_revoked, expires_at, created_at, last_accessed_at
+                 FROM player_portal_tokens
+                 WHERE user_id = ? AND campaign_id = ?
+                 ORDER BY created_at DESC',
+                [$uid, $campaignId],
+                0
+            );
+            respond(['ok' => true, 'campaign_id' => $campaignId, 'tokens' => $rows]);
             break;
 
-        case 'admin_revoke_beta_key':
-            requireAdmin();
-            $keyId = (int) ($input['key_id'] ?? 0);
-            if (!$keyId) throw new Exception('Missing key_id');
-            // Reset the key to unused state
-            execute('UPDATE beta_keys SET is_used = 0, used_by_user_id = NULL, used_at = NULL WHERE id = ?', [$keyId], 0);
-            respond(['ok' => true]);
+        case 'player_portal_token_create':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $label = trim((string) ($input['label'] ?? 'Player Share Link'));
+            $scopeJson = json_encode($input['scope'] ?? ['read_only' => true], JSON_UNESCAPED_UNICODE);
+            $days = max(1, min(3650, (int) ($input['expires_in_days'] ?? 180)));
+            $rawToken = bin2hex(random_bytes(24));
+            $tokenHash = hash('sha256', $rawToken);
+            execute(
+                'INSERT INTO player_portal_tokens (user_id, campaign_id, token_hash, label, scope_json, expires_at)
+                 VALUES (?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? DAY))',
+                [$uid, $campaignId, $tokenHash, $label, $scopeJson, $days],
+                0
+            );
+            respond([
+                'ok' => true,
+                'campaign_id' => $campaignId,
+                'token' => $rawToken,
+                'token_hash' => $tokenHash,
+            ]);
+            break;
+
+        case 'player_portal_token_revoke':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $tokenId = (int) ($input['token_id'] ?? 0);
+            if ($tokenId <= 0) {
+                throw new Exception('Missing token_id.');
+            }
+            execute(
+                'UPDATE player_portal_tokens
+                 SET is_revoked = 1
+                 WHERE id = ? AND user_id = ? AND campaign_id = ?',
+                [$tokenId, $uid, $campaignId],
+                0
+            );
+            respond(['ok' => true, 'token_id' => $tokenId]);
+            break;
+
+        case 'player_portal_token_scope_update':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $tokenId = (int) ($input['token_id'] ?? 0);
+            if ($tokenId <= 0) {
+                throw new Exception('Missing token_id.');
+            }
+            $scope = $input['scope'] ?? ['read_only' => true];
+            if (!is_array($scope)) {
+                throw new Exception('scope must be an object.');
+            }
+            $scopeJson = json_encode($scope, JSON_UNESCAPED_UNICODE);
+            execute(
+                'UPDATE player_portal_tokens
+                 SET scope_json = ?
+                 WHERE id = ? AND user_id = ? AND campaign_id = ?',
+                [$scopeJson, $tokenId, $uid, $campaignId],
+                0
+            );
+            respond(['ok' => true, 'token_id' => $tokenId]);
+            break;
+
+        case 'vtt_export_payload':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $adapter = trim((string) ($_GET['adapter'] ?? 'native'));
+            $towns = query('SELECT id, name, subtitle FROM towns WHERE user_id = ? AND campaign_id = ? ORDER BY name', [$uid, $campaignId], 0);
+            $characters = query(
+                "SELECT id, town_id, name, race, class, level, hp, ac, alignment, status, role, title
+                 FROM characters
+                 WHERE town_id IN (SELECT id FROM towns WHERE user_id = ? AND campaign_id = ?)
+                 ORDER BY town_id, name",
+                [$uid, $campaignId],
+                0
+            );
+            $buildings = query(
+                "SELECT id, town_id, name, building_type, status, progress_months, required_months
+                 FROM town_buildings
+                 WHERE town_id IN (SELECT id FROM towns WHERE user_id = ? AND campaign_id = ?)
+                 ORDER BY town_id, name",
+                [$uid, $campaignId],
+                0
+            );
+            $payload = [
+                'ok' => true,
+                'format' => 'eonweaver.vtt.v1',
+                'generated_at' => gmdate('c'),
+                'campaign_id' => $campaignId,
+                'adapter' => $adapter,
+                'towns' => $towns,
+                'characters' => $characters,
+                'buildings' => $buildings,
+                'adapter_hints' => [
+                    'supported' => ['native', 'foundry_vtt', 'roll20'],
+                    'notes' => 'Framework transform only. Field mapping will be tuned per target VTT.',
+                ],
+            ];
+
+            if ($adapter === 'foundry_vtt') {
+                $payload['format'] = 'foundry-vtt.eonweaver.framework.v1';
+                $payload['actors'] = array_map(function ($c) {
+                    return [
+                        'name' => $c['name'] ?? 'Unnamed',
+                        'type' => 'npc',
+                        'system' => [
+                            'details' => [
+                                'level' => (int) ($c['level'] ?? 0),
+                                'alignment' => $c['alignment'] ?? '',
+                            ],
+                            'attributes' => [
+                                'ac' => ['value' => (int) ($c['ac'] ?? 0)],
+                                'hp' => ['value' => (int) ($c['hp'] ?? 0), 'max' => (int) ($c['hp'] ?? 0)],
+                            ],
+                        ],
+                        'flags' => [
+                            'eonweaver' => [
+                                'character_id' => (int) ($c['id'] ?? 0),
+                                'town_id' => (int) ($c['town_id'] ?? 0),
+                            ],
+                        ],
+                    ];
+                }, $characters);
+            } elseif ($adapter === 'roll20') {
+                $payload['format'] = 'roll20.eonweaver.framework.v1';
+                $payload['journal_entries'] = array_map(function ($c) {
+                    return [
+                        'name' => $c['name'] ?? 'Unnamed',
+                        'bio' => trim(($c['race'] ?? '') . ' ' . ($c['class'] ?? '') . ' L' . ($c['level'] ?? 0)),
+                        'gmnotes' => json_encode([
+                            'eon_character_id' => (int) ($c['id'] ?? 0),
+                            'town_id' => (int) ($c['town_id'] ?? 0),
+                            'hp' => (int) ($c['hp'] ?? 0),
+                            'ac' => (int) ($c['ac'] ?? 0),
+                            'alignment' => $c['alignment'] ?? '',
+                        ], JSON_UNESCAPED_UNICODE),
+                    ];
+                }, $characters);
+            }
+            respond($payload);
+            break;
+
+        case 'integration_status':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $rows = query(
+                'SELECT key_name, value_json, updated_at FROM integration_settings WHERE user_id = ? AND campaign_id = ? ORDER BY key_name',
+                [$uid, $campaignId],
+                0
+            );
+            $settings = [];
+            foreach ($rows as $r) {
+                $settings[$r['key_name']] = [
+                    'value' => json_decode($r['value_json'] ?: 'null', true),
+                    'updated_at' => $r['updated_at'] ?? null,
+                ];
+            }
+            respond([
+                'ok' => true,
+                'campaign_id' => $campaignId,
+                'settings' => $settings,
+                'jobs' => query(
+                    'SELECT id, job_type, status, created_at, updated_at
+                     FROM integration_jobs
+                     WHERE user_id = ? AND campaign_id = ?
+                     ORDER BY id DESC
+                     LIMIT 25',
+                    [$uid, $campaignId],
+                    0
+                ),
+                'supported' => ['discord_bot', 'vtt_export_targets', 'player_portal_links'],
+            ]);
+            break;
+
+        case 'integration_update':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $key = trim((string) ($input['key_name'] ?? ''));
+            if ($key === '') {
+                throw new Exception('Missing key_name.');
+            }
+            $valueJson = json_encode($input['value'] ?? null, JSON_UNESCAPED_UNICODE);
+            execute(
+                'INSERT INTO integration_settings (user_id, campaign_id, key_name, value_json)
+                 VALUES (?, ?, ?, ?)
+                 ON DUPLICATE KEY UPDATE value_json = VALUES(value_json), updated_at = NOW()',
+                [$uid, $campaignId, $key, $valueJson],
+                0
+            );
+            respond(['ok' => true, 'key_name' => $key]);
+            break;
+
+        case 'integration_queue_discord':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $eventType = trim((string) ($input['event_type'] ?? 'manual_ping'));
+            $payloadJson = json_encode($input['payload'] ?? [], JSON_UNESCAPED_UNICODE);
+            $jobId = insertAndGetId(
+                'INSERT INTO integration_jobs (user_id, campaign_id, job_type, payload_json, status)
+                 VALUES (?, ?, ?, ?, "queued")',
+                [$uid, $campaignId, 'discord:' . $eventType, $payloadJson],
+                0
+            );
+            respond(['ok' => true, 'job_id' => $jobId, 'status' => 'queued']);
+            break;
+
+        case 'integration_process_job':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $jobId = (int) ($input['job_id'] ?? 0);
+            if ($jobId <= 0) {
+                throw new Exception('Missing job_id.');
+            }
+            $rows = query(
+                'SELECT * FROM integration_jobs
+                 WHERE id = ? AND user_id = ? AND campaign_id = ?
+                 LIMIT 1',
+                [$jobId, $uid, $campaignId],
+                0
+            );
+            if (!$rows) {
+                throw new Exception('Integration job not found.');
+            }
+            $job = $rows[0];
+            $result = [
+                'processed_at' => gmdate('c'),
+                'framework' => true,
+                'note' => 'Framework processor simulated completion.',
+                'job_type' => $job['job_type'] ?? '',
+            ];
+            execute(
+                'UPDATE integration_jobs
+                 SET status = "completed", result_json = ?, updated_at = NOW()
+                 WHERE id = ?',
+                [json_encode($result, JSON_UNESCAPED_UNICODE), $jobId],
+                0
+            );
+            respond(['ok' => true, 'job_id' => $jobId, 'status' => 'completed', 'result' => $result]);
+            break;
+
+        case 'wiki_list':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $articles = query(
+                'SELECT id, slug, title, tags_json, is_auto_generated, created_at, updated_at
+                 FROM wiki_articles
+                 WHERE user_id = ? AND campaign_id = ?
+                 ORDER BY updated_at DESC',
+                [$uid, $campaignId],
+                0
+            );
+            respond(['ok' => true, 'campaign_id' => $campaignId, 'articles' => $articles]);
+            break;
+
+        case 'wiki_get':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $articleId = (int) ($_GET['article_id'] ?? 0);
+            $slug = trim((string) ($_GET['slug'] ?? ''));
+            if ($articleId <= 0 && $slug === '') {
+                throw new Exception('Provide article_id or slug.');
+            }
+            if ($articleId > 0) {
+                $rows = query(
+                    'SELECT * FROM wiki_articles WHERE id = ? AND user_id = ? AND campaign_id = ? LIMIT 1',
+                    [$articleId, $uid, $campaignId],
+                    0
+                );
+            } else {
+                $rows = query(
+                    'SELECT * FROM wiki_articles WHERE slug = ? AND user_id = ? AND campaign_id = ? LIMIT 1',
+                    [$slug, $uid, $campaignId],
+                    0
+                );
+            }
+            if (!$rows) {
+                throw new Exception('Article not found.');
+            }
+            respond(['ok' => true, 'article' => $rows[0]]);
+            break;
+
+        case 'wiki_save':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $article = $input['article'] ?? [];
+            $title = trim((string) ($article['title'] ?? ''));
+            $body = (string) ($article['body'] ?? '');
+            if ($title === '') {
+                throw new Exception('Article title is required.');
+            }
+            $slug = trim((string) ($article['slug'] ?? ''));
+            if ($slug === '') {
+                $slug = strtolower(preg_replace('/[^a-z0-9]+/i', '-', $title));
+                $slug = trim($slug, '-');
+            }
+            $tagsJson = json_encode($article['tags'] ?? [], JSON_UNESCAPED_UNICODE);
+            $isAuto = !empty($article['is_auto_generated']) ? 1 : 0;
+            $articleId = (int) ($article['id'] ?? 0);
+
+            if ($articleId > 0) {
+                execute(
+                    'UPDATE wiki_articles
+                     SET slug = ?, title = ?, body = ?, tags_json = ?, is_auto_generated = ?
+                     WHERE id = ? AND user_id = ? AND campaign_id = ?',
+                    [$slug, $title, $body, $tagsJson, $isAuto, $articleId, $uid, $campaignId],
+                    0
+                );
+            } else {
+                $articleId = insertAndGetId(
+                    'INSERT INTO wiki_articles (user_id, campaign_id, slug, title, body, tags_json, is_auto_generated)
+                     VALUES (?, ?, ?, ?, ?, ?, ?)',
+                    [$uid, $campaignId, $slug, $title, $body, $tagsJson, $isAuto],
+                    0
+                );
+            }
+            $saved = query('SELECT * FROM wiki_articles WHERE id = ? LIMIT 1', [$articleId], 0);
+            respond(['ok' => true, 'article' => $saved[0] ?? null]);
+            break;
+
+        case 'wiki_delete':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $articleId = (int) ($input['article_id'] ?? 0);
+            if ($articleId <= 0) {
+                throw new Exception('Missing article_id.');
+            }
+            $rows = query(
+                'SELECT slug FROM wiki_articles WHERE id = ? AND user_id = ? AND campaign_id = ? LIMIT 1',
+                [$articleId, $uid, $campaignId],
+                0
+            );
+            if (!$rows) {
+                throw new Exception('Article not found.');
+            }
+            $slug = (string) ($rows[0]['slug'] ?? '');
+            execute('DELETE FROM wiki_articles WHERE id = ? AND user_id = ? AND campaign_id = ?', [$articleId, $uid, $campaignId], 0);
+            execute(
+                'DELETE FROM wiki_links WHERE user_id = ? AND campaign_id = ? AND (from_slug = ? OR to_slug = ?)',
+                [$uid, $campaignId, $slug, $slug],
+                0
+            );
+            respond(['ok' => true, 'article_id' => $articleId]);
+            break;
+
+        case 'wiki_autolink_refresh':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $articles = query(
+                'SELECT slug, title, body FROM wiki_articles WHERE user_id = ? AND campaign_id = ?',
+                [$uid, $campaignId],
+                0
+            );
+            execute(
+                'DELETE FROM wiki_links WHERE user_id = ? AND campaign_id = ? AND auto_generated = 1',
+                [$uid, $campaignId],
+                0
+            );
+            $bySlug = [];
+            foreach ($articles as $a) {
+                $bySlug[$a['slug']] = $a;
+            }
+            foreach ($articles as $from) {
+                $body = strtolower((string) ($from['body'] ?? ''));
+                foreach ($articles as $to) {
+                    if ($from['slug'] === $to['slug']) {
+                        continue;
+                    }
+                    $title = trim((string) ($to['title'] ?? ''));
+                    if ($title === '') {
+                        continue;
+                    }
+                    $needle = strtolower($title);
+                    if (strpos($body, $needle) !== false) {
+                        execute(
+                            'INSERT INTO wiki_links (user_id, campaign_id, from_slug, to_slug, weight, auto_generated)
+                             VALUES (?, ?, ?, ?, 1.0, 1)
+                             ON DUPLICATE KEY UPDATE weight = VALUES(weight)',
+                            [$uid, $campaignId, $from['slug'], $to['slug']],
+                            0
+                        );
+                    }
+                }
+            }
+            $links = query(
+                'SELECT from_slug, to_slug, weight, auto_generated FROM wiki_links WHERE user_id = ? AND campaign_id = ? ORDER BY from_slug, to_slug',
+                [$uid, $campaignId],
+                0
+            );
+            respond(['ok' => true, 'links' => $links]);
+            break;
+
+        case 'wiki_graph':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $articles = query(
+                'SELECT slug, title, is_auto_generated, updated_at FROM wiki_articles WHERE user_id = ? AND campaign_id = ? ORDER BY title',
+                [$uid, $campaignId],
+                0
+            );
+            $links = query(
+                'SELECT from_slug, to_slug, weight, auto_generated FROM wiki_links WHERE user_id = ? AND campaign_id = ? ORDER BY from_slug, to_slug',
+                [$uid, $campaignId],
+                0
+            );
+            $relWeb = query(
+                "SELECT cr.char1_id, cr.char2_id, cr.relationship_type, cr.disposition,
+                        c1.name AS char1_name, c2.name AS char2_name
+                 FROM character_relationships cr
+                 JOIN characters c1 ON c1.id = cr.char1_id
+                 JOIN characters c2 ON c2.id = cr.char2_id
+                 JOIN towns t ON t.id = c1.town_id
+                 WHERE t.campaign_id = ?
+                 ORDER BY cr.id DESC
+                 LIMIT 600",
+                [$campaignId],
+                0
+            );
+            respond([
+                'ok' => true,
+                'campaign_id' => $campaignId,
+                'nodes' => $articles,
+                'links' => $links,
+                'relationship_web' => $relWeb,
+            ]);
             break;
 
         default:
             http_response_code(400);
             respond(['error' => "Unknown action: $action"]);
     }
-} catch (Exception $e) {
+} catch (Throwable $e) {
     http_response_code(400);
     respond(['error' => $e->getMessage()]);
 }

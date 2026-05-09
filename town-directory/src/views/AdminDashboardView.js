@@ -4,7 +4,7 @@
  * With inline editing, deletion, and full data inspection.
  */
 import {
-    apiAdminOverview, apiAdminMembers, apiAdminTokenUsage,
+    apiAdminOverview, apiAdminMetrics, apiAdminMembers, apiAdminTokenUsage,
     apiAdminUpdateMember, apiAdminDeleteMember,
     apiAdminUserCampaigns, apiAdminUserTowns,
     apiAdminTownCharacters, apiAdminCharacterDetail,
@@ -17,8 +17,13 @@ import {
     apiAdminAllTowns, apiAdminAllCampaigns,
     apiAdminUpdateMeta, apiAdminDeleteMeta,
     apiAdminAdjustCredits,
-    apiAdminBetaKeys, apiAdminCreateBetaKeys, apiAdminDeleteBetaKey, apiAdminRevokeBetaKey,
 } from '../api/admin.js';
+import {
+    TOKENS_PER_CREDIT,
+    rawTokensToTc,
+    formatWalletTc,
+    formatMonthlyTcUsed,
+} from '../constants/credits.js';
 
 export default function AdminDashboardView(container) {
     let activeTab = 'overview';
@@ -34,11 +39,11 @@ export default function AdminDashboardView(container) {
 
       <div class="admin-tabs" id="admin-tabs">
         <button class="admin-tab active" data-tab="overview">📊 Overview</button>
+        <button class="admin-tab" data-tab="metrics">📈 Metrics</button>
         <button class="admin-tab" data-tab="members">👥 Accounts</button>
         <button class="admin-tab" data-tab="campaigns">📜 Campaigns</button>
         <button class="admin-tab" data-tab="towns">🏰 Towns</button>
         <button class="admin-tab" data-tab="usage">📈 Token Usage</button>
-        <button class="admin-tab" data-tab="beta_keys">🔑 Beta Keys</button>
         <button class="admin-tab" data-tab="settings">⚙️ Site Settings</button>
       </div>
 
@@ -69,11 +74,11 @@ export default function AdminDashboardView(container) {
         renderBreadcrumb();
         try {
             if (tab === 'overview') await renderOverview();
+            else if (tab === 'metrics') await renderMetrics();
             else if (tab === 'members') await renderMembers();
             else if (tab === 'campaigns') await renderAllCampaigns();
             else if (tab === 'towns') await renderAllTowns();
             else if (tab === 'usage') await renderUsage();
-            else if (tab === 'beta_keys') await renderBetaKeys();
             else if (tab === 'settings') await renderSettings();
         } catch (err) {
             contentEl.innerHTML = `<div class="admin-error">⚠️ ${err.message}</div>`;
@@ -130,6 +135,255 @@ export default function AdminDashboardView(container) {
         `;
     }
 
+    // ── Metrics tab — visitors, signups, tier mix, retention, abuse log ──
+    async function renderMetrics(period = 30) {
+        const m = await apiAdminMetrics(period);
+
+        const compactNum = (n) => {
+            n = Number(n) || 0;
+            const abs = Math.abs(n);
+            if (abs >= 1e9) return (n / 1e9).toFixed(abs >= 1e10 ? 0 : 1).replace(/\.0$/, '') + 'B';
+            if (abs >= 1e6) return (n / 1e6).toFixed(abs >= 1e7 ? 0 : 1).replace(/\.0$/, '') + 'M';
+            if (abs >= 1e3) return (n / 1e3).toFixed(abs >= 1e4 ? 0 : 1).replace(/\.0$/, '') + 'K';
+            return String(Math.round(n));
+        };
+
+        const niceNum = (range, round) => {
+            if (range <= 0) return 1;
+            const exp = Math.floor(Math.log10(range));
+            const f = range / Math.pow(10, exp);
+            let nf;
+            if (round) nf = f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10;
+            else nf = f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10;
+            return nf * Math.pow(10, exp);
+        };
+
+        const niceTicks = (min, max, count = 5) => {
+            if (max <= min) max = min + 1;
+            const range = niceNum(max - min, false);
+            const step = niceNum(range / (count - 1), true);
+            const niceMin = Math.floor(min / step) * step;
+            const niceMax = Math.ceil(max / step) * step;
+            const ticks = [];
+            for (let v = niceMin; v <= niceMax + step * 0.5; v += step) ticks.push(v);
+            return { ticks, niceMin, niceMax };
+        };
+
+        const formatDateShort = (iso) => {
+            const d = new Date(iso + 'T00:00:00');
+            return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+        };
+
+        const sparkline = (data, color) => {
+            if (!data || !data.length) return '<div class="metric-empty">No data yet.</div>';
+            const w = 640, h = 180;
+            const pad = { top: 14, right: 14, bottom: 30, left: 48 };
+            const plotW = w - pad.left - pad.right;
+            const plotH = h - pad.top - pad.bottom;
+
+            const values = data.map(d => d.value);
+            const dataMax = Math.max(1, ...values);
+            const { ticks, niceMin, niceMax } = niceTicks(0, dataMax, 5);
+            const span = niceMax - niceMin || 1;
+            const yScale = v => pad.top + plotH - ((v - niceMin) / span) * plotH;
+            const xScale = i => pad.left + (i / Math.max(1, data.length - 1)) * plotW;
+
+            const points = data.map((d, i) => `${xScale(i).toFixed(1)},${yScale(d.value).toFixed(1)}`).join(' ');
+            const baselineY = (pad.top + plotH).toFixed(1);
+            const areaPoints = `${points} ${xScale(data.length - 1).toFixed(1)},${baselineY} ${xScale(0).toFixed(1)},${baselineY}`;
+
+            const gridLines = ticks.map(t => {
+                const y = yScale(t).toFixed(1);
+                return `
+                    <line x1="${pad.left}" x2="${pad.left + plotW}" y1="${y}" y2="${y}" class="metric-gridline"/>
+                    <text x="${pad.left - 6}" y="${y}" class="metric-axis-label metric-axis-y">${compactNum(t)}</text>
+                `;
+            }).join('');
+
+            const targetLabels = data.length <= 7 ? data.length : 6;
+            const stepX = Math.max(1, Math.round((data.length - 1) / (targetLabels - 1)));
+            const labelIdxs = new Set();
+            for (let i = 0; i < data.length; i += stepX) labelIdxs.add(i);
+            labelIdxs.add(data.length - 1);
+            const xLabels = [...labelIdxs].sort((a, b) => a - b).map(i => {
+                const x = xScale(i).toFixed(1);
+                return `<text x="${x}" y="${(pad.top + plotH + 18).toFixed(1)}" class="metric-axis-label metric-axis-x">${formatDateShort(data[i].day)}</text>`;
+            }).join('');
+
+            const peakIdx = values.indexOf(dataMax);
+            const lastIdx = data.length - 1;
+            const dot = (i) => `<circle cx="${xScale(i).toFixed(1)}" cy="${yScale(values[i]).toFixed(1)}" r="3.5" fill="${color}" stroke="rgba(0,0,0,.4)" stroke-width="1"/>`;
+            const peakLabel = `<text x="${xScale(peakIdx).toFixed(1)}" y="${(yScale(values[peakIdx]) - 7).toFixed(1)}" class="metric-axis-label metric-point-label" text-anchor="middle">${compactNum(values[peakIdx])}</text>`;
+
+            const lastVal = values[lastIdx];
+            const total = values.reduce((a, b) => a + b, 0);
+
+            return `
+              <svg class="metric-spark" viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMidYMid meet" role="img">
+                ${gridLines}
+                <polyline points="${areaPoints}" fill="${color}" fill-opacity="0.14" stroke="none"/>
+                <polyline points="${points}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+                ${dot(peakIdx)}
+                ${lastIdx !== peakIdx ? dot(lastIdx) : ''}
+                ${peakLabel}
+                ${xLabels}
+              </svg>
+              <div class="metric-spark-meta">
+                <span>peak ${dataMax.toLocaleString()}</span>
+                <span>today ${lastVal.toLocaleString()}</span>
+                <span>total ${total.toLocaleString()}</span>
+              </div>
+            `;
+        };
+
+        const tierTotal = Object.values(m.tier_breakdown || {}).reduce((a, b) => a + b, 0) || 1;
+        const tierOrder = ['free', 'apprentice', 'adventurer', 'guild_master', 'world_builder'];
+        const tierColors = {
+            free: '#94a3b8', apprentice: '#60a5fa', adventurer: '#34d399',
+            guild_master: '#a78bfa', world_builder: '#f59e0b',
+        };
+        const tierKeys = [
+            ...tierOrder.filter(k => m.tier_breakdown?.[k] !== undefined),
+            ...Object.keys(m.tier_breakdown || {}).filter(k => !tierOrder.includes(k)),
+        ];
+        const tierBars = tierKeys.map(k => {
+            const c = m.tier_breakdown[k] || 0;
+            const pct = ((c / tierTotal) * 100).toFixed(1);
+            return `
+              <div class="tier-row">
+                <div class="tier-label">${k.replace('_', ' ')}</div>
+                <div class="tier-bar-track"><div class="tier-bar-fill" style="width:${pct}%;background:${tierColors[k] || '#64748b'}"></div></div>
+                <div class="tier-count">${c.toLocaleString()} <span class="tier-pct">(${pct}%)</span></div>
+              </div>
+            `;
+        }).join('');
+
+        const f = m.verification_funnel || {};
+        const funnelStep = (label, value, of) => {
+            const pct = of ? ((value / of) * 100).toFixed(1) : '0';
+            return `
+              <div class="funnel-step">
+                <div class="funnel-step-bar" style="width:${of ? (value / of) * 100 : 0}%"></div>
+                <div class="funnel-step-text"><strong>${value.toLocaleString()}</strong> ${label} <span class="funnel-pct">${of ? pct + '% of signups' : ''}</span></div>
+              </div>
+            `;
+        };
+
+        const abuseRows = (m.abuse_aggregate || []).map(a => `
+          <tr><td><code>${a.outcome}</code></td><td>${(+a.c).toLocaleString()}</td></tr>
+        `).join('') || '<tr><td colspan="2" class="metric-empty">Quiet — no rejected attempts in last 7 days.</td></tr>';
+
+        const featureRows = (m.feature_usage || []).slice(0, 12).map(f => `
+          <tr>
+            <td><code>${f.feature_key || 'global'}</code></td>
+            <td>${(+f.calls).toLocaleString()}</td>
+            <td>${formatTokens(+f.tokens)}</td>
+          </tr>
+        `).join('') || '<tr><td colspan="3" class="metric-empty">No AI calls this month.</td></tr>';
+
+        const cohortRows = (m.retention_cohorts || []).map(c => {
+            const cell = (val) => {
+                if (val === null || val === undefined) return '<td class="cohort-cell empty">—</td>';
+                if (!c.size) return '<td class="cohort-cell empty">—</td>';
+                const pct = ((val / c.size) * 100);
+                const op = Math.min(0.85, 0.15 + pct / 120);
+                return `<td class="cohort-cell" style="background:rgba(96,165,250,${op.toFixed(2)})">${val} <span class="cohort-pct">(${pct.toFixed(0)}%)</span></td>`;
+            };
+            return `
+              <tr>
+                <td class="cohort-week">${c.week_start}</td>
+                <td>${c.size}</td>
+                ${cell(c.w1)}${cell(c.w2)}${cell(c.w3)}${cell(c.w4)}
+              </tr>
+            `;
+        }).join('') || '<tr><td colspan="6" class="metric-empty">No cohorts yet — need a few weeks of data.</td></tr>';
+
+        const recentAbuse = (m.abuse_log || []).slice(0, 25).map(a => `
+          <tr>
+            <td>${a.created_at?.replace('T', ' ').slice(0, 16) || ''}</td>
+            <td><code>${a.outcome}</code></td>
+            <td>${a.email_domain || ''}</td>
+            <td><code>${a.ip}</code></td>
+          </tr>
+        `).join('');
+
+        contentEl.innerHTML = `
+          <div class="metrics-toolbar">
+            <span class="metrics-label">Window:</span>
+            ${[7, 30, 90].map(p => `<button class="metrics-window-btn ${p === period ? 'active' : ''}" data-period="${p}">${p} days</button>`).join('')}
+          </div>
+
+          <div class="metrics-grid">
+            <div class="metric-card metric-card-wide">
+              <div class="metric-title">Daily unique visitors</div>
+              ${sparkline(m.daily_visitors, '#60a5fa')}
+            </div>
+
+            <div class="metric-card metric-card-wide">
+              <div class="metric-title">Daily signups</div>
+              ${sparkline(m.daily_signups, '#34d399')}
+            </div>
+
+            <div class="metric-card metric-card-wide">
+              <div class="metric-title">Daily AI tokens burned</div>
+              ${sparkline(m.daily_tokens, '#f59e0b')}
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-title">Subscription tier mix</div>
+              <div class="tier-list">${tierBars || '<div class="metric-empty">No users yet.</div>'}</div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-title">Verification funnel</div>
+              <div class="funnel">
+                ${funnelStep('signups', f.signups || 0, f.signups || 1)}
+                ${funnelStep('verified email', f.verified || 0, f.signups || 0)}
+                ${funnelStep('made first AI call', f.first_ai_call || 0, f.signups || 0)}
+                ${funnelStep('paid tier', f.paid || 0, f.signups || 0)}
+              </div>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-title">Abuse blocked (last 7 days)</div>
+              <table class="metric-table">
+                <thead><tr><th>Reason</th><th>Count</th></tr></thead>
+                <tbody>${abuseRows}</tbody>
+              </table>
+            </div>
+
+            <div class="metric-card">
+              <div class="metric-title">Top features (this month)</div>
+              <table class="metric-table">
+                <thead><tr><th>Feature</th><th>Calls</th><th>Tokens</th></tr></thead>
+                <tbody>${featureRows}</tbody>
+              </table>
+            </div>
+
+            <div class="metric-card metric-card-wide">
+              <div class="metric-title">Retention cohorts (% of weekly cohort that returned)</div>
+              <table class="metric-table cohort-table">
+                <thead><tr><th>Week</th><th>Size</th><th>Wk+1</th><th>Wk+2</th><th>Wk+3</th><th>Wk+4</th></tr></thead>
+                <tbody>${cohortRows}</tbody>
+              </table>
+            </div>
+
+            ${recentAbuse ? `
+            <div class="metric-card metric-card-wide">
+              <div class="metric-title">Recent rejected signups</div>
+              <table class="metric-table">
+                <thead><tr><th>When</th><th>Reason</th><th>Email domain</th><th>IP</th></tr></thead>
+                <tbody>${recentAbuse}</tbody>
+              </table>
+            </div>` : ''}
+          </div>
+        `;
+
+        contentEl.querySelectorAll('.metrics-window-btn').forEach(btn => {
+            btn.addEventListener('click', () => renderMetrics(parseInt(btn.dataset.period, 10) || 30));
+        });
+    }
+
     function statCard(icon, value, label) {
         return `
         <div class="admin-stat-card">
@@ -160,12 +414,13 @@ export default function AdminDashboardView(container) {
                 <th>ID</th>
                 <th>Username</th>
                 <th>Email</th>
+                <th title="Discord: Settings → Advanced → Developer Mode, then right‑click the user → Copy User ID">Discord user ID</th>
                 <th>Tier</th>
                 <th>Role</th>
                 <th>Campaigns</th>
                 <th>Towns</th>
                 <th>🪙 Eon Credits</th>
-                <th>Tokens (Month)</th>
+                <th>EC used (month)</th>
                 <th>Joined</th>
                 <th>Actions</th>
               </tr>
@@ -179,6 +434,9 @@ export default function AdminDashboardView(container) {
                 <td class="cell-id">${m.id}</td>
                 <td class="member-name clickable" data-action="drill" data-user-id="${m.id}" data-username="${esc(m.username)}">${esc(m.username)}</td>
                 <td class="member-email">${esc(m.email)}</td>
+                <td>
+                    <input type="text" class="admin-inline-input admin-discord-id-input" data-user-id="${m.id}" data-original="${esc(m.discord_user_id || '')}" value="${esc(m.discord_user_id || '')}" placeholder="—" title="Paste Discord snowflake; blur to save. Clear and blur to unlink." aria-label="Discord user ID">
+                </td>
                 <td>
                     <select class="admin-inline-select tier-select" data-field="subscription_tier" data-user-id="${m.id}">
                         <option value="free" ${m.subscription_tier === 'free' ? 'selected' : ''}>Free</option>
@@ -198,11 +456,11 @@ export default function AdminDashboardView(container) {
                 <td>${m.town_count ?? 0}</td>
                 <td>
                     <div class="admin-credit-cell">
-                        <span class="credit-balance" title="${parseInt(m.credit_balance || 0).toLocaleString()} tokens">🪙 ${formatTokens(m.credit_balance || 0)}</span>
+                        <span class="credit-balance" title="${parseInt(m.credit_balance || 0, 10).toLocaleString()} raw tokens (${TOKENS_PER_CREDIT.toLocaleString()} raw = 1.00 EC)">🪙 ${formatWalletTc(rawTokensToTc(m.credit_balance || 0))}</span>
                         <button class="admin-btn admin-btn-small admin-btn-primary" data-action="adjust-credits" data-user-id="${m.id}" data-username="${esc(m.username)}" data-balance="${m.credit_balance || 0}" title="Adjust Credits">💰</button>
                     </div>
                 </td>
-                <td>${formatTokens(m.tokens_this_month)}</td>
+                <td>${formatMonthlyTcUsed(rawTokensToTc(m.tokens_this_month || 0))}</td>
                 <td>${new Date(m.created_at).toLocaleDateString()}</td>
                 <td>
                     <button class="admin-btn admin-btn-danger admin-btn-small" data-action="delete-member" data-user-id="${m.id}" data-username="${esc(m.username)}" title="Delete Account">🗑️</button>
@@ -214,17 +472,42 @@ export default function AdminDashboardView(container) {
         </div>
         `;
 
+        function maybeWarnDiscordSync(res) {
+            const d = res && res.discord_sync;
+            if (!d || d.skipped || d.ok) return;
+            alert('Saved, but Discord role sync failed: ' + (d.error || 'unknown'));
+        }
+
         // Inline tier/role editing
         contentEl.querySelectorAll('.admin-inline-select').forEach(sel => {
             sel.addEventListener('change', async () => {
                 const uid = parseInt(sel.dataset.userId);
                 const field = sel.dataset.field;
                 try {
-                    await apiAdminUpdateMember(uid, { [field]: sel.value });
+                    const res = await apiAdminUpdateMember(uid, { [field]: sel.value });
                     flashSuccess(sel);
+                    maybeWarnDiscordSync(res);
                 } catch (err) {
                     alert('Error: ' + err.message);
                     renderMembers(); // reload
+                }
+            });
+        });
+
+        contentEl.querySelectorAll('.admin-discord-id-input').forEach(inp => {
+            inp.addEventListener('blur', async () => {
+                const uid = parseInt(inp.dataset.userId, 10);
+                const next = inp.value.trim();
+                const orig = (inp.dataset.original || '').trim();
+                if (next === orig) return;
+                try {
+                    const res = await apiAdminUpdateMember(uid, { discord_user_id: next });
+                    inp.dataset.original = next;
+                    flashSuccess(inp);
+                    maybeWarnDiscordSync(res);
+                } catch (err) {
+                    alert('Error: ' + err.message);
+                    inp.value = orig;
                 }
             });
         });
@@ -261,11 +544,22 @@ export default function AdminDashboardView(container) {
                 const username = btn.dataset.username;
                 const currentBalance = parseInt(btn.dataset.balance || 0);
                 showEditModal(`🪙 Adjust Eon Credits — ${username}`, [
-                    { key: 'info', label: `Current Balance: ${formatTokens(currentBalance)} (${currentBalance.toLocaleString()})`, value: '', type: 'info' },
+                    {
+                        key: 'info',
+                        label: `Current: ${formatWalletTc(rawTokensToTc(currentBalance))} EC (${currentBalance.toLocaleString()} raw tokens; ${TOKENS_PER_CREDIT.toLocaleString()} raw ≈ 1 EC)`,
+                        value: '',
+                        type: 'info',
+                    },
                     { key: 'mode', label: 'Mode', value: 'add', type: 'select', options: ['add', 'set', 'subtract'] },
-                    { key: 'amount', label: 'Amount (tokens)', value: '10000000', type: 'number' },
+                    { key: 'amount', label: `Amount (Eon Credits)`, value: '10', type: 'number' },
                 ], async (data) => {
-                    await apiAdminAdjustCredits(uid, parseInt(data.amount), data.mode);
+                    const ec = parseFloat(String(data.amount ?? '').replace(/,/g, ''));
+                    if (!Number.isFinite(ec) || ec < 0) {
+                        alert('Enter a valid non-negative number of Eon Credits.');
+                        return;
+                    }
+                    const rawAmount = Math.round(ec * TOKENS_PER_CREDIT);
+                    await apiAdminAdjustCredits(uid, rawAmount, data.mode);
                     renderMembers();
                 });
             });
@@ -1534,191 +1828,104 @@ export default function AdminDashboardView(container) {
     }
 
     // ═══════════════════════════════════════
-    // BETA KEYS TAB
-    // ═══════════════════════════════════════
-    async function renderBetaKeys() {
-        const data = await apiAdminBetaKeys();
-        const keys = data.keys || [];
-        const available = keys.filter(k => !parseInt(k.is_used)).length;
-        const used = keys.filter(k => parseInt(k.is_used)).length;
-
-        contentEl.innerHTML = `
-        <div class="admin-section-header">
-            <h2>🔑 Beta Keys</h2>
-            <div class="beta-key-actions">
-                <button class="admin-btn admin-btn-primary" id="generate-keys-btn">⚡ Generate Keys</button>
-                <button class="admin-btn" id="add-custom-key-btn">✏️ Custom Key</button>
-            </div>
-        </div>
-
-        <div class="admin-stats-grid" style="margin-bottom: 20px;">
-            ${statCard('🔑', keys.length, 'Total Keys')}
-            ${statCard('✅', available, 'Available')}
-            ${statCard('🔒', used, 'Used')}
-        </div>
-
-        ${keys.length ? `
-        <div class="admin-table-wrap">
-          <table class="admin-table" id="beta-keys-table">
-            <thead>
-              <tr>
-                <th>Key Code</th>
-                <th>Status</th>
-                <th>Note</th>
-                <th>Used By</th>
-                <th>Used At</th>
-                <th>Created</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${keys.map(k => {
-                const isUsed = parseInt(k.is_used);
-                return `
-              <tr data-key-id="${k.id}" class="${isUsed ? 'beta-key-used' : 'beta-key-available'}">
-                <td class="beta-key-code">
-                    <code class="key-code-text" title="Click to copy">${esc(k.key_code)}</code>
-                    <button class="admin-btn admin-btn-small beta-copy-btn" data-code="${esc(k.key_code)}" title="Copy to clipboard">📋</button>
-                </td>
-                <td>
-                    <span class="card-badge ${isUsed ? 'badge-inactive' : 'badge-active'}">
-                        ${isUsed ? '🔒 Used' : '✅ Available'}
-                    </span>
-                </td>
-                <td class="cell-truncate">${esc(k.note || '—')}</td>
-                <td>${isUsed ? esc(k.used_by_username || 'Unknown') : '—'}</td>
-                <td>${k.used_at ? new Date(k.used_at).toLocaleString() : '—'}</td>
-                <td>${new Date(k.created_at).toLocaleDateString()}</td>
-                <td>
-                    ${isUsed ? `<button class="admin-btn admin-btn-small" data-action="revoke-key" data-key-id="${k.id}" title="Revoke (mark as unused)">🔓 Revoke</button>` : ''}
-                    <button class="admin-btn admin-btn-danger admin-btn-small" data-action="delete-key" data-key-id="${k.id}" data-code="${esc(k.key_code)}" title="Delete permanently">🗑️</button>
-                </td>
-              </tr>
-              `}).join('')}
-            </tbody>
-          </table>
-        </div>
-        ` : '<div class="admin-empty">No beta keys yet. Click "Generate Keys" to create some.</div>'}
-        `;
-
-        // Copy to clipboard
-        contentEl.querySelectorAll('.beta-copy-btn').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const code = btn.dataset.code;
-                try {
-                    await navigator.clipboard.writeText(code);
-                    btn.textContent = '✅';
-                    setTimeout(() => btn.textContent = '📋', 1500);
-                } catch {
-                    // Fallback for non-HTTPS
-                    const ta = document.createElement('textarea');
-                    ta.value = code;
-                    document.body.appendChild(ta);
-                    ta.select();
-                    document.execCommand('copy');
-                    ta.remove();
-                    btn.textContent = '✅';
-                    setTimeout(() => btn.textContent = '📋', 1500);
-                }
-            });
-        });
-
-        // Click on key code text to copy
-        contentEl.querySelectorAll('.key-code-text').forEach(el => {
-            el.style.cursor = 'pointer';
-            el.addEventListener('click', async () => {
-                const code = el.textContent;
-                try {
-                    await navigator.clipboard.writeText(code);
-                    const orig = el.textContent;
-                    el.textContent = 'Copied!';
-                    el.style.color = 'var(--accent, #22c55e)';
-                    setTimeout(() => { el.textContent = orig; el.style.color = ''; }, 1200);
-                } catch {}
-            });
-        });
-
-        // Generate keys
-        contentEl.querySelector('#generate-keys-btn')?.addEventListener('click', () => {
-            showEditModal('⚡ Generate Beta Keys', [
-                { key: 'count', label: 'Number of keys (1–50)', value: '5', type: 'number' },
-                { key: 'note', label: 'Note (optional)', value: '', type: 'text' },
-            ], async (formData) => {
-                const count = Math.min(50, Math.max(1, parseInt(formData.count) || 1));
-                await apiAdminCreateBetaKeys(count, formData.note);
-                renderBetaKeys();
-            });
-        });
-
-        // Custom key
-        contentEl.querySelector('#add-custom-key-btn')?.addEventListener('click', () => {
-            showEditModal('✏️ Add Custom Beta Key', [
-                { key: 'custom_key', label: 'Key Code', value: '', type: 'text' },
-                { key: 'note', label: 'Note (optional)', value: '', type: 'text' },
-            ], async (formData) => {
-                if (!formData.custom_key.trim()) throw new Error('Key code is required.');
-                await apiAdminCreateBetaKeys(1, formData.note, formData.custom_key.trim());
-                renderBetaKeys();
-            });
-        });
-
-        // Revoke key
-        contentEl.querySelectorAll('[data-action="revoke-key"]').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const keyId = parseInt(btn.dataset.keyId);
-                if (!confirm('Revoke this key? It will become available for use again.')) return;
-                try {
-                    await apiAdminRevokeBetaKey(keyId);
-                    renderBetaKeys();
-                } catch (err) { alert('Error: ' + err.message); }
-            });
-        });
-
-        // Delete key
-        contentEl.querySelectorAll('[data-action="delete-key"]').forEach(btn => {
-            btn.addEventListener('click', async () => {
-                const keyId = parseInt(btn.dataset.keyId);
-                const code = btn.dataset.code;
-                if (!confirm(`Delete beta key "${code}"? This cannot be undone.`)) return;
-                try {
-                    await apiAdminDeleteBetaKey(keyId);
-                    renderBetaKeys();
-                } catch (err) { alert('Error: ' + err.message); }
-            });
-        });
-    }
-
-    // ═══════════════════════════════════════
     // SITE SETTINGS TAB
     // ═══════════════════════════════════════
+    function isMonthlyTokenLimitSettingKey(key) {
+        return /^token_limit_[a-z0-9_]+$/.test(String(key || ''));
+    }
+
+    /** DB stores raw tokens; admin UI uses EC = raw ÷ TOKENS_PER_CREDIT. */
+    function tokenLimitRawToEcInputValue(rawStr) {
+        const raw = parseInt(String(rawStr ?? '').trim(), 10);
+        const r = Number.isFinite(raw) && raw >= 0 ? raw : 0;
+        if (TOKENS_PER_CREDIT <= 0) return String(r);
+        const ec = r / TOKENS_PER_CREDIT;
+        if (!Number.isFinite(ec)) return '0';
+        if (Math.abs(ec - Math.round(ec)) < 1e-9) return String(Math.round(ec));
+        return String(Number(ec.toFixed(6)));
+    }
+
+    /** Parse admin EC field → integer raw tokens for site_settings. */
+    function tokenLimitEcInputToRawTokens(valueStr) {
+        const v = String(valueStr ?? '').trim();
+        if (v === '') throw new Error('Enter EC (use 0 for no monthly cap on Free).');
+        const ec = Number(v);
+        if (!Number.isFinite(ec) || ec < 0) throw new Error('EC must be a non-negative number.');
+        return Math.round(ec * TOKENS_PER_CREDIT);
+    }
+
     async function renderSettings() {
         const data = await apiAdminSiteSettings();
         const settings = data.settings || [];
+        const rateLimitAllowlistKey = 'signup_rate_limit_ip_allowlist';
+        const allowlistSetting = settings.find(s => s.key === rateLimitAllowlistKey);
+        const allowlistValue = String(allowlistSetting?.value || '');
+        const tcLabel = TOKENS_PER_CREDIT.toLocaleString();
         contentEl.innerHTML = `
         <div class="admin-section-header">
             <h2>⚙️ Site Settings</h2>
             <button class="admin-btn admin-btn-primary" id="add-setting-btn">+ Add Setting</button>
         </div>
+        <div class="admin-drill-section" style="margin-bottom: 1rem;">
+            <h3>🚦 Signup Rate Limit IP Allowlist</h3>
+            <p class="admin-subtle" style="margin:0 0 .5rem 0; color: var(--text-muted);">
+                Add offsite/public IPs here to bypass signup rate limits (exact IP match). One per line recommended.
+            </p>
+            <textarea id="signup-ip-allowlist" class="admin-form-input" rows="5" placeholder="203.0.113.42&#10;198.51.100.77">${esc(allowlistValue)}</textarea>
+            <div style="margin-top:.5rem;">
+                <button class="admin-btn admin-btn-primary" id="save-signup-ip-allowlist">💾 Save Allowlist</button>
+            </div>
+        </div>
+        <p class="admin-subtle" style="margin:0 0 .75rem 0; color: var(--text-muted); font-size:0.85rem;">
+            Keys matching <code>token_limit_*</code> are monthly platform AI ceilings. Edit values as <strong>Eon Credits (EC)</strong>; they are saved as <strong>raw tokens</strong> (EC × ${tcLabel}). Free tier: use <strong>0</strong> EC for no monthly cap (wallet-only).
+        </p>
         <div class="admin-table-wrap">
           <table class="admin-table" id="settings-table">
             <thead><tr><th>Key</th><th>Value</th><th>Updated</th><th>Actions</th></tr></thead>
             <tbody>
-              ${settings.map(s => `
+              ${settings.map((s) => {
+                  const isEc = isMonthlyTokenLimitSettingKey(s.key);
+                  const displayVal = isEc ? esc(tokenLimitRawToEcInputValue(s.value)) : esc(s.value || '');
+                  const ph = isEc
+                      ? 'EC (e.g. 0, 15, 40)'
+                      : s.key === rateLimitAllowlistKey
+                        ? '203.0.113.42, 198.51.100.77'
+                        : '';
+                  const unitHint = isEc
+                      ? `<div class="admin-subtle" style="font-size:0.68rem;margin-top:0.2rem;color:var(--text-muted);">EC · stored ≈ ${Number(parseInt(String(s.value || '0'), 10) || 0).toLocaleString()} raw</div>`
+                      : '';
+                  return `
               <tr data-key="${esc(s.key)}">
-                <td class="setting-key">${esc(s.key)}</td>
+                <td class="setting-key">${esc(s.key)}${isEc ? ' <span class="admin-subtle" style="font-size:0.7rem;">(EC)</span>' : ''}</td>
                 <td>
-                    <input type="text" class="admin-inline-input" data-key="${esc(s.key)}" value="${esc(s.value || '')}" />
+                    <input type="text" class="admin-inline-input${isEc ? ' admin-token-limit-ec' : ''}" data-key="${esc(s.key)}" data-ec-token-limit="${isEc ? '1' : '0'}" value="${displayVal}" placeholder="${esc(ph)}" />
+                    ${unitHint}
                 </td>
                 <td>${s.updated_at ? new Date(s.updated_at).toLocaleString() : '—'}</td>
                 <td>
                     <button class="admin-btn admin-btn-small admin-btn-primary" data-action="save-setting" data-key="${esc(s.key)}">💾 Save</button>
                 </td>
-              </tr>
-              `).join('')}
+              </tr>`;
+              }).join('')}
             </tbody>
           </table>
         </div>
         `;
+
+        // Dedicated save button for signup allowlist
+        contentEl.querySelector('#save-signup-ip-allowlist')?.addEventListener('click', async (e) => {
+            const btn = e.currentTarget;
+            const ta = contentEl.querySelector('#signup-ip-allowlist');
+            if (!ta) return;
+            try {
+                await apiAdminUpdateSiteSetting(rateLimitAllowlistKey, ta.value);
+                flashSuccess(btn);
+                const inline = contentEl.querySelector(`input[data-key="${rateLimitAllowlistKey}"]`);
+                if (inline) inline.value = ta.value;
+            } catch (err) {
+                alert('Error: ' + err.message);
+            }
+        });
 
         // Save setting
         contentEl.querySelectorAll('[data-action="save-setting"]').forEach(btn => {
@@ -1726,10 +1933,24 @@ export default function AdminDashboardView(container) {
                 const key = btn.dataset.key;
                 const input = contentEl.querySelector(`input[data-key="${key}"]`);
                 if (!input) return;
+                let valueToSend = input.value;
+                if (input.dataset.ecTokenLimit === '1' || isMonthlyTokenLimitSettingKey(key)) {
+                    try {
+                        valueToSend = String(tokenLimitEcInputToRawTokens(input.value));
+                    } catch (err) {
+                        alert(err.message);
+                        return;
+                    }
+                }
                 try {
-                    await apiAdminUpdateSiteSetting(key, input.value);
+                    await apiAdminUpdateSiteSetting(key, valueToSend);
+                    if (input.dataset.ecTokenLimit === '1') {
+                        input.value = tokenLimitRawToEcInputValue(valueToSend);
+                    }
                     flashSuccess(btn);
-                } catch (err) { alert('Error: ' + err.message); }
+                } catch (err) {
+                    alert('Error: ' + err.message);
+                }
             });
         });
 
@@ -1737,9 +1958,13 @@ export default function AdminDashboardView(container) {
         contentEl.querySelector('#add-setting-btn')?.addEventListener('click', () => {
             showEditModal('Add Site Setting', [
                 { key: 'key', label: 'Key', value: '' },
-                { key: 'value', label: 'Value', value: '' },
+                { key: 'value', label: 'Value (if key is token_limit_*, enter EC)', value: '' },
             ], async (data) => {
-                await apiAdminUpdateSiteSetting(data.key, data.value);
+                let val = data.value;
+                if (isMonthlyTokenLimitSettingKey(data.key)) {
+                    val = String(tokenLimitEcInputToRawTokens(data.value));
+                }
+                await apiAdminUpdateSiteSetting(data.key, val);
                 renderSettings();
             });
         });

@@ -1,7 +1,7 @@
 import { initRouter, registerRoute, navigate } from './router.js';
 import { renderSidebar } from './components/Sidebar.js';
 import { getState, setState, resetState, subscribe } from './stores/appState.js';
-import { apiGetCurrentUser, apiLogin, apiRegister, apiLogout } from './api/auth.js';
+import { apiGetCurrentUser, apiLogin, apiRegister, apiLogout, apiResendVerification } from './api/auth.js';
 import { apiGetCalendar, calendarToString } from './api/settings.js';
 import { setCurrentEdition } from './api/srd.js';
 import { apiCreateCampaign } from './api/campaigns.js';
@@ -15,6 +15,7 @@ import SrdBrowserView from './views/SrdBrowserView.js';
 import CalendarView from './views/CalendarView.js';
 import SimulationView from './views/SimulationView.js';
 import WorldSimulateView from './views/WorldSimulateView.js';
+import WorldMapView from './views/WorldMapView.js';
 import TownStatsView from './views/TownStatsView.js';
 import EncounterView from './views/EncounterView.js';
 import PartyView from './views/PartyView.js';
@@ -23,6 +24,12 @@ import HomebrewView from './views/HomebrewView.js';
 import ContentLibraryView from './views/ContentLibraryView.js';
 import ScribeView from './views/ScribeView.js';
 import AdminDashboardView from './views/AdminDashboardView.js';
+import MacroSimulationView from './views/MacroSimulationView.js';
+import PlayerPortalView from './views/PlayerPortalView.js';
+import VttExportView from './views/VttExportView.js';
+import IntegrationsView from './views/IntegrationsView.js';
+import WikiView from './views/WikiView.js';
+import SubscriptionView from './views/SubscriptionView.js';
 
 // Styles
 import './styles/base.css';
@@ -37,13 +44,34 @@ import './styles/theme.css';
 import './styles/admin.css';
 import './styles/homebrew.css';
 import './styles/scribe.css';
+import './styles/mobile-framework.css';
 
 let routesRegistered = false;
+let authEventsBound = false;
+let landingEventsBound = false;
 
 /* ── App Bootstrap ──────────────────────────────────────── */
+import { pingVisit } from './utils/visitMetrics.js';
+
 document.addEventListener('DOMContentLoaded', async () => {
     // Intercept all internal link clicks to use the router
     interceptInternalLinks();
+
+    // Anonymous initial pageview (landing/auth/etc) — captures visitors who never log in.
+    pingVisit(window.location.pathname.split('/').filter(Boolean).pop() || 'landing');
+
+    const qs = new URLSearchParams(window.location.search);
+    let verifyMsg = null;
+    if (qs.get('verified') === '1') {
+        verifyMsg = { ok: true };
+    } else if (qs.get('verify_error') === 'expired') {
+        verifyMsg = { ok: false, text: 'That confirmation link expired. Use “Resend confirmation email” below.' };
+    } else if (qs.get('verify_error') === 'invalid') {
+        verifyMsg = { ok: false, text: 'Invalid confirmation link.' };
+    }
+    if (verifyMsg) {
+        history.replaceState({}, '', window.location.pathname + window.location.hash);
+    }
 
     try {
         const res = await apiGetCurrentUser();
@@ -60,10 +88,20 @@ document.addEventListener('DOMContentLoaded', async () => {
                 showApp();
             }
         } else {
-            showAuth();
+            showLanding();
         }
     } catch {
-        showAuth();
+        showLanding();
+    }
+
+    if (verifyMsg && !getState().user) {
+        showAuth('login');
+        const errEl = document.getElementById('auth-error');
+        if (errEl) {
+            errEl.style.display = '';
+            errEl.style.color = verifyMsg.ok ? '#22c55e' : '';
+            errEl.textContent = verifyMsg.ok ? 'Email confirmed. Sign in below.' : verifyMsg.text;
+        }
     }
 });
 
@@ -80,6 +118,11 @@ function interceptInternalLinks() {
         
         const href = link.getAttribute('href');
         if (!href) return;
+
+        // Plain fragment links (#, #section) are for in-page JS (auth toggles, etc.)
+        if (href.startsWith('#') && !href.startsWith('#/')) {
+            return;
+        }
         
         // Handle #/ format for legacy templates
         if (href.startsWith('#/')) {
@@ -108,15 +151,44 @@ function interceptInternalLinks() {
     });
 }
 
-function showAuth() {
-    document.getElementById('auth-screen').style.display = '';
-    document.getElementById('main-app').style.display = 'none';
+function showLanding() {
+    const landing = document.getElementById('landing-screen');
+    const auth = document.getElementById('auth-screen');
+    const app = document.getElementById('main-app');
+    if (landing) landing.style.display = '';
+    if (auth) auth.style.display = 'none';
+    if (app) app.style.display = 'none';
+    bindLandingEvents();
+}
+
+function showAuth(mode = 'login') {
+    const landing = document.getElementById('landing-screen');
+    const auth = document.getElementById('auth-screen');
+    const app = document.getElementById('main-app');
+    if (landing) landing.style.display = 'none';
+    if (auth) auth.style.display = '';
+    if (app) app.style.display = 'none';
+    const loginForm = document.getElementById('login-form');
+    const registerForm = document.getElementById('register-form');
+    const errorEl = document.getElementById('auth-error');
+    if (mode === 'register') {
+        if (loginForm) loginForm.style.display = 'none';
+        if (registerForm) registerForm.style.display = '';
+    } else {
+        if (registerForm) registerForm.style.display = 'none';
+        if (loginForm) loginForm.style.display = '';
+    }
+    if (errorEl) errorEl.style.display = 'none';
     bindAuthEvents();
 }
 
 function showApp() {
-    document.getElementById('auth-screen').style.display = 'none';
-    document.getElementById('main-app').style.display = '';
+    const landing = document.getElementById('landing-screen');
+    const auth = document.getElementById('auth-screen');
+    const app = document.getElementById('main-app');
+    if (landing) landing.style.display = 'none';
+    if (auth) auth.style.display = 'none';
+    if (app) app.style.display = '';
 
     const state = getState();
 
@@ -128,7 +200,7 @@ function showApp() {
     document.getElementById('sidebar-logout-btn')?.addEventListener('click', async () => {
         await apiLogout();
         resetState();
-        showAuth();
+        showLanding();
     });
 
     // If no campaign exists, show the onboarding screen
@@ -155,13 +227,20 @@ function showApp() {
         registerRoute('calendar', CalendarView);
         registerRoute('simulation', SimulationView);
         registerRoute('world-simulate', WorldSimulateView);
+        registerRoute('world-map', WorldMapView);
         registerRoute('townstats', TownStatsView);
         registerRoute('encounters', EncounterView);
         registerRoute('party', PartyView);
         registerRoute('homebrew', HomebrewView);
         registerRoute('content-library', ContentLibraryView);
         registerRoute('scribe', ScribeView);
+        registerRoute('macro-sim', MacroSimulationView);
+        registerRoute('player-portal', PlayerPortalView);
+        registerRoute('vtt-export', VttExportView);
+        registerRoute('integrations', IntegrationsView);
+        registerRoute('wiki', WikiView);
         registerRoute('help', HelpView);
+        registerRoute('subscription', SubscriptionView);
         routesRegistered = true;
     }
 
@@ -171,8 +250,12 @@ function showApp() {
 
 /* ── Admin App ─────────────────────────────────────────── */
 function showAdminApp() {
-    document.getElementById('auth-screen').style.display = 'none';
-    document.getElementById('main-app').style.display = '';
+    const landing = document.getElementById('landing-screen');
+    const auth = document.getElementById('auth-screen');
+    const app = document.getElementById('main-app');
+    if (landing) landing.style.display = 'none';
+    if (auth) auth.style.display = 'none';
+    if (app) app.style.display = '';
 
     const state = getState();
     const sidebarEl = document.getElementById('sidebar-container');
@@ -181,7 +264,7 @@ function showAdminApp() {
     sidebarEl.innerHTML = `
     <div class="sidebar admin-mode">
       <div class="sidebar-brand">
-        <h1 class="sidebar-title">Eon Weaver Beta</h1>
+        <div class="sidebar-title">Eon Weaver</div>
         <p class="sidebar-subtitle">Administration</p>
       </div>
       <nav class="sidebar-nav">
@@ -221,7 +304,7 @@ function showAdminApp() {
     sidebarEl.querySelector('#sidebar-logout-btn')?.addEventListener('click', async () => {
         await apiLogout();
         resetState();
-        showAuth();
+        showLanding();
     });
 
     // Admin sidebar nav → triggers tab switching inside AdminDashboardView
@@ -329,16 +412,50 @@ function showNoCampaignScreen() {
 
 /* ── Auth Events ────────────────────────────────────────── */
 function bindAuthEvents() {
+    if (authEventsBound) return;
+    authEventsBound = true;
+
     const loginForm = document.getElementById('login-form');
     const registerForm = document.getElementById('register-form');
     const showRegLink = document.getElementById('show-register');
     const showLoginLink = document.getElementById('show-login');
+    const backLogin = document.getElementById('back-to-landing-login');
+    const backRegister = document.getElementById('back-to-landing-register');
     const errorEl = document.getElementById('auth-error');
+    const resendBtn = document.getElementById('resend-verify-btn');
+    let resendCooldownTimer = null;
+
+    const startResendCooldown = (seconds = 30) => {
+        if (!resendBtn) return;
+        if (resendCooldownTimer) {
+            clearInterval(resendCooldownTimer);
+            resendCooldownTimer = null;
+        }
+        let remaining = Math.max(1, Number(seconds) || 30);
+        resendBtn.setAttribute('aria-disabled', 'true');
+        resendBtn.style.pointerEvents = 'none';
+        resendBtn.style.opacity = '0.65';
+        resendBtn.textContent = `Resend in ${remaining}s`;
+        resendCooldownTimer = setInterval(() => {
+            remaining -= 1;
+            if (remaining <= 0) {
+                clearInterval(resendCooldownTimer);
+                resendCooldownTimer = null;
+                resendBtn.removeAttribute('aria-disabled');
+                resendBtn.style.pointerEvents = '';
+                resendBtn.style.opacity = '';
+                resendBtn.textContent = 'Resend confirmation email';
+                return;
+            }
+            resendBtn.textContent = `Resend in ${remaining}s`;
+        }, 1000);
+    };
 
     showRegLink?.addEventListener('click', (e) => {
         e.preventDefault();
         loginForm.style.display = 'none';
         registerForm.style.display = '';
+        errorEl.style.color = '';
         errorEl.style.display = 'none';
     });
 
@@ -346,7 +463,17 @@ function bindAuthEvents() {
         e.preventDefault();
         registerForm.style.display = 'none';
         loginForm.style.display = '';
+        errorEl.style.color = '';
         errorEl.style.display = 'none';
+    });
+
+    backLogin?.addEventListener('click', (e) => {
+        e.preventDefault();
+        showLanding();
+    });
+    backRegister?.addEventListener('click', (e) => {
+        e.preventDefault();
+        showLanding();
     });
 
     // Password show/hide toggles
@@ -395,10 +522,20 @@ function bindAuthEvents() {
             const username = document.getElementById('reg-username').value;
             const email = document.getElementById('reg-email').value;
             const pw = document.getElementById('reg-password').value;
-            const betaKey = document.getElementById('reg-beta-key').value;
-            const res = await apiRegister(username, email, pw, betaKey);
-            setState({ user: res.user });
-            // New user has no campaign — showApp will handle onboarding
+            const data = await apiRegister(username, email, pw);
+            if (data.needs_verification) {
+                const loginInput = document.getElementById('login-username');
+                if (loginInput && email) loginInput.value = email;
+                registerForm.style.display = 'none';
+                loginForm.style.display = '';
+                errorEl.style.display = '';
+                errorEl.style.color = '#22c55e';
+                errorEl.textContent =
+                    'Check your email for a confirmation link. You must verify before signing in.';
+                registerForm.reset();
+                return;
+            }
+            setState({ user: data.user });
             const meRes = await apiGetCurrentUser();
             if (meRes.user) {
                 setState({ user: meRes.user });
@@ -409,8 +546,37 @@ function bindAuthEvents() {
             }
             showApp();
         } catch (err) {
+            errorEl.style.color = '';
             errorEl.textContent = err.message;
             errorEl.style.display = '';
         }
     });
+
+    resendBtn?.addEventListener('click', async () => {
+        if (resendBtn.getAttribute('aria-disabled') === 'true') return;
+        const email = document.getElementById('login-username').value.trim();
+        if (!email || !email.includes('@')) {
+            errorEl.textContent = 'Enter your email address in the field above first.';
+            errorEl.style.display = '';
+            return;
+        }
+        try {
+            await apiResendVerification(email);
+            errorEl.style.color = '#22c55e';
+            errorEl.textContent = 'If an unverified account exists for that email, a new confirmation message has been sent.';
+            errorEl.style.display = '';
+            startResendCooldown(30);
+        } catch (err) {
+            errorEl.style.color = '';
+            errorEl.textContent = err.message;
+            errorEl.style.display = '';
+        }
+    });
+}
+
+function bindLandingEvents() {
+    if (landingEventsBound) return;
+    landingEventsBound = true;
+    document.getElementById('landing-signin-btn')?.addEventListener('click', () => showAuth('login'));
+    document.getElementById('landing-register-btn')?.addEventListener('click', () => showAuth('register'));
 }

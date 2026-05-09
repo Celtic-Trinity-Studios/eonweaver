@@ -15,9 +15,45 @@ define('SESSION_LIFETIME', 86400 * 7);  // 7 days
 define('APP_NAME', 'Eon Weaver');
 // OpenRouter attribution (production site — keep accurate for their ToS)
 define('APP_PUBLIC_URL', 'https://eonscribe.com');
-define('APP_PUBLIC_TITLE', 'Eon Scribe');
+define('APP_PUBLIC_TITLE', 'Eon Weaver');
 define('ALLOW_REGISTRATION', true);     // Set false to lock signups
-define('BETA_KEY', 'your-beta-key-here');
+
+// ── SMTP (required for email verification on public signups) ──
+// Leave SMTP_HOST empty on local dev to skip verification mail and auto-confirm new accounts.
+define('SMTP_HOST', '');              // e.g. smtp.example.com
+define('SMTP_PORT', 587);
+define('SMTP_USER', '');
+define('SMTP_PASS', '');
+define('SMTP_FROM', '');             // Must be a permitted sender at your provider
+define('SMTP_FROM_NAME', APP_NAME);
+define('SMTP_USE_TLS', true);        // STARTTLS on port 587
+
+// ── Signup abuse controls ──────────────────────────────────
+define('SIGNUP_MAX_PER_IP_PER_DAY', 3);
+define('SIGNUP_MAX_PER_IP_PER_WEEK', 10);
+// Uses ip-api.com (free). Blocks VPN/hosting/datacenter IPs when true (may block legitimate CGNAT).
+define('BLOCK_DATACENTER_SIGNUPS', false);
+
+// Demo tier: raw token grant applied after email verification (≈300000 ≈ 1.5 EC at 200k raw/EC).
+define('FREE_SIGNUP_CREDIT_GRANT_RAW', 300000);
+// Optional: must match src/constants/credits.js — billing buckets in helpers.php use this.
+// define('TOKENS_PER_CREDIT', 200000);
+
+// Optional: default monthly raw-token caps (when site_settings has no override) use list prices
+// from tier_limits.php and your loaded LLM cost per displayed EC:
+//   define('EW_EC_MAINTAINER_COST_USD', 0.15);        // ~your blended $/displayed EC (telemetry: ~$0.80/M raw @ 200k/EC ≈ 0.16)
+//   define('EW_MONTHLY_CAP_ARPU_FRACTION', 0.45);     // full-cap imputed burn ≤ this × list USD/mo; 0.45 → ~55% ARPU for fees/hosting/margin
+// Tighter margin: lower this (e.g. 0.40) or raise maintainer. More headroom for users: raise to 0.50–0.55 (watch margin).
+// Subscription monthly raw-token ceilings — defaults from tier_economics.php; override per tier
+// in MySQL site_settings as token_limit_{tier} (0 = no monthly cap, wallet-only). Free defaults to 0.
+// Legacy retail anchor for top-ups: US$0.22 / 1.5 EC.
+// Max NPCs/residents per town on Free tier (manual adds + imports enforce server-side).
+define('FREE_TIER_MAX_RESIDENTS', 15);
+
+// ── Free-tier ads (Google AdSense) ───────────────────────
+// Get ca-pub-… from AdSense; create a display unit for the sidebar slot.
+define('ADSENSE_FREE_TIER_CLIENT', '');       // e.g. ca-pub-xxxxxxxxxxxxxxxx
+define('ADSENSE_FREE_TIER_SLOT_SIDEBAR', ''); // data-ad-slot numeric string
 
 // ── MySQL Database ───────────────────────────────────────
 define('DB_HOST', 'localhost');
@@ -79,3 +115,19 @@ if (!function_exists('portraitsUrl')) {
         return '/portraits/' . $userId . '/';
     }
 }
+
+// ── Discord membership ↔ roles (optional) ─────────────────
+// Same bot token as local `.env.discord` / Discord Developer Portal application.
+// Guild ID: Server Settings → Widget → Server ID (or enable Developer Mode → right‑click server → Copy ID).
+// Role IDs: Developer Mode → Server Settings → Roles → right‑click role → Copy Role ID.
+// Map each subscription tier to one role; leave empty string to only strip other tier roles for that tier.
+// After changing tier or discord_user_id in Admin, the API updates Discord via REST (no long‑running bot required).
+define('DISCORD_GUILD_ID', '');
+define('DISCORD_BOT_TOKEN', '');
+define(
+    'DISCORD_TIER_ROLE_IDS_JSON',
+    '{"free":"","apprentice":"","adventurer":"","guild_master":"","world_builder":""}'
+);
+
+// Deploy Discord pings: use **local** `node discord_deploy_notify.mjs` after FTP (see `.env.discord.example`).
+// Server `config.php` does not need deploy channel IDs for that flow.

@@ -1,4 +1,6 @@
 <?php
+            require_once __DIR__ . '/sim_prompt_lib.php';
+
             $tId = (int) ($input['town_id'] ?? 0);
             $months = max(0, min(24, (int) ($input['months'] ?? 1)));
             $rules = trim($input['rules'] ?? '');
@@ -56,27 +58,17 @@
             // Build prompt
             $chars = query('SELECT * FROM characters WHERE town_id = ? ORDER BY name', [$tId], $uid);
             $hist = query('SELECT heading, content FROM history WHERE town_id = ? ORDER BY sort_order', [$tId], $uid);
-            $roster = [];
-            foreach ($chars as $c) {
-                $e = "{$c['name']} — {$c['race']} {$c['class']}, Age {$c['age']}, {$c['gender']}";
-                $e .= ", Status:{$c['status']}";
-                if ($c['spouse'] && $c['spouse'] !== 'None')
-                    $e .= ", {$c['spouse_label']}:{$c['spouse']}";
-                if ($c['role'])
-                    $e .= ", Role:{$c['role']}";
-                $e .= ", XP:{$c['xp']}, HP:{$c['hp']}, AC:{$c['ac']}";
-                $roster[] = $e;
-            }
-            $rosterText = implode("\n", $roster);
+            $rollingMetaRow = query('SELECT value FROM town_meta WHERE town_id = ? AND `key` = ?', [$tId, EW_SIM_ROLLING_SUMMARY_KEY], $uid);
+            $rollingSummary = $rollingMetaRow ? trim((string) ($rollingMetaRow[0]['value'] ?? '')) : '';
+            $rollingSummary = ew_sim_rolling_summary_maybe_seed($tId, $hist, $rollingSummary, $uid);
+            $rosterText = ew_sim_tiered_roster_simple($chars, 10);
             $charCount = count($chars);
-            $historyText = '';
-            foreach ($hist as $h)
-                $historyText .= "### {$h['heading']}\n{$h['content']}\n\n";
+            $historyText = ew_sim_prompt_history_block($hist, $rollingSummary);
 
             if ($months === 0) {
                 $prompt = "You are a D&D {$dndEdition} world manager. No time passes. Add new characters or relationships to \"{$tName}\".\n\nTown ({$charCount} residents):\n(CRITICAL: Do NOT reuse names from this roster. Use highly unique D&D names.)\n{$rosterText}\n\nInstructions: {$instructions}\n\nRespond ONLY valid JSON with fields: summary, new_characters, new_relationships, stat_changes, xp_gains (empty), deaths (MUST be empty), role_changes, history_entry.";
             } else {
-                $prompt = "You are a D&D {$dndEdition} simulation engine. Simulate {$months} month(s) in \"{$tName}\" (pop {$charCount}).\nSettings: relSpeed={$relSpeed}, birthRate={$birthRate}, deathRule={$popText}, childGrowth={$childGrowth}, conflict={$conflictFreq}\n{$demoTextSt}{$closedBordersTextSt}\nXP: Town difficulty={$diffLevelSt} (x{$diffMultSt}). Use Growth Score tags for XP.\nRules: {$rules}\nInstructions: {$instructions}\n\nRoster:\n(CRITICAL: Do NOT reuse names from this roster. Use highly unique D&D names.)\n{$rosterText}\n\nHistory:\n{$historyText}\n\nRespond ONLY valid JSON with the standard simulation structure (summary, events, changes:{new_characters,deaths,new_relationships,xp_gains,stat_changes,role_changes}, new_history_entry).";
+                $prompt = "You are a D&D {$dndEdition} simulation engine. Simulate {$months} month(s) in \"{$tName}\" (pop {$charCount}).\nSettings: relSpeed={$relSpeed}, birthRate={$birthRate}, deathRule={$popText}, childGrowth={$childGrowth}, conflict={$conflictFreq}\n{$demoTextSt}{$closedBordersTextSt}\nXP: Town difficulty={$diffLevelSt} (x{$diffMultSt}). Use Growth Score tags for XP.\nRules: {$rules}\nInstructions: {$instructions}\n\nRoster (NPC_<id> = database character id):\n(CRITICAL: Do NOT reuse names from this roster. Use highly unique D&D names.)\n{$rosterText}\n\nHistory:\n{$historyText}\n\nIn changes, prefer numeric character_id from roster for xp_gains, stat_changes, role_changes; character1_id/character2_id for relationships (names optional).\n\nRespond ONLY valid JSON with the standard simulation structure (summary, events, changes:{new_characters,deaths,new_relationships,xp_gains,stat_changes,role_changes}, new_history_entry).";
             }
 
             // LLM routing: local first, Gemini fallback

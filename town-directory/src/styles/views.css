@@ -941,6 +941,119 @@
     text-align: center;
 }
 
+.cal-wx-grid-host {
+    overflow-x: auto;
+}
+
+.cal-wx-grid-title {
+    font-size: 1rem;
+    color: var(--text);
+    margin-bottom: 0.6rem;
+    font-weight: 600;
+}
+
+.cal-wx-grid {
+    display: grid;
+    gap: 0;
+    min-width: 760px;
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background: rgba(0, 0, 0, 0.16);
+}
+
+.cal-wx-head {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-align: center;
+    padding: 0.5rem 0;
+    border-right: 1px solid var(--border-color);
+    background: rgba(0, 0, 0, 0.18);
+}
+
+.cal-wx-head:last-child {
+    border-right: none;
+}
+
+.cal-wx-cell {
+    border-right: 1px solid var(--border-color);
+    border-top: 1px solid var(--border-color);
+    padding: 0.35rem 0.45rem 0.45rem;
+    font-size: 0.72rem;
+    background: rgba(8, 8, 20, 0.28);
+    min-height: 7.4rem;
+    position: relative;
+}
+
+.cal-wx-cell.cal-wx-blank {
+    background: rgba(4, 4, 12, 0.22);
+    min-height: 7.4rem;
+}
+
+.cal-wx-is-today {
+    box-shadow: inset 0 0 0 2px var(--accent);
+    background: rgba(196, 163, 90, 0.09);
+}
+
+.cal-wx-daynum {
+    font-weight: 700;
+    font-size: 0.9rem;
+    margin-bottom: 0.25rem;
+    color: var(--text);
+}
+
+.cal-wx-moon-inline {
+    position: absolute;
+    right: 0.35rem;
+    top: 0.35rem;
+    font-size: 0.85rem;
+    opacity: 0.95;
+}
+
+.cal-wx-temp {
+    font-weight: 600;
+    color: var(--text-secondary);
+    line-height: 1.15;
+    font-size: 0.82rem;
+    margin-top: 0.4rem;
+}
+
+.cal-wx-sub,
+.cal-wx-no-wx {
+    font-size: 0.66rem;
+    line-height: 1.25;
+    margin-top: 0.2rem;
+    color: var(--text-muted);
+}
+
+.cal-wx-odd {
+    font-size: 0.62rem;
+    color: var(--warning, #c9a227);
+    margin-top: 0.25rem;
+    line-height: 1.2;
+    max-height: 1.6rem;
+    overflow: hidden;
+}
+
+.cal-wx-moon {
+    margin-top: 0.45rem;
+    padding-top: 0.3rem;
+    border-top: 1px solid var(--border-color);
+    font-size: 0.64rem;
+    line-height: 1.2;
+}
+
+.cal-wx-moon-sym {
+    margin-right: 0.25rem;
+}
+
+.cal-wx-moon-label {
+    display: inline;
+    color: var(--text-muted);
+    font-size: 0.6rem;
+}
+
 /* Calendar month list */
 .cal-months-header {
     display: flex;
@@ -3932,6 +4045,36 @@
     color: var(--text-secondary);
 }
 
+/* Draft / incomplete documentation (distinct from finished tips) */
+.help-incomplete {
+    padding: .6rem .8rem;
+    margin: .5rem 0;
+    background: rgba(245, 158, 11, .07);
+    border: 1px solid rgba(245, 158, 11, .28);
+    border-left: 3px solid var(--warning, #f59e0b);
+    border-radius: var(--radius-sm);
+    font-size: .78rem;
+    color: var(--text-secondary);
+}
+
+.help-incomplete-label {
+    display: block;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: var(--warning, #f59e0b);
+    margin: 0 0 .35rem;
+}
+
+.help-incomplete p {
+    margin: 0 0 .35rem;
+}
+
+.help-incomplete p:last-child {
+    margin-bottom: 0;
+}
+
 /* Tip Box */
 .help-tip {
     padding: .6rem .8rem;
@@ -4206,4 +4349,195 @@
     font-size: .8rem;
     color: var(--text-secondary);
     line-height: 1.6;
+}
+
+/* ── Subscription / Plans view ─────────────────────────── */
+.view-subscription {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 0.5rem 2rem;
+}
+
+.subscription-header {
+    align-items: flex-start;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+
+.subscription-header h1 {
+    margin: 0 0 0.35rem;
+}
+
+.subscription-lead {
+    margin: 0;
+    max-width: 52rem;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+
+.subscription-header-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.subscription-body {
+    margin-top: 0.5rem;
+}
+
+.subscription-section {
+    margin-bottom: 2rem;
+}
+
+.subscription-section h2 {
+    font-size: 1rem;
+    margin: 0 0 0.75rem;
+    color: var(--text-primary);
+}
+
+.subscription-you {
+    font-size: 0.85rem;
+    margin: 0 0 1rem;
+    color: var(--text-secondary);
+}
+
+.subscription-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 1rem;
+}
+
+.subscription-card {
+    background: var(--bg-secondary, rgba(0, 0, 0, 0.25));
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md, 10px);
+    padding: 1rem 1rem 1.1rem;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.subscription-card-current {
+    border-color: rgba(99, 102, 241, 0.55);
+}
+
+.subscription-card-head {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.35rem;
+}
+
+.subscription-current-pill {
+    font-size: 0.65rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.15rem 0.45rem;
+    border-radius: 999px;
+    background: rgba(99, 102, 241, 0.25);
+    color: #c4b5fd;
+}
+
+.subscription-card-price {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 0.75rem;
+}
+
+.subscription-card-specs {
+    margin: 0 0 0.75rem;
+    display: grid;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+}
+
+.subscription-card-specs > div {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.5rem;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding-bottom: 0.25rem;
+}
+
+.subscription-card-specs dt {
+    margin: 0;
+    color: var(--text-muted);
+    font-weight: 500;
+}
+
+.subscription-card-specs dd {
+    margin: 0;
+    color: var(--text-secondary);
+    text-align: right;
+}
+
+.subscription-includes-title {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-muted);
+    margin: 0 0 0.35rem;
+}
+
+.subscription-includes-list {
+    margin: 0;
+    padding-left: 1.1rem;
+    font-size: 0.72rem;
+    line-height: 1.45;
+    color: var(--text-secondary);
+    flex: 1;
+}
+
+.subscription-includes-list li {
+    margin-bottom: 0.3rem;
+}
+
+.subscription-table-wrap {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+
+.subscription-compare-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.78rem;
+}
+
+.subscription-compare-table th,
+.subscription-compare-table td {
+    padding: 0.45rem 0.6rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.subscription-compare-table th {
+    background: rgba(0, 0, 0, 0.2);
+    color: var(--text-muted);
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.subscription-compare-table tbody tr:hover {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.subscription-foot {
+    font-size: 0.78rem;
+    line-height: 1.55;
+    max-width: 48rem;
+}
+
+.subscription-foot p {
+    margin: 0 0 0.5rem;
+}
+
+.subscription-error {
+    color: var(--error);
 }

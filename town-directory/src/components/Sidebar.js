@@ -5,6 +5,7 @@
 import { navigate } from '../router.js';
 import { getState, setState, subscribe } from '../stores/appState.js';
 import { calendarToString, apiGetUsage } from '../api/settings.js';
+import { rawTokensToTc, formatWalletTc, formatMonthlyTcUsed } from '../constants/credits.js';
 import { apiSwitchCampaign, apiGetCampaigns } from '../api/campaigns.js';
 import { setCurrentEdition, clearSrdCache } from '../api/srd.js';
 import { openBugReportModal } from './BugReportModal.js';
@@ -13,6 +14,12 @@ const NAV_ITEMS = [
   { route: 'dashboard', icon: '🏠', label: 'Dashboard' },
   { route: 'town', icon: '🏰', label: 'Town Roster' },
   { route: 'world-simulate', icon: '🌍', label: 'World Simulate' },
+  { route: 'macro-sim', icon: '🟣', label: 'Macro Dynamics' },
+  { route: 'world-map', icon: '🗺️', label: 'World Map' },
+  { route: 'wiki', icon: '🔵', label: 'Wiki & Lore' },
+  { route: 'player-portal', icon: '🔶', label: 'Player Portal' },
+  { route: 'vtt-export', icon: '📦', label: 'VTT Export' },
+  { route: 'integrations', icon: '🤖', label: 'Integrations' },
   { route: 'party', icon: '🛡️', label: 'Party' },
   { route: 'encounters', icon: '⚔️', label: 'Encounters' },
   { route: 'scribe', icon: '✍️', label: 'AI Scribe' },
@@ -21,6 +28,7 @@ const NAV_ITEMS = [
   { route: 'content-library', icon: '📁', label: 'Content Library' },
   { route: 'calendar', icon: '📅', label: 'Calendar' },
   { route: 'help', icon: '❓', label: 'Help & Guide' },
+  { route: 'subscription', icon: '💎', label: 'Plans' },
   { route: 'settings', icon: '⚙️', label: 'Settings' },
 ];
 
@@ -38,7 +46,7 @@ export function renderSidebar(container) {
   container.innerHTML = `
     <div class="sidebar">
       <div class="sidebar-brand">
-        <h1 class="sidebar-title">Eon Weaver Beta</h1>
+        <div class="sidebar-title">Eon Weaver</div>
         <p class="sidebar-subtitle">Campaign Manager</p>
         <div class="sidebar-usage" id="sidebar-usage"></div>
       </div>
@@ -76,6 +84,10 @@ export function renderSidebar(container) {
       </nav>
       ` : ''}
 
+      ${state.user && state.user.subscription_tier === 'free' ? `
+      <div id="sidebar-free-ad-slot" class="sidebar-free-ad-slot" aria-label="Advertisement"></div>
+      ` : ''}
+
       <div class="sidebar-footer">
         <div class="sidebar-user" id="sidebar-user-info">
           ${state.user ? `👤 ${state.user.username}` : ''}
@@ -88,6 +100,7 @@ export function renderSidebar(container) {
 
   // Load usage meter into sidebar
   loadSidebarUsage();
+  mountSidebarFreeAds(container);
 
   // Bind navigation clicks
   container.querySelectorAll('.nav-item').forEach(btn => {
@@ -209,7 +222,40 @@ subscribe((state) => {
 
 /**
  * Load and display Eon Credits wallet in sidebar brand area.
+ * Free tier: sidebar ad slot (AdSense or placeholder).
  */
+let adsenseScriptLoaded = false;
+
+function mountSidebarFreeAds(container) {
+  const state = getState();
+  const u = state.user;
+  const slot = container.querySelector('#sidebar-free-ad-slot');
+  if (!slot || !u || u.subscription_tier !== 'free') return;
+
+  const client = u.adsense_client_id || '';
+  const adSlot = u.adsense_slot_sidebar || '';
+
+  if (client && adSlot) {
+    if (!adsenseScriptLoaded) {
+      adsenseScriptLoaded = true;
+      const s = document.createElement('script');
+      s.async = true;
+      s.crossOrigin = 'anonymous';
+      s.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${encodeURIComponent(client)}`;
+      document.head.appendChild(s);
+    }
+    slot.innerHTML = `<ins class="adsbygoogle" style="display:block;min-height:90px" data-ad-client="${client.replace(/"/g, '&quot;')}" data-ad-slot="${String(adSlot).replace(/"/g, '&quot;')}" data-ad-format="horizontal" data-full-width-responsive="true"></ins>`;
+    try {
+      (window.adsbygoogle = window.adsbygoogle || []).push({});
+    } catch (e) {
+      /* ignore */
+    }
+  } else {
+    slot.innerHTML =
+      '<div class="sidebar-ad-placeholder">Free tier · Ad revenue helps fund AI usage. Set ADSENSE_* in server config to enable Google ads here.</div>';
+  }
+}
+
 async function loadSidebarUsage() {
   const el = document.getElementById('sidebar-usage');
   if (!el) return;
@@ -217,19 +263,20 @@ async function loadSidebarUsage() {
     const res = await apiGetUsage();
     if (!res.ok) return;
     const { tier_label, credit_balance, tokens_used_this_month } = res;
-    const balance = credit_balance || 0;
-    const fmt = (n) => n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(0) + 'K' : n;
-    const balanceColor = balance <= 0 ? '#ef4444' : balance < 1000000 ? '#f59e0b' : '#22c55e';
+    /** DB stores raw LLM tokens; UI shows Token Credits (same scale as cost modal). */
+    const balanceTc = rawTokensToTc(credit_balance);
+    const usedTc = rawTokensToTc(tokens_used_this_month || 0);
+    const balanceColor = balanceTc <= 0 ? '#ef4444' : balanceTc < 5 ? '#f59e0b' : '#22c55e';
     el.innerHTML = `
       <div class="sidebar-usage-row">
         <span class="sidebar-tier-badge tier-${res.tier}">${tier_label}</span>
       </div>
       <div class="sidebar-credits-display">
         <span class="sidebar-credits-icon">🪙</span>
-        <span class="sidebar-credits-value" style="color:${balanceColor}">${fmt(balance)}</span>
+        <span class="sidebar-credits-value" style="color:${balanceColor}">${formatWalletTc(balanceTc)}</span>
         <span class="sidebar-credits-label">Eon Credits</span>
       </div>
-      <div class="sidebar-usage-label">${fmt(tokens_used_this_month || 0)} used this month</div>
+      <div class="sidebar-usage-label">${formatMonthlyTcUsed(usedTc)} EC used this month</div>
     `;
   } catch (e) { /* silent */ }
 }

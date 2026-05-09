@@ -4,9 +4,37 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Eon Weaver Beta — Campaign Manager</title>
+    <title>Eon Weaver Campaign Manager for D&D</title>
     <meta name="description"
-        content="AI-powered D&D campaign manager with town simulation, character management, and SRD reference.">
+        content="Simulate your D&D campaign world between sessions with multi-town AI progression, world maps, in-game calendar, and persistent history.">
+    <meta name="robots" content="index,follow,max-image-preview:large">
+    <link rel="canonical" href="https://eonweaver.com/">
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Eon Weaver">
+    <meta property="og:title" content="Eon Weaver Campaign Manager for D&D">
+    <meta property="og:description"
+        content="Simulate your D&D campaign world between sessions with multi-town AI progression, world maps, in-game calendar, and persistent history.">
+    <meta property="og:url" content="https://eonweaver.com/">
+    <meta property="og:image" content="https://eonweaver.com/favicon.svg">
+    <meta property="og:image:alt" content="Eon Weaver logo">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Eon Weaver Campaign Manager for D&D">
+    <meta name="twitter:description"
+        content="Simulate your D&D campaign world between sessions with multi-town AI progression, world maps, in-game calendar, and persistent history.">
+    <link rel="alternate" hreflang="en" href="https://eonweaver.com/">
+    <link rel="alternate" hreflang="x-default" href="https://eonweaver.com/">
+    <script type="application/ld+json">
+        {
+            "@context": "https://schema.org",
+            "@type": "WebApplication",
+            "name": "Eon Weaver",
+            "applicationCategory": "GameApplication",
+            "operatingSystem": "Web",
+            "url": "https://eonweaver.com/",
+            "description": "Simulate your D&D campaign world between sessions with multi-town AI progression, world maps, in-game calendar, and persistent history."
+        }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cinzel:wght@400;600;700&display=swap"
@@ -15,11 +43,32 @@
 
 <body>
 
+    <!-- Public Landing -->
+    <div id="landing-screen" class="landing-screen">
+        <div class="landing-card">
+            <p class="landing-eyebrow">EON WEAVER</p>
+            <h1 class="landing-title">Your setting keeps moving—even when the table is quiet.</h1>
+            <p class="landing-subtitle">
+                Months roll forward across towns: demographics, drama, and macro-scale change—tied to an in-game calendar and real geography on your world map (pins, travel—not just a relationship chart).
+            </p>
+            <div class="landing-actions">
+                <button id="landing-signin-btn" class="btn-primary">Sign In</button>
+                <button id="landing-register-btn" class="btn-secondary">Create Account</button>
+            </div>
+            <div class="landing-feature-grid">
+                <div class="landing-feature"><strong>🌍 Town &amp; world simulation</strong><span>Run one town or simulate every settlement in one pass</span></div>
+                <div class="landing-feature"><strong>🗺️ Geographic world maps</strong><span>Place pins on your uploaded map; estimate travel between locations</span></div>
+                <div class="landing-feature"><strong>📅 In-game calendar</strong><span>Advance time between sessions; anchor plots to campaign dates</span></div>
+                <div class="landing-feature"><strong>📜 Timeline &amp; codex</strong><span>Evolving history plus AI scribe &amp; wiki when you need depth</span></div>
+            </div>
+        </div>
+    </div>
+
     <!-- Auth Screen -->
-    <div id="auth-screen">
+    <div id="auth-screen" style="display:none;">
         <div class="auth-backdrop">
             <div class="auth-card">
-                <h1 class="auth-brand">&#9876;&#65039; Eon Weaver Beta</h1>
+                <div class="auth-brand">&#9876;&#65039; Eon Weaver</div>
                 <p class="auth-tagline">AI-Powered Campaign Manager</p>
 
                 <div id="auth-error" class="auth-error" style="display:none"></div>
@@ -28,18 +77,19 @@
                     <input type="text" id="login-username" placeholder="Username or Email" required class="form-input">
                     <div class="pw-wrapper"><input type="password" id="login-password" placeholder="Password" required class="form-input"><button type="button" class="pw-toggle" data-target="login-password" aria-label="Show password">👁️</button></div>
                     <button type="submit" class="btn-primary">Sign In</button>
-                    <p class="auth-switch">No account? <a href="#" id="show-register">Register</a></p>
+                    <p class="auth-hint" style="margin-top:0.5rem">
+                      <button type="button" class="btn-link" id="resend-verify-btn">Resend confirmation email</button>
+                      <span class="muted"> — uses the email field above</span>
+                    </p>
+                    <p class="auth-switch">No account? <a href="#" id="show-register">Register</a> · <a href="#" id="back-to-landing-login">Back</a></p>
                 </form>
 
                 <form id="register-form" class="auth-form" style="display:none">
                     <input type="text" id="reg-username" placeholder="Username" required class="form-input">
                     <input type="email" id="reg-email" placeholder="Email" required class="form-input">
                     <div class="pw-wrapper"><input type="password" id="reg-password" placeholder="Password" required class="form-input"><button type="button" class="pw-toggle" data-target="reg-password" aria-label="Show password">👁️</button></div>
-                    <input type="text" id="reg-beta-key" placeholder="Beta Key" required class="form-input"
-                        autocomplete="off">
-                    <small class="auth-hint">A beta key is required to create an account during early access.</small>
                     <button type="submit" class="btn-primary">Create Account</button>
-                    <p class="auth-switch">Already have an account? <a href="#" id="show-login">Sign In</a></p>
+                    <p class="auth-switch">Already have an account? <a href="#" id="show-login">Sign In</a> · <a href="#" id="back-to-landing-register">Back</a></p>
                 </form>
             </div>
         </div>

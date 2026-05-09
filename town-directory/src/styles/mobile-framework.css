@@ -1,0 +1,75 @@
+/* Phase 6 framework: baseline responsive layout hardening.
+ * This intentionally avoids major desktop style changes.
+ */
+
+@media (max-width: 1024px) {
+  .view-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .view-header .view-header-right {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+}
+
+@media (max-width: 860px) {
+  .sidebar {
+    width: 88px;
+    min-width: 88px;
+  }
+
+  .sidebar .sidebar-title,
+  .sidebar .sidebar-subtitle,
+  .sidebar .nav-label,
+  .sidebar .sidebar-calendar,
+  .sidebar .sidebar-user,
+  .sidebar .sidebar-usage {
+    display: none;
+  }
+
+  .sidebar .nav-item {
+    justify-content: center;
+    padding: 0.55rem 0.35rem;
+  }
+
+  .sidebar .nav-icon {
+    font-size: 1rem;
+  }
+}
+
+@media (max-width: 720px) {
+  .dash-card,
+  .settings-section-card,
+  .sim-card {
+    padding: 0.75rem !important;
+  }
+
+  .form-row,
+  .sim-config-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .form-row > *,
+  .sim-config-row > * {
+    width: 100%;
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .btn-primary,
+  .btn-secondary,
+  .btn-danger {
+    width: 100%;
+  }
+
+  .srd-table {
+    font-size: 0.78rem;
+  }
+}
+

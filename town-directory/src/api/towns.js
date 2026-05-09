@@ -32,7 +32,7 @@ export function apiSaveHistory(townId, entries) {
 }
 
 export function apiGetTownMeta(townId) {
-    return apiFetch('town_meta', { params: { town_id: townId } });
+    return apiFetch('town_meta', { params: { town_id: townId }, cache: 'no-store' });
 }
 
 export function apiSaveTownMeta(townId, key, value) {

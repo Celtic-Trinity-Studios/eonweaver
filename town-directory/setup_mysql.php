@@ -53,6 +53,114 @@ try {
     } catch (Exception $e) { /* already exists */
     }
 
+    // Migration: email verification + signup audit (demo-tier abuse controls)
+    try {
+        $pdo->exec("ALTER TABLE users ADD COLUMN email_verified TINYINT(1) NOT NULL DEFAULT 1");
+        $results[] = '✅ Added email_verified column';
+    } catch (Exception $e) {
+        if (strpos($e->getMessage(), 'Duplicate column') !== false) {
+            $results[] = '⏭️ email_verified column already exists';
+        }
+    }
+    try {
+        $pdo->exec("ALTER TABLE users ADD COLUMN email_verify_token VARCHAR(64) DEFAULT NULL");
+        $results[] = '✅ Added email_verify_token column';
+    } catch (Exception $e) {
+        if (strpos($e->getMessage(), 'Duplicate column') !== false) {
+            $results[] = '⏭️ email_verify_token already exists';
+        }
+    }
+    try {
+        $pdo->exec("ALTER TABLE users ADD COLUMN email_verify_expires DATETIME DEFAULT NULL");
+        $results[] = '✅ Added email_verify_expires column';
+    } catch (Exception $e) {
+        if (strpos($e->getMessage(), 'Duplicate column') !== false) {
+            $results[] = '⏭️ email_verify_expires already exists';
+        }
+    }
+    try {
+        $pdo->exec("ALTER TABLE users ADD COLUMN signup_ip VARCHAR(45) DEFAULT NULL");
+        $results[] = '✅ Added signup_ip column';
+    } catch (Exception $e) {
+        if (strpos($e->getMessage(), 'Duplicate column') !== false) {
+            $results[] = '⏭️ signup_ip already exists';
+        }
+    }
+
+    try {
+        $pdo->exec("ALTER TABLE users ADD COLUMN discord_user_id VARCHAR(32) DEFAULT NULL");
+        $results[] = '✅ Added discord_user_id column';
+    } catch (Exception $e) {
+        if (strpos($e->getMessage(), 'Duplicate column') !== false) {
+            $results[] = '⏭️ discord_user_id already exists';
+        }
+    }
+
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS signup_attempts (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            ip VARCHAR(45) NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            outcome VARCHAR(32) DEFAULT 'unknown',
+            email_domain VARCHAR(120) DEFAULT NULL,
+            KEY idx_signup_ip_created (ip, created_at),
+            KEY idx_signup_outcome_created (outcome, created_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $results[] = '✅ signup_attempts table';
+    } catch (Exception $e) {
+        $results[] = '⚠️ signup_attempts: ' . htmlspecialchars($e->getMessage());
+    }
+    foreach ([
+        ["ALTER TABLE signup_attempts ADD COLUMN outcome VARCHAR(32) DEFAULT 'unknown'", 'outcome'],
+        ['ALTER TABLE signup_attempts ADD COLUMN email_domain VARCHAR(120) DEFAULT NULL', 'email_domain'],
+        ['ALTER TABLE signup_attempts ADD KEY idx_signup_outcome_created (outcome, created_at)', 'outcome key'],
+    ] as $mig) {
+        try {
+            $pdo->exec($mig[0]);
+            $results[] = "✅ signup_attempts: {$mig[1]}";
+        } catch (Exception $e) {
+            if (strpos($e->getMessage(), 'Duplicate') !== false) {
+                $results[] = "⏭️ signup_attempts {$mig[1]} already present";
+            }
+        }
+    }
+
+    // ── Server-side metrics: anonymous pageviews + daily AI roll-up ──
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS metrics_pageviews (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            day DATE NOT NULL,
+            route VARCHAR(64) NOT NULL,
+            visitor_hash CHAR(64) NOT NULL,
+            user_id INT NULL,
+            referrer_host VARCHAR(120) DEFAULT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_metrics_day_route (day, route),
+            KEY idx_metrics_visitor_day (visitor_hash, day),
+            KEY idx_metrics_user_day (user_id, day),
+            KEY idx_metrics_ref_day (referrer_host, day)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $results[] = '✅ metrics_pageviews table';
+    } catch (Exception $e) {
+        $results[] = '⚠️ metrics_pageviews: ' . htmlspecialchars($e->getMessage());
+    }
+
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS metrics_ai_calls (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            day DATE NOT NULL,
+            user_id INT NOT NULL,
+            feature_key VARCHAR(64) NOT NULL,
+            tokens BIGINT NOT NULL DEFAULT 0,
+            calls INT NOT NULL DEFAULT 0,
+            UNIQUE KEY uniq_day_user_feature (day, user_id, feature_key),
+            KEY idx_ai_day_feature (day, feature_key)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $results[] = '✅ metrics_ai_calls table';
+    } catch (Exception $e) {
+        $results[] = '⚠️ metrics_ai_calls: ' . htmlspecialchars($e->getMessage());
+    }
+
     // Migration: add npc_xp_speed column
     try {
         $pdo->exec("ALTER TABLE users ADD COLUMN npc_xp_speed VARCHAR(20) DEFAULT 'normal' AFTER xp_speed");
@@ -357,6 +465,61 @@ try {
         $results[] = '✅ Upgraded days_per_month to support per-month day counts';
     } catch (Exception $e) { /* already varchar, ignore */ }
 
+    try {
+        $pdo->exec('ALTER TABLE calendar ADD COLUMN days_per_week INT DEFAULT 7');
+        $results[] = '✅ Added calendar.days_per_week';
+    } catch (Exception $e) { /* exists */
+    }
+    try {
+        $pdo->exec('ALTER TABLE calendar ADD COLUMN weekday_names TEXT NULL');
+        $results[] = '✅ Added calendar.weekday_names';
+    } catch (Exception $e) { /* exists */
+    }
+    try {
+        $pdo->exec('ALTER TABLE calendar ADD COLUMN weekday_abbrev TEXT NULL');
+        $results[] = '✅ Added calendar.weekday_abbrev';
+    } catch (Exception $e) { /* exists */
+    }
+
+    // Migration: legacy schema had `user_id INT PRIMARY KEY`, which permits only ONE calendar
+    // row per user — making the per-campaign feature impossible. Replace PK with auto-increment id.
+    try {
+        $hasId = $pdo->query("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'calendar' AND COLUMN_NAME = 'id'")->fetchColumn();
+        if (!$hasId) {
+            $pdo->exec("ALTER TABLE calendar DROP PRIMARY KEY");
+            $pdo->exec("ALTER TABLE calendar ADD COLUMN id INT AUTO_INCREMENT PRIMARY KEY FIRST");
+            $results[] = '✅ Replaced calendar PK (user_id → id auto_increment) — multi-campaign calendars enabled';
+        }
+    } catch (Exception $e) {
+        $results[] = '⚠️ calendar PK migration: ' . htmlspecialchars($e->getMessage());
+    }
+
+    // Migration: if user_id is still PRIMARY KEY (id may already exist from CREATE TABLE on fresh installs)
+    // and there's no id column at all yet, the above handles it. But also drop a possible leftover
+    // PK on user_id if we ever ran a half-migration.
+    try {
+        $pkRow = $pdo->query("SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS cols FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'calendar' AND INDEX_NAME = 'PRIMARY'")->fetch();
+        if ($pkRow && ($pkRow['cols'] ?? '') === 'user_id') {
+            $pdo->exec("ALTER TABLE calendar DROP PRIMARY KEY");
+            $hasIdCol = $pdo->query("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'calendar' AND COLUMN_NAME = 'id'")->fetchColumn();
+            if ($hasIdCol) {
+                $pdo->exec("ALTER TABLE calendar MODIFY COLUMN id INT AUTO_INCREMENT PRIMARY KEY");
+            } else {
+                $pdo->exec("ALTER TABLE calendar ADD COLUMN id INT AUTO_INCREMENT PRIMARY KEY FIRST");
+            }
+            $results[] = '✅ Calendar PK now on id (was user_id)';
+        }
+    } catch (Exception $e) { /* PK already correct */ }
+
+    // Always emit current calendar PK + row count so we can confirm the schema is sane.
+    try {
+        $calPk = $pdo->query("SELECT GROUP_CONCAT(COLUMN_NAME ORDER BY SEQ_IN_INDEX) AS cols FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'calendar' AND INDEX_NAME = 'PRIMARY'")->fetch();
+        $calRowCount = (int) $pdo->query("SELECT COUNT(*) FROM calendar")->fetchColumn();
+        $results[] = '🔍 calendar PK = `' . htmlspecialchars($calPk['cols'] ?? '(none)') . '`, rows = ' . $calRowCount;
+    } catch (Exception $e) {
+        $results[] = '⚠️ calendar diagnostic: ' . htmlspecialchars($e->getMessage());
+    }
+
     $pdo->exec("CREATE TABLE IF NOT EXISTS site_settings (
         id          INT AUTO_INCREMENT PRIMARY KEY,
         `key`       VARCHAR(100) UNIQUE NOT NULL,
@@ -408,44 +571,45 @@ try {
         $results[] = '❌ Failed feature_key migration: ' . $e->getMessage();
     }
 
-    // Seed default token limits into site_settings (5-tier model)
+    // Seed default token limits into site_settings (5-tier model).
+        // Align with tier_economics.php::ew_tier_monthly_raw_cap_defaults() (200k raw/EC; apprentice formula; adv/gm/wb fixed EC).
     try {
-        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_free', '500000')");
+        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_free', '0')");
         $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_apprentice', '3000000')");
-        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_adventurer', '7000000')");
-        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_guild_master', '12000000')");
-        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_world_builder', '25000000')");
+        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_adventurer', '8000000')");
+        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_guild_master', '17000000')");
+        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('token_limit_world_builder', '30000000')");
         // Update legacy values if they still exist
-        $pdo->exec("UPDATE site_settings SET value = '500000' WHERE `key` = 'token_limit_free'");
+        $pdo->exec("UPDATE site_settings SET value = '0' WHERE `key` = 'token_limit_free'");
         $pdo->exec("UPDATE site_settings SET value = '3000000' WHERE `key` = 'token_limit_apprentice'");
-        $pdo->exec("UPDATE site_settings SET value = '7000000' WHERE `key` = 'token_limit_adventurer'");
-        $pdo->exec("UPDATE site_settings SET value = '12000000' WHERE `key` = 'token_limit_guild_master'");
-        $pdo->exec("UPDATE site_settings SET value = '25000000' WHERE `key` = 'token_limit_world_builder'");
+        $pdo->exec("UPDATE site_settings SET value = '8000000' WHERE `key` = 'token_limit_adventurer'");
+        $pdo->exec("UPDATE site_settings SET value = '17000000' WHERE `key` = 'token_limit_guild_master'");
+        $pdo->exec("UPDATE site_settings SET value = '30000000' WHERE `key` = 'token_limit_world_builder'");
+        $pdo->exec("INSERT IGNORE INTO site_settings (`key`, value) VALUES ('signup_rate_limit_ip_allowlist', '')");
         // Migrate old subscriber limit to adventurer if it exists
         $pdo->exec("DELETE FROM site_settings WHERE `key` = 'token_limit_subscriber'");
-        $results[] = '✅ Seeded 5-tier token limits (free=0.5M, apprentice=3M, adventurer=7M, guild_master=12M, world_builder=25M)';
+        $results[] = '✅ Seeded token limits + signup_rate_limit_ip_allowlist setting';
     } catch (Exception $e) { /* already exists */ }
 
-    // ── Beta Keys table ──
-    $pdo->exec("CREATE TABLE IF NOT EXISTS beta_keys (
-        id              INT AUTO_INCREMENT PRIMARY KEY,
-        `key_code`      VARCHAR(100) UNIQUE NOT NULL,
-        is_used         TINYINT(1) NOT NULL DEFAULT 0,
-        used_by_user_id INT DEFAULT NULL,
-        used_at         DATETIME DEFAULT NULL,
-        note            VARCHAR(255) DEFAULT '',
-        created_at      DATETIME DEFAULT NOW(),
-        INDEX idx_beta_key_code (`key_code`),
-        INDEX idx_beta_used (is_used)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
-    $results[] = '✅ beta_keys table';
-
-    // Seed the legacy beta key from config so it shows up in the DB too
+    // ── Cleanup: beta-key system was removed; drop the table if present and prune historical
+    //    signup_attempts outcomes that referenced it (purely cosmetic — they're not used anywhere).
     try {
-        if (defined('BETA_KEY') && BETA_KEY) {
-            $pdo->exec("INSERT IGNORE INTO beta_keys (`key_code`, note) VALUES ('" . addslashes(BETA_KEY) . "', 'Legacy config key')");
+        $stmt = $pdo->query("SHOW TABLES LIKE 'beta_keys'");
+        if ($stmt && $stmt->fetchColumn()) {
+            $pdo->exec("DROP TABLE beta_keys");
+            $results[] = '🗑️ Dropped legacy beta_keys table';
+        } else {
+            $results[] = '⏭️ beta_keys table already removed';
         }
-    } catch (Exception $e) { /* already exists */ }
+    } catch (Exception $e) {
+        $results[] = '⚠️ beta_keys cleanup: ' . htmlspecialchars($e->getMessage());
+    }
+    try {
+        $n = $pdo->exec("DELETE FROM signup_attempts WHERE outcome IN ('bad_beta_key', 'beta_key_required')");
+        if ($n) {
+            $results[] = "🗑️ Pruned {$n} legacy beta-key signup_attempts rows";
+        }
+    } catch (Exception $e) { /* table may not exist */ }
 
     $pdo->exec("CREATE TABLE IF NOT EXISTS factions (
         id          INT AUTO_INCREMENT PRIMARY KEY,
@@ -1433,6 +1597,27 @@ try {
         } else {
             $results[] = '⚠️ role migration: ' . htmlspecialchars($e->getMessage());
         }
+    }
+
+    // -- AI Scribe: saved library (markdown pieces per campaign) --
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS scribe_library (
+            id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            user_id INT UNSIGNED NOT NULL,
+            campaign_id INT UNSIGNED DEFAULT NULL,
+            town_id INT UNSIGNED DEFAULT NULL,
+            generator_type VARCHAR(32) NOT NULL DEFAULT 'lore',
+            title VARCHAR(512) NOT NULL DEFAULT '',
+            body MEDIUMTEXT NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            INDEX idx_scribe_user_campaign (user_id, campaign_id),
+            INDEX idx_scribe_user_updated (user_id, updated_at),
+            INDEX idx_scribe_town (user_id, town_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $results[] = '✅ scribe_library table';
+    } catch (Exception $e) {
+        $results[] = '⚠️ scribe_library: ' . htmlspecialchars($e->getMessage());
     }
 
     // -- Create admin account (CelticTrinityStudios) --

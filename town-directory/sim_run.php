@@ -1,9 +1,18 @@
 <?php
+            require_once __DIR__ . '/sim_prompt_lib.php';
+            require_once __DIR__ . '/weather_daily_lib.php';
+
             $townId = (int) ($input['town_id'] ?? 0);
             $months = max(0, min(24, (int) ($input['months'] ?? 1)));  // 0 = intake mode
             $days = max(0, min(30, (int) ($input['days'] ?? 0)));      // 0 = full month
             $rulesRaw = $input['rules'] ?? '';
-            $rules = is_string($rulesRaw) ? trim($rulesRaw) : (is_array($rulesRaw) ? json_encode($rulesRaw) : '');
+            $rules = '';
+            if (is_string($rulesRaw)) {
+                $rules = trim($rulesRaw);
+            } elseif (is_array($rulesRaw)) {
+                $enc = json_encode($rulesRaw, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+                $rules = ($enc === false) ? '' : $enc;
+            }
             $instructions = is_string($input['instructions'] ?? '') ? trim($input['instructions'] ?? '') : '';
 
             verifyTownOwnership($userId, $townId, $uid);
@@ -11,8 +20,8 @@
             // ── Token budget check (hidden) ─────────────────────
             $uTierRows = query('SELECT subscription_tier FROM users WHERE id = ?', [$userId], 0);
             $uTier = $uTierRows ? ($uTierRows[0]['subscription_tier'] ?? 'free') : 'free';
-            if (checkTokenBudget($userId, $uTier)) {
-                throw new Exception('You\'ve used a lot of AI this month. Usage resets on the 1st. Consider subscribing for higher limits.');
+            if (($bw = ew_platform_wallet_blocked($userId, $uTier)) !== null) {
+                throw new Exception($bw);
             }
 
             $apiKey = resolveApiKey('OPENROUTER_KEY_SIM_RUN', $userId);
@@ -49,6 +58,9 @@
 
             $characters = query('SELECT * FROM characters WHERE town_id = ? ORDER BY name', [$townId], $uid);
             $history = query('SELECT heading, content FROM history WHERE town_id = ? ORDER BY sort_order', [$townId], $uid);
+            $rollingMetaRow = query('SELECT value FROM town_meta WHERE town_id = ? AND `key` = ?', [$townId, EW_SIM_ROLLING_SUMMARY_KEY], $uid);
+            $rollingSummary = $rollingMetaRow ? trim((string) ($rollingMetaRow[0]['value'] ?? '')) : '';
+            $rollingSummary = ew_sim_rolling_summary_maybe_seed($townId, $history, $rollingSummary, $uid);
 
             // Load existing relationships so the AI knows social dynamics
             $charIdMap = [];
@@ -161,35 +173,9 @@
                 $equipRef .= "  {$cat}: " . implode(', ', array_slice($items, 0, 30)) . "\n";
             }
 
-            // Build character roster for the prompt — include relationships
-            $roster = [];
-            foreach ($characters as $c) {
-                $entry = "{$c['name']} — {$c['race']} {$c['class']}, Age {$c['age']}, {$c['gender']}";
-                $entry .= ", Status: {$c['status']}";
-                if ($c['spouse'] && $c['spouse'] !== 'None') {
-                    $label = $c['spouse_label'] ?: 'Spouse';
-                    $entry .= ", {$label}: {$c['spouse']}";
-                }
-                if ($c['role'])
-                    $entry .= ", Role: {$c['role']}";
-                $entry .= ", HP:{$c['hp']}, AC:{$c['ac']}, STR:{$c['str']}, DEX:{$c['dex']}, CON:{$c['con']}, INT:{$c['int_']}, WIS:{$c['wis']}, CHA:{$c['cha']}";
-                $entry .= ", Alignment:{$c['alignment']}";
-                $entry .= ", XP:{$c['xp']}";
-                // Append known relationships
-                if (!empty($relsByChar[$c['name']])) {
-                    $entry .= ", Relationships: [" . implode('; ', $relsByChar[$c['name']]) . "]";
-                }
-                $roster[] = $entry;
-            }
-
-            // Build history summary
-            $historyText = '';
-            if ($history) {
-                $historyText = "\n\n## Recent Town History:\n";
-                foreach ($history as $h) {
-                    $historyText .= "### {$h['heading']}\n{$h['content']}\n\n";
-                }
-            }
+            // Tiered roster + compressed history (token/cost control)
+            $rosterText = ew_sim_tiered_roster_main_run($characters, $relsByChar, 10);
+            $historyText = ew_sim_prompt_history_block($history, $rollingSummary);
 
             // Population threshold text
             $popText = $deathThreshold === 'unlimited'
@@ -224,13 +210,12 @@
 
             // Build the Gemini prompt
             $charCount = count($characters);
-            $rosterText = implode("\n", $roster);
 
             if ($months === 0) {
                 // ══════════════════════════════════════════════════════════
                 // CHARACTER INTAKE MODE — One character per AI request
                 // ══════════════════════════════════════════════════════════
-                $numArrivals = max(1, min(100, (int) ($input['num_arrivals'] ?? 5)));
+                $numArrivals = max(1, min(150, (int) ($input['num_arrivals'] ?? 5)));
                 $startTime = time(); // Track start time for timeout guard
                 $timeLimit = 100;    // Bail before Hostinger's ~120s web server timeout
 
@@ -400,7 +385,7 @@ Give this character a vivid backstory in the "reason" field:
 {"changes":{"new_characters":[{"name":"Full Name","race":"Human","class":"Commoner 1","gender":"M","age":25,"alignment":"NG","role":"Farmer","skills_feats":"Craft (farming), Profession (farmer)","feats":"Skill Focus (Craft)","spells":"","reason":"Fled the war in the eastern provinces, seeking a quiet life. Former soldier who lost his family. Dreams of owning a plot of land."}]}}
 SPROMPT;
 
-                    $payload = json_encode([
+                    $payload = ew_json_encode_openrouter_body([
                         "model" => $model,
                         "messages" => [["role" => "user", "content" => $singlePrompt]],
                         "temperature" => 0.9,
@@ -643,6 +628,7 @@ SPROMPT;
                 // Defaults if no calendar row exists
                 $curMonth = 1;
                 $curYear = 1490;
+                $curDay = 1;
                 $eraName = 'DR';
                 $mpy = 12;
                 $daysPerMonthArr = array_fill(0, 12, 30);
@@ -650,6 +636,7 @@ SPROMPT;
                 if ($calData) {
                     $curMonth = (int) ($calData['current_month'] ?? 1);
                     $curYear = (int) ($calData['current_year'] ?? 1490);
+                    $curDay = (int) ($calData['current_day'] ?? 1);
                     $eraName = trim($calData['era_name'] ?? 'DR');
                     $mpy = (int) ($calData['months_per_year'] ?? 12);
                     // days_per_month: JSON array or legacy single int
@@ -678,7 +665,7 @@ SPROMPT;
                 $calBlock = <<<CAL
 
 ## ⚠️ CALENDAR — MANDATORY MONTH NAMES (DO NOT INVENT YOUR OWN):
-Current date: {$curMonthName}, Year {$curYear} {$eraName}
+Current date: {$curMonthName} {$curDay}, {$curYear} {$eraName}
 This world has {$mpy} months per year. The month names are:
 {$monthRef}
 
@@ -687,33 +674,89 @@ Example heading: "{$curMonthName}, {$curYear} {$eraName}: Title Here"
 DO NOT invent month names like "Sunstone", "Frostfall", "Thaw", etc. Use ONLY the names listed above.
 CAL;
 
-                // ── Weather context (from town_meta) ────
+                // ── Weather context (campaign-world first, town fallback) ────
                 $weatherBlock = '';
-                $weatherJson = $townMeta2['weather_year'] ?? '';
-                if ($weatherJson) {
-                    $weatherData = json_decode($weatherJson, true);
-                    if ($weatherData && !empty($weatherData['months'])) {
-                        // Find current month's weather
-                        $curMonthWeather = null;
-                        foreach ($weatherData['months'] as $wm) {
-                            if (($wm['month'] ?? 0) == $curMonth) {
-                                $curMonthWeather = $wm;
-                                break;
-                            }
+                $weatherData = null;
+                $weatherSource = '';
+                if ($townCampId) {
+                    $intRows = query(
+                        'SELECT value_json FROM integration_settings WHERE user_id = ? AND campaign_id = ? AND key_name = ? LIMIT 1',
+                        [$userId, $townCampId, 'world_weather_year'],
+                        0
+                    );
+                    if (!empty($intRows[0]['value_json'])) {
+                        $payload = json_decode($intRows[0]['value_json'], true);
+                        $weatherData = ew_weather_from_integration_value($payload);
+                        if ($weatherData) {
+                            $weatherSource = 'campaign world climate';
                         }
-                        if ($curMonthWeather) {
-                            $weatherBlock = "\n## CURRENT WEATHER ({$curMonthName}):\n";
-                            $weatherBlock .= "- Temperature: " . ($curMonthWeather['avg_temp'] ?? 'unknown') . "\n";
-                            $weatherBlock .= "- Conditions: " . ($curMonthWeather['weather_pattern'] ?? 'unknown') . "\n";
-                            $weatherBlock .= "- Precipitation: " . ($curMonthWeather['precipitation'] ?? 'unknown') . "\n";
-                            if (!empty($curMonthWeather['description'])) {
-                                $weatherBlock .= "- " . $curMonthWeather['description'] . "\n";
-                            }
-                            if (!empty($curMonthWeather['notable_events'])) {
-                                $weatherBlock .= "Notable weather events: " . implode(', ', $curMonthWeather['notable_events']) . "\n";
-                            }
-                            $weatherBlock .= "IMPORTANT: Reference this weather in your narrative. Weather affects daily life, travel, farming, construction, and combat.\n";
+                    }
+                }
+                if (!$weatherData) {
+                    $weatherJson = $townMeta2['weather_year'] ?? '';
+                    if ($weatherJson) {
+                        $legacy = json_decode($weatherJson, true);
+                        if (is_array($legacy) && !empty($legacy['months'])) {
+                            $weatherData = $legacy;
+                            $weatherSource = 'town legacy weather';
                         }
+                    }
+                }
+
+                if ($weatherData && !empty($weatherData['months'])) {
+                    // Find current month's world weather baseline
+                    $curMonthWeather = null;
+                    foreach ($weatherData['months'] as $wm) {
+                        if (($wm['month'] ?? 0) == $curMonth) {
+                            $curMonthWeather = $wm;
+                            break;
+                        }
+                    }
+                    if ($curMonthWeather) {
+                        $locY = null;
+                        if ($townCampId) {
+                            $loc = query(
+                                'SELECT y_pct FROM world_map_locations WHERE user_id = ? AND campaign_id = ? AND town_id = ? LIMIT 1',
+                                [$userId, $townCampId, $townId],
+                                0
+                            );
+                        } else {
+                            $loc = query(
+                                'SELECT y_pct FROM world_map_locations WHERE user_id = ? AND campaign_id IS NULL AND town_id = ? LIMIT 1',
+                                [$userId, $townId],
+                                0
+                            );
+                        }
+                        if (!empty($loc[0]['y_pct'])) {
+                            $locY = (float) $loc[0]['y_pct'];
+                        }
+                        $curMonthWeather = ew_weather_localize_month_for_town($curMonthWeather, $locY, $biome2);
+
+                        $weatherBlock = "\n## MONTHLY WEATHER — {$curMonthName} ({$weatherSource}):\n";
+                        $weatherBlock .= "- Month average temperature: " . ($curMonthWeather['avg_temp'] ?? 'unknown') . "\n";
+                        $weatherBlock .= "- Overall conditions: " . ($curMonthWeather['weather_pattern'] ?? 'unknown') . "\n";
+                        $weatherBlock .= "- Precipitation (month): " . ($curMonthWeather['precipitation'] ?? 'unknown') . "\n";
+                        if (!empty($curMonthWeather['description'])) {
+                            $weatherBlock .= "- " . $curMonthWeather['description'] . "\n";
+                        }
+                        if (!empty($curMonthWeather['notable_events'])) {
+                            $weatherBlock .= "Notable month-scale events: " . implode(', ', $curMonthWeather['notable_events']) . "\n";
+                        }
+                        $focalDay = max(1, min($daysPerMonth, $curDay));
+                        if ($days > 0) {
+                            $focalDay = max(1, min($daysPerMonth, (int) round(($days + 1) / 2)));
+                        }
+                        $dw = ew_weather_build_daily_context(
+                            $curMonthWeather,
+                            $townId,
+                            $curYear,
+                            $curMonth,
+                            $focalDay,
+                            $daysPerMonth,
+                            $days
+                        );
+                        $weatherBlock .= $dw['text_block'];
+                        $weatherBlock .= "IMPORTANT: Reference this weather in your narrative. Use the monthly climate and today’s local snapshot. Weather affects daily life, travel, farming, construction, and combat.\n";
                     }
                 }
 
@@ -832,8 +875,7 @@ A realistic town is NOT a utopia. You MUST include conflict and tension:
 - 30-40% platonic (friend, ally, mentor)
 - 20-30% romantic
 
-## Current Residents ({$charCount} characters):
-(CRITICAL: Do NOT reuse any first names from this roster for new arrivals. Every new character MUST have a unique first name not seen below. Also do NOT use any BANNED names listed above.)
+(CRITICAL: Town has {$charCount} residents. Do NOT reuse any first name from the roster for new arrivals. Every new arrival MUST have a unique first name not listed below. Do NOT use any BANNED names listed above.)
 {$rosterText}
 {$historyText}
 
@@ -844,7 +886,6 @@ A realistic town is NOT a utopia. You MUST include conflict and tension:
 {$instructions}
 
 {$closedBordersBlock}
-{$demoBlock}
 ## Your Task:
 Simulate {$months} month(s){$partialText} of time passing. You MUST include:
 - XP gains, new relationships (positive AND negative), births, deaths, drama, events, role changes.
@@ -860,6 +901,12 @@ Provide: reason (narrative), plus optional matching hints: preferred_class, pref
 - preferred_alignment: e.g. "CE", "NG" — useful for deaths caused by villainy or heroism
 The system will find the best match. If no match exists, the death is skipped.
 
+## CHARACTER IDs (mandatory for mechanical changes)
+Each roster line starts with NPC_<id> — that integer is the database character id (same as characters.id).
+For xp_gains, stat_changes, and role_changes you MUST set "character_id" to that integer (preferred). You may include "name" for readability but id is authoritative.
+For new_relationships use "character1_id" and "character2_id" (preferred), or legacy char1/char2 as exact roster names OR strings like "NPC_47".
+New arrivals in new_characters do NOT use character_id — the server assigns ids after creation.
+
 ## CRITICAL: Output Format
 You MUST respond with ONLY a valid JSON object (no markdown, no code fences, JUST the raw JSON) in this exact structure:
 {
@@ -868,16 +915,23 @@ You MUST respond with ONLY a valid JSON object (no markdown, no code fences, JUS
   "changes": {
     "new_characters": [{"name":"Full Name","race":"Human","class":"Commoner 1","gender":"M or F","age":25,"alignment":"NG","role":"Farmer","skills_feats":"Craft, Profession","feats":"Skill Focus","reason":"Born to... / Arrived..."}],
     "deaths": [{"reason":"Died of old age, passing peacefully","preferred_class":"Commoner","age_category":"elderly"},{"reason":"Killed by wolves while on patrol","preferred_class":"Warrior","preferred_role":"Guard","age_category":"adult"}],
-    "new_relationships": [{"char1":"Name","char2":"Name","type":"rival","reason":"Why"}],
-    "xp_gains": [{"name":"Character Name","xp_gained":65,"reason":"What they did","tags":{"activity":"active","danger":"moderate","role_pressure":"leadership","personal_change":"none","class_relevance":"strong"}}],
-    "stat_changes": [{"name":"Character Name","field":"hp","old_value":"10","new_value":"12","reason":"Why"}],
-    "role_changes": [{"name":"Character Name","old_role":"Farmer","new_role":"Guard","reason":"Why"}],
+    "new_relationships": [{"character1_id":12,"character2_id":34,"type":"rival","reason":"Why"}],
+    "xp_gains": [{"character_id":12,"name":"Optional echo","xp_gained":65,"reason":"What they did","tags":{"activity":"active","danger":"moderate","role_pressure":"leadership","personal_change":"none","class_relevance":"strong"}}],
+    "stat_changes": [{"character_id":12,"name":"Optional echo","field":"hp","old_value":"10","new_value":"12","reason":"Why"}],
+    "role_changes": [{"character_id":12,"name":"Optional echo","old_role":"Farmer","new_role":"Guard","reason":"Why"}],
     "building_changes": [{"action":"start","name":"Communal Shelter","build_time":2,"description":"A large thatched-roof shelter for the settlers"},{"action":"progress","name":"Well"},{"action":"complete","name":"Palisade Fence"}]
   },
-  "new_history_entry": {"heading":"Hammer, 1490 DR: Title of Events","content":"Detailed narrative using calendar month names"}
+  "new_history_entry": {"heading":"Hammer, 1490 DR: Title of Events","content":"Detailed narrative using calendar month names"},
+  "daily_log": [{"day": 3, "summary": "Raiders spotted"}, {"day": 17, "summary": "Council meets"}]
 }
 
-REMINDER: In xp_gains, stat_changes, role_changes, and new_relationships — ALL character names MUST be copied EXACTLY from the "Current Residents" roster above. Deaths use criteria-based matching, so no name is needed.
+## DAILY TIMELINE (required whenever months >= 1 OR partial-day span):
+- Include "daily_log": an array of notable beats across the simulated span (skip quiet days).
+- Each entry: {"day": <integer within this month or partial span>, "summary": "<short headline>"}.
+- Day numbers are 1-based within THIS calendar month (max {$daysPerMonth}). For partial-month runs (first {$days} days only), only use days 1–{$days}.
+- Headlines appear in Town History on the matching calendar day; write clear, distinct summaries.
+
+REMINDER: Prefer character_id / character1_id / character2_id from the roster NPC_<id> tokens. Legacy exact-name fields still work if ids are omitted. Deaths use criteria-based matching (no character id).
 PROMPT;
             } // end if($months===0) else
 
@@ -897,7 +951,7 @@ PROMPT;
                 $openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
                 $model = defined("OPENROUTER_MODEL_CHEAP") ? OPENROUTER_MODEL_CHEAP : (defined("OPENROUTER_MODEL") ? OPENROUTER_MODEL : "google/gemini-2.5-flash-lite");
                 $maxTok = 65536;
-                $payload = json_encode([
+                $payload = ew_json_encode_openrouter_body([
                     "model" => $model,
                     "messages" => [["role" => "user", "content" => $prompt]],
                     "temperature" => 0.8,
@@ -937,6 +991,29 @@ PROMPT;
 
             if ($simulation === null) {
                 throw new Exception('Failed to parse Gemini response as JSON: ' . json_last_error_msg() . "\n\nRaw response:\n" . substr($text, 0, 500));
+            }
+
+            if (!empty($simulation['daily_log']) && is_array($simulation['daily_log'])) {
+                usort($simulation['daily_log'], function ($a, $b) {
+                    return ((int)($a['day'] ?? 0)) <=> ((int)($b['day'] ?? 0));
+                });
+                $lines = [];
+                $capDays = ($days > 0) ? $days : $daysPerMonth;
+                foreach ($simulation['daily_log'] as $dl) {
+                    $dayNum = (int)($dl['day'] ?? 0);
+                    $sum = trim((string)($dl['summary'] ?? $dl['description'] ?? ''));
+                    if ($dayNum < 1 || $sum === '') {
+                        continue;
+                    }
+                    if ($dayNum > $capDays) {
+                        continue;
+                    }
+                    $lines[] = "Day {$dayNum} — {$sum}";
+                }
+                if ($lines && isset($simulation['new_history_entry']) && is_array($simulation['new_history_entry'])) {
+                    $existing = trim((string)($simulation['new_history_entry']['content'] ?? ''));
+                    $simulation['new_history_entry']['content'] = implode("\n\n", $lines) . ($existing !== '' ? "\n\n" . $existing : '');
+                }
             }
 
             simRespond([

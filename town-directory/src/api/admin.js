@@ -8,6 +8,11 @@ export function apiAdminOverview() {
     return apiFetch('admin_overview');
 }
 
+// ── Metrics (visitors / signups / tokens / retention / abuse) ──
+export function apiAdminMetrics(periodDays = 30) {
+    return apiFetch('admin_metrics', { params: { period: periodDays } });
+}
+
 // ── Members ──
 export function apiAdminMembers() {
     return apiFetch('admin_members');
@@ -122,21 +127,4 @@ export function apiAdminDeleteMeta(townId, key) {
 // ── Credit Balance (Eon Credits Wallet) ──
 export function apiAdminAdjustCredits(userId, amount, mode = 'add') {
     return apiFetch('admin_adjust_credits', { method: 'POST', body: { user_id: userId, amount, mode } });
-}
-
-// ── Beta Keys ──
-export function apiAdminBetaKeys() {
-    return apiFetch('admin_beta_keys');
-}
-
-export function apiAdminCreateBetaKeys(count = 1, note = '', customKey = '') {
-    return apiFetch('admin_create_beta_keys', { method: 'POST', body: { count, note, custom_key: customKey } });
-}
-
-export function apiAdminDeleteBetaKey(keyId) {
-    return apiFetch('admin_delete_beta_key', { method: 'DELETE', body: { key_id: keyId } });
-}
-
-export function apiAdminRevokeBetaKey(keyId) {
-    return apiFetch('admin_revoke_beta_key', { method: 'POST', body: { key_id: keyId } });
 }

@@ -19,6 +19,9 @@ export async function apiFetch(action, options = {}) {
     }
 
     const fetchOpts = { method, credentials: 'same-origin' };
+    if (options.cache) {
+        fetchOpts.cache = options.cache;
+    }
     if (body) {
         fetchOpts.headers = { 'Content-Type': 'application/json' };
         fetchOpts.body = JSON.stringify(body);
@@ -36,6 +39,28 @@ export async function apiFetch(action, options = {}) {
         throw new Error(data.error || `API error ${res.status}`);
     }
     return data;
+}
+
+/**
+ * Anonymous server-side metrics ping. Best-effort, never throws.
+ * Deduped per (route, session) by metrics.js to avoid double-counting SPA reroutes.
+ */
+export function apiPingVisit(route, referrer) {
+    try {
+        const url = `${API_BASE}?action=ping_visit`;
+        const body = JSON.stringify({ route, referrer: referrer || document.referrer || '' });
+        if (navigator.sendBeacon) {
+            navigator.sendBeacon(url, new Blob([body], { type: 'application/json' }));
+        } else {
+            fetch(url, {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body,
+                keepalive: true,
+            }).catch(() => { /* swallow */ });
+        }
+    } catch (e) { /* swallow */ }
 }
 
 /**

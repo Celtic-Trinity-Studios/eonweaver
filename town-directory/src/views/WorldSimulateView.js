@@ -10,12 +10,16 @@ import { apiGetCharacters, apiMoveCharacter } from '../api/characters.js';
 import {
   apiRunSimulation,
   apiApplySimulation,
+  apiAdvanceCalendar,
   apiGetCampaignRules,
   apiPlanSimulation,
 } from '../api/simulation.js';
 import { apiGetCalendar, calendarToString } from '../api/settings.js';
 import { updateSidebarCalendar } from '../components/Sidebar.js';
 import { confirmAiCost } from '../components/AiCostConfirm.js';
+import { showToast } from '../components/Toast.js';
+import { apiEstimateTravelTime } from '../api/worldMap.js';
+import { MAX_INTAKE_ARRIVALS } from '../constants/intakeLimits.js';
 
 const MIN_RESIDENCY_MONTHS = 6; // Must live in town this many months before eligible to move
 
@@ -47,13 +51,13 @@ export default function WorldSimulateView(container) {
             <label>📅 Days (Partial Month)</label>
             <div style="display:flex;align-items:center;gap:0.5rem;">
               <input type="number" id="ws-days" class="form-input" min="0" max="30" value="0" style="width:70px;text-align:center;" title="Days to simulate within each month (0 = full month)">
-              <span style="font-size:0.75rem;color:var(--text-muted)">0 = full month</span>
+              <span style="font-size:0.75rem;color:var(--text-muted)">0 = full month. Multi-month runs use one API call per month; partial days apply only to single-month runs.</span>
             </div>
           </div>
           <div class="sim-field">
             <label>👥 Intake (Force Arrivals per town)</label>
             <div style="display:flex;align-items:center;gap:0.5rem;">
-              <input type="number" id="ws-intake-count" class="form-input" min="0" max="50" value="0" style="width:70px;text-align:center;" title="Number of people to force into EACH town (0 = natural only)">
+              <input type="number" id="ws-intake-count" class="form-input" min="0" max="${MAX_INTAKE_ARRIVALS}" value="0" style="width:70px;text-align:center;" title="Number of people to force into EACH town (0 = natural only)">
               <span style="font-size:0.75rem;color:var(--text-muted)">0 = natural only</span>
             </div>
           </div>
@@ -198,7 +202,7 @@ export default function WorldSimulateView(container) {
     }
 
     const worldInstructions = cont.querySelector('#ws-instructions')?.value?.trim() || '';
-    const intakeCount = Math.max(0, Math.min(50, parseInt(cont.querySelector('#ws-intake-count')?.value) || 0));
+    const intakeCount = Math.max(0, Math.min(MAX_INTAKE_ARRIVALS, parseInt(cont.querySelector('#ws-intake-count')?.value) || 0));
     const selectedDays = Math.max(0, Math.min(100, parseInt(cont.querySelector('#ws-days')?.value) || 0));
 
     // Collect per-town instructions
@@ -298,7 +302,10 @@ export default function WorldSimulateView(container) {
     simLog('🚀', `Starting simulation: <strong>${towns.length} town${towns.length > 1 ? 's' : ''}</strong> × <strong>${selectedMonths} month${selectedMonths > 1 ? 's' : ''}</strong>`);
 
 
-    const totalSteps = selectedMonths * towns.length + selectedMonths; // +1 movement pass per month
+    // One API call per month per town (reduces per-call prompt/context size).
+    const wsEffBatchEarly = 1;
+    const wsMonthBatchCount = Math.ceil(selectedMonths / wsEffBatchEarly);
+    const totalSteps = wsMonthBatchCount * towns.length + selectedMonths; // movement: once per calendar month
     let completed = 0;
     const allBirths = [];
     const allDeaths = [];
@@ -375,53 +382,61 @@ export default function WorldSimulateView(container) {
       }
     }
 
-    // Month-by-month: simulate ALL towns for month 1, then month 2, etc.
-    for (let month = 1; month <= selectedMonths; month++) {
+    const buildWsPlanInstructions = (plan, batchStart, batchEnd, selectedMonths, baseInstructions) => {
+      if (!plan) return baseInstructions;
+      let planContext = `[SIMULATION PLAN for months ${batchStart}-${batchEnd} of ${selectedMonths}]\n`;
+      if (plan.summary) planContext += `Overview: ${plan.summary}\n`;
+      for (let m = batchStart; m <= batchEnd; m++) {
+        const monthPlan = (plan.plan || []).find(p => p.month === m);
+        const arrivalDetails = (plan.arrival_details || []).filter(a => a.month === m);
+        const deathDetails = (plan.death_details || []).filter(d => d.month === m);
+        planContext += `\n--- Month ${m}/${selectedMonths} ---\n`;
+        if (monthPlan) {
+          planContext += `This month's plan: ${monthPlan.events || 'Normal activity'}\n`;
+          if (monthPlan.arrivals > 0) planContext += `PLANNED ARRIVALS this month: ${monthPlan.arrivals} new character(s). You MUST generate ${monthPlan.arrivals} new_characters.\n`;
+          if (monthPlan.deaths > 0) planContext += `PLANNED DEATHS this month: ${monthPlan.deaths}. You MUST add death(s) to the changes.\n`;
+          if (monthPlan.births > 0) planContext += `PLANNED BIRTHS this month: ${monthPlan.births}.\n`;
+        }
+        if (arrivalDetails.length > 0) {
+          planContext += `Arrival details: ${arrivalDetails.map(a => a.description).join('; ')}\n`;
+        }
+        if (deathDetails.length > 0) {
+          planContext += `Death details: ${deathDetails.map(d => `${d.name}: ${d.reason}`).join('; ')}\n`;
+        }
+      }
+      planContext += `[END PLAN]\n\n`;
+      return planContext + baseInstructions;
+    };
 
-      // Simulate each town for this month
+    // One-month batches: one LLM call per month per town.
+    for (let batchStart = 1; batchStart <= selectedMonths; batchStart += wsEffBatchEarly) {
+      const batchEnd = Math.min(batchStart + wsEffBatchEarly - 1, selectedMonths);
+      const batchMonths = batchEnd - batchStart + 1;
+      const batchPartialDays = (selectedDays > 0 && selectedMonths === 1) ? selectedDays : 0;
+      const monthLabel = batchMonths > 1 ? `${batchStart}–${batchEnd}` : `${batchStart}`;
+
       for (const town of towns) {
         const statusEl = cont.querySelector(`#ws-status-${town.id}`);
 
-        // Build month instructions with plan context
         let monthInstructions = getInstructionsForTown(town);
-
-        // Inject the plan for this month if available
-        const plan = townPlans[town.id];
-        if (plan) {
-          const monthPlan = (plan.plan || []).find(p => p.month === month);
-          const arrivalDetails = (plan.arrival_details || []).filter(a => a.month === month);
-          const deathDetails = (plan.death_details || []).filter(d => d.month === month);
-
-          let planContext = `[SIMULATION PLAN for month ${month}/${selectedMonths}]\n`;
-          if (plan.summary) planContext += `Overview: ${plan.summary}\n`;
-          if (monthPlan) {
-            planContext += `This month's plan: ${monthPlan.events || 'Normal activity'}\n`;
-            if (monthPlan.arrivals > 0) planContext += `PLANNED ARRIVALS this month: ${monthPlan.arrivals} new character(s). You MUST generate ${monthPlan.arrivals} new_characters.\n`;
-            if (monthPlan.deaths > 0) planContext += `PLANNED DEATHS this month: ${monthPlan.deaths}. You MUST add death(s) to the changes.\n`;
-            if (monthPlan.births > 0) planContext += `PLANNED BIRTHS this month: ${monthPlan.births}.\n`;
-          }
-          if (arrivalDetails.length > 0) {
-            planContext += `Arrival details: ${arrivalDetails.map(a => a.description).join('; ')}\n`;
-          }
-          if (deathDetails.length > 0) {
-            planContext += `Death details: ${deathDetails.map(d => `${d.name}: ${d.reason}`).join('; ')}\n`;
-          }
-          planContext += `[END PLAN]\n\n`;
-          monthInstructions = planContext + monthInstructions;
+        if (batchStart > 1) {
+          monthInstructions = `[Earlier months in this run are already saved. Simulate ONLY months ${batchStart}-${batchEnd} of ${selectedMonths}.]\n\n${monthInstructions}`;
         }
+        const plan = townPlans[town.id];
+        monthInstructions = buildWsPlanInstructions(plan, batchStart, batchEnd, selectedMonths, monthInstructions);
 
         try {
-          progressText.textContent = `Month ${month}/${selectedMonths} — Simulating ${town.name}...`;
+          progressText.textContent = `Month ${monthLabel}/${selectedMonths} — Simulating ${town.name}...`;
           progressFill.style.width = `${(completed / totalSteps) * 100}%`;
           updateLogProgress((completed / totalSteps) * 100);
-          if (statusEl) statusEl.innerHTML = `<span style="color:var(--warning);">⏳ Month ${month}...</span>`;
-          simLog('⏳', `Month <strong>${month}/${selectedMonths}</strong> — Simulating <strong>${town.name}</strong>...`);
+          if (statusEl) statusEl.innerHTML = `<span style="color:var(--warning);">⏳ M ${monthLabel}...</span>`;
+          simLog('⏳', `Month <strong>${monthLabel}/${selectedMonths}</strong> — Simulating <strong>${town.name}</strong>...`);
 
-          const result = await apiRunSimulation(town.id, 1, rules, monthInstructions, 0, selectedDays);
+          const result = await apiRunSimulation(town.id, batchMonths, rules, monthInstructions, 0, batchPartialDays);
 
           if (result.simulation) {
             // Debug: log the actual response structure
-            console.log(`[WorldSim] ${town.name} Month ${month}:`, JSON.stringify(result.simulation).slice(0, 500));
+            console.log(`[WorldSim] ${town.name} months ${monthLabel}:`, JSON.stringify(result.simulation).slice(0, 500));
 
             // The AI may return data under "changes" or at the top level
             const sim = result.simulation;
@@ -433,16 +448,16 @@ export default function WorldSimulateView(container) {
             const birthsList = ch.births || sim.births || [];
             const eventsList = ch.events || sim.events || [];
 
-            const applyMonths = selectedDays > 0 ? 0 : 1;
-            const applyDays = selectedDays > 0 ? selectedDays : 0;
-            await apiApplySimulation(town.id, ch, sim.new_history_entry || null, applyMonths, applyDays)
+            const applyMonths = batchPartialDays > 0 ? 0 : batchMonths;
+            const applyDays = batchPartialDays > 0 ? batchPartialDays : 0;
+            await apiApplySimulation(town.id, ch, sim.new_history_entry || null, applyMonths, applyDays, { skipCalendar: true })
               .then(applyRes => {
                 if (applyRes?.applied?.auto_levelups) {
                   totalAutoLevelups += applyRes.applied.auto_levelups;
                   townTotals[town.id].levelups = (townTotals[town.id].levelups || 0) + applyRes.applied.auto_levelups;
                 }
                 if (applyRes?.applied?.levelup_details?.length) {
-                  allLevelups.push(...applyRes.applied.levelup_details.map(lu => ({ ...lu, town: town.name, townId: town.id, month })));
+                  allLevelups.push(...applyRes.applied.levelup_details.map(lu => ({ ...lu, town: town.name, townId: town.id, month: batchEnd })));
                 }
                 // Use server's actual death/arrival counts for accuracy
                 if (applyRes?.applied) {
@@ -474,15 +489,12 @@ export default function WorldSimulateView(container) {
                 if (applyRes?.debug_info) {
                   console.log(`[WorldSim] Apply debug for ${town.name}:`, JSON.stringify(applyRes.debug_info));
                 }
-                if (applyRes?.applied?.calendar) {
-                  simLog('📅', `<strong>${town.name}</strong>: ${applyRes.applied.calendar}`);
-                }
               });
 
-            const births = birthsList.map(b => ({ ...b, town: town.name, townId: town.id, month }));
-            const deaths = deathsList.map(d => ({ ...d, town: town.name, townId: town.id, month }));
-            const arrivals = newChars.map(a => ({ ...a, town: town.name, townId: town.id, month }));
-            const events = eventsList.map(e => ({ ...e, town: town.name, townId: town.id, month }));
+            const births = birthsList.map(b => ({ ...b, town: town.name, townId: town.id, month: batchEnd }));
+            const deaths = deathsList.map(d => ({ ...d, town: town.name, townId: town.id, month: batchEnd }));
+            const arrivals = newChars.map(a => ({ ...a, town: town.name, townId: town.id, month: batchEnd }));
+            const events = eventsList.map(e => ({ ...e, town: town.name, townId: town.id, month: batchEnd }));
 
             allBirths.push(...births);
             allDeaths.push(...deaths);
@@ -497,14 +509,14 @@ export default function WorldSimulateView(container) {
             if (statusEl) {
               const t = townTotals[town.id];
               const lvlText = t.levelups ? ` ⬆${t.levelups}` : '';
-              statusEl.innerHTML = `<span style="color:var(--success);">✅ ${month}/${selectedMonths}</span>
+              statusEl.innerHTML = `<span style="color:var(--success);">✅ ${monthLabel}/${selectedMonths}</span>
                 <span style="font-size:0.7rem;color:var(--text-muted);margin-left:0.5rem;">
                   +${t.arrivals} 👤  ${t.births} 👶  ${t.deaths} 💀${lvlText}
                 </span>`;
             }
           } else {
-            if (statusEl) statusEl.innerHTML = `<span style="color:var(--error);">⚠️ Month ${month} no data</span>`;
-            simLog('⚠️', `<strong>${town.name}</strong> month ${month}: No simulation data returned`);
+            if (statusEl) statusEl.innerHTML = `<span style="color:var(--error);">⚠️ M ${monthLabel} no data</span>`;
+            simLog('⚠️', `<strong>${town.name}</strong> month ${monthLabel}: No simulation data returned`);
           }
         } catch (err) {
           // Retry up to 2 times on ANY error with exponential backoff
@@ -513,20 +525,20 @@ export default function WorldSimulateView(container) {
           const retryDelays = [5000, 10000];
           for (let attempt = 1; attempt <= maxRetries && !retrySuccess; attempt++) {
             const delay = retryDelays[attempt - 1] || 10000;
-            if (statusEl) statusEl.innerHTML = `<span style="color:var(--warning);">🔄 Retry ${attempt}/${maxRetries} M${month}...</span>`;
-            simLog('🔄', `<strong>${town.name}</strong> M${month}: Retry ${attempt}/${maxRetries} after error: ${err.message.slice(0, 60)}...`);
+            if (statusEl) statusEl.innerHTML = `<span style="color:var(--warning);">🔄 Retry ${attempt}/${maxRetries} M${monthLabel}...</span>`;
+            simLog('🔄', `<strong>${town.name}</strong> M${monthLabel}: Retry ${attempt}/${maxRetries} after error: ${err.message.slice(0, 60)}...`);
             await new Promise(r => setTimeout(r, delay));
             try {
-              const retry = await apiRunSimulation(town.id, 1, rules, monthInstructions, 0, selectedDays);
+              const retry = await apiRunSimulation(town.id, batchMonths, rules, monthInstructions, 0, batchPartialDays);
               if (retry.simulation) {
                 const ch = retry.simulation.changes || {};
-                const retryApplyMonths = selectedDays > 0 ? 0 : 1;
-                const retryApplyDays = selectedDays > 0 ? selectedDays : 0;
-                const retryApplyRes = await apiApplySimulation(town.id, ch, retry.simulation.new_history_entry || null, retryApplyMonths, retryApplyDays);
-                const births = (ch.births || retry.simulation.births || []).map(b => ({ ...b, town: town.name, townId: town.id, month }));
-                const deaths = (ch.deaths || retry.simulation.deaths || []).map(d => ({ ...d, town: town.name, townId: town.id, month }));
-                const arrivals = (ch.new_characters || retry.simulation.new_characters || []).map(a => ({ ...a, town: town.name, townId: town.id, month }));
-                const events = (ch.events || retry.simulation.events || []).map(e => ({ ...e, town: town.name, townId: town.id, month }));
+                const retryApplyMonths = batchPartialDays > 0 ? 0 : batchMonths;
+                const retryApplyDays = batchPartialDays > 0 ? batchPartialDays : 0;
+                const retryApplyRes = await apiApplySimulation(town.id, ch, retry.simulation.new_history_entry || null, retryApplyMonths, retryApplyDays, { skipCalendar: true });
+                const births = (ch.births || retry.simulation.births || []).map(b => ({ ...b, town: town.name, townId: town.id, month: batchEnd }));
+                const deaths = (ch.deaths || retry.simulation.deaths || []).map(d => ({ ...d, town: town.name, townId: town.id, month: batchEnd }));
+                const arrivals = (ch.new_characters || retry.simulation.new_characters || []).map(a => ({ ...a, town: town.name, townId: town.id, month: batchEnd }));
+                const events = (ch.events || retry.simulation.events || []).map(e => ({ ...e, town: town.name, townId: town.id, month: batchEnd }));
                 allBirths.push(...births); allDeaths.push(...deaths); allArrivals.push(...arrivals); allEvents.push(...events);
                 townTotals[town.id].arrivals += arrivals.length;
                 townTotals[town.id].births += births.length;
@@ -537,24 +549,27 @@ export default function WorldSimulateView(container) {
                   townTotals[town.id].levelups = (townTotals[town.id].levelups || 0) + retryApplyRes.applied.auto_levelups;
                 }
                 if (retryApplyRes?.applied?.levelup_details?.length) {
-                  allLevelups.push(...retryApplyRes.applied.levelup_details.map(lu => ({ ...lu, town: town.name, townId: town.id, month })));
+                  allLevelups.push(...retryApplyRes.applied.levelup_details.map(lu => ({ ...lu, town: town.name, townId: town.id, month: batchEnd })));
                 }
-                if (statusEl) { const t = townTotals[town.id]; const lvlText = t.levelups ? ` ⬆${t.levelups}` : ''; statusEl.innerHTML = `<span style="color:var(--success);">✅ ${month}/${selectedMonths}</span> <span style="font-size:0.7rem;color:var(--text-muted);margin-left:0.5rem;">+${t.arrivals} 👤  ${t.births} 👶  ${t.deaths} 💀${lvlText}</span>`; }
-                simLog('✅', `<strong>${town.name}</strong> M${month}: Retry ${attempt} succeeded!`, 'sim-log-success');
+                if (statusEl) { const t = townTotals[town.id]; const lvlText = t.levelups ? ` ⬆${t.levelups}` : ''; statusEl.innerHTML = `<span style="color:var(--success);">✅ ${monthLabel}/${selectedMonths}</span> <span style="font-size:0.7rem;color:var(--text-muted);margin-left:0.5rem;">+${t.arrivals} 👤  ${t.births} 👶  ${t.deaths} 💀${lvlText}</span>`; }
+                simLog('✅', `<strong>${town.name}</strong> M${monthLabel}: Retry ${attempt} succeeded!`, 'sim-log-success');
                 retrySuccess = true;
               }
             } catch (retryErr) {
               if (attempt === maxRetries) {
-                townErrors[town.id] = (townErrors[town.id] || '') + ` Month ${month}: ${retryErr.message}`;
-                if (statusEl) statusEl.innerHTML = `<span style="color:var(--error);">❌ M${month}: Failed after ${maxRetries} retries</span>`;
-                simLog('❌', `<strong>${town.name}</strong> M${month}: Failed after ${maxRetries} retries — ${retryErr.message.slice(0, 60)}`, 'sim-log-error');
+                townErrors[town.id] = (townErrors[town.id] || '') + ` Month ${monthLabel}: ${retryErr.message}`;
+                if (statusEl) statusEl.innerHTML = `<span style="color:var(--error);">❌ M${monthLabel}: Failed after ${maxRetries} retries</span>`;
+                simLog('❌', `<strong>${town.name}</strong> M${monthLabel}: Failed after ${maxRetries} retries — ${retryErr.message.slice(0, 60)}`, 'sim-log-error');
               }
             }
           }
-          if (!retrySuccess && maxRetries === 0) {
-            townErrors[town.id] = (townErrors[town.id] || '') + ` Month ${month}: ${err.message}`;
-            if (statusEl) statusEl.innerHTML = `<span style="color:var(--error);">❌ M${month}: ${err.message.slice(0, 30)}</span>`;
-            simLog('❌', `<strong>${town.name}</strong> M${month}: ${err.message.slice(0, 80)}`, 'sim-log-error');
+          if (!retrySuccess) {
+            const errKey = `Month ${monthLabel}`;
+            if (!(townErrors[town.id] || '').includes(errKey)) {
+              townErrors[town.id] = (townErrors[town.id] || '') + ` ${errKey}: ${err.message}`;
+              if (statusEl) statusEl.innerHTML = `<span style="color:var(--error);">❌ M${monthLabel}: ${err.message.slice(0, 30)}</span>`;
+              simLog('❌', `<strong>${town.name}</strong> M${monthLabel}: ${err.message.slice(0, 80)}`, 'sim-log-error');
+            }
           }
         }
 
@@ -564,52 +579,98 @@ export default function WorldSimulateView(container) {
         completed++;
       }
 
-      // Movement pass after each month (if multiple towns)
-      progressText.textContent = `Month ${month}/${selectedMonths} — Checking movement...`;
-      if (towns.length >= 2) {
-        try {
-          const freshCharResults = await Promise.all(
-            towns.map(t => apiGetCharacters(t.id).catch(() => ({ characters: [] })))
-          );
-
-          for (let i = 0; i < towns.length; i++) {
-            const town = towns[i];
-            const livingChars = (freshCharResults[i]?.characters || [])
-              .filter(c => (c.status || 'Alive') === 'Alive');
-
-            // Only exclude key leadership roles from moving
-            const excludeRoles = ['mayor', 'chieftain', 'chief', 'lord', 'lady', 'captain of the guard', 'town leader'];
-            const chars = livingChars
-              .filter(c => parseInt(c.months_in_town || 0) >= MIN_RESIDENCY_MONTHS)
-              .filter(c => {
-                const role = (c.role || '').toLowerCase().trim();
-                return !excludeRoles.some(r => role.includes(r));
-              });
-
-            if (chars.length === 0) continue;
-
-            // ~20% chance per eligible character, max 2 per town per month
-            const movers = chars.filter(() => Math.random() < 0.20).slice(0, 2);
-
-            for (const mover of movers) {
-              const otherTowns = towns.filter(t => t.id !== town.id);
-              const destTown = otherTowns[Math.floor(Math.random() * otherTowns.length)];
-
-              try {
-                await apiMoveCharacter(mover.id, town.id, destTown.id);
-                movements.push({
-                  name: mover.name, class: mover.class, level: mover.level,
-                  fromTown: town.name, fromTownId: town.id,
-                  toTown: destTown.name, toTownId: destTown.id,
-                  monthsLived: parseInt(mover.months_in_town || 0), month
-                });
-                simLog('🚶', `<strong>${mover.name}</strong> moved from ${town.name} → ${destTown.name}`);
-              } catch { /* skip failed moves */ }
-            }
-          }
-        } catch { /* movement pass failed, not critical */ }
+      try {
+        const applyMonthsAc = batchPartialDays > 0 ? 0 : batchMonths;
+        const applyDaysAc = batchPartialDays > 0 ? batchPartialDays : 0;
+        const acRes = await apiAdvanceCalendar(applyMonthsAc, applyDaysAc);
+        const dbg = acRes?.debug_info || {};
+        const rowsUpdated = dbg.calendar_rows_updated;
+        if (acRes?.applied?.calendar) {
+          simLog('📅', `<strong>Campaign date:</strong> ${acRes.applied.calendar} (rows_updated=${rowsUpdated ?? '?'} , row_id=${dbg.calendar_row_id ?? '?'})`);
+        } else {
+          simLog('⚠️', `Calendar advance returned no date. debug_info=${JSON.stringify(dbg)}`, 'sim-log-error');
+          showToast('Calendar advance returned no date — see sim log.', 'error');
+        }
+        if (rowsUpdated === 0) {
+          simLog('⚠️', `advance_calendar updated 0 rows. row_id=${dbg.calendar_row_id ?? '?'} campaign=${dbg.calendar_campaign ?? '?'}`, 'sim-log-error');
+        }
+      } catch (e) {
+        console.warn('[WorldSim] advance_calendar failed', e);
+        showToast(`Campaign date did not advance: ${e.message || e}`, 'error');
       }
-      completed++;
+
+      // Movement pass once per calendar month in this batch (if multiple towns)
+      for (let mi = batchStart; mi <= batchEnd; mi++) {
+        progressText.textContent = `Month ${mi}/${selectedMonths} — Checking movement...`;
+        if (towns.length >= 2) {
+          try {
+            const freshCharResults = await Promise.all(
+              towns.map(t => apiGetCharacters(t.id).catch(() => ({ characters: [] })))
+            );
+
+            for (let i = 0; i < towns.length; i++) {
+              const town = towns[i];
+              const livingChars = (freshCharResults[i]?.characters || [])
+                .filter(c => (c.status || 'Alive') === 'Alive');
+
+              // Only exclude key leadership roles from moving
+              const excludeRoles = ['mayor', 'chieftain', 'chief', 'lord', 'lady', 'captain of the guard', 'town leader'];
+              const chars = livingChars
+                .filter(c => parseInt(c.months_in_town || 0) >= MIN_RESIDENCY_MONTHS)
+                .filter(c => {
+                  const role = (c.role || '').toLowerCase().trim();
+                  return !excludeRoles.some(r => role.includes(r));
+                });
+
+              if (chars.length === 0) continue;
+
+              // Base sample to keep movement bounded per month.
+              const candidateMovers = chars.filter(() => Math.random() < 0.35).slice(0, 2);
+
+              for (const mover of candidateMovers) {
+                const otherTowns = towns.filter(t => t.id !== town.id);
+                const destTown = otherTowns[Math.floor(Math.random() * otherTowns.length)];
+
+                try {
+                  let travelDays = null;
+                  let distanceMiles = null;
+                  let moveChance = 0.20;
+                  try {
+                    const travel = await apiEstimateTravelTime(town.id, destTown.id);
+                    travelDays = Number(travel.travel_days);
+                    distanceMiles = Number(travel.distance_miles);
+                    if (travelDays <= 3) moveChance = 0.20;
+                    else if (travelDays <= 7) moveChance = 0.14;
+                    else if (travelDays <= 14) moveChance = 0.08;
+                    else moveChance = 0.03;
+                  } catch {
+                    // No map or no pins: fall back to previous behavior.
+                  }
+
+                  if (Math.random() > moveChance) {
+                    continue;
+                  }
+
+                  await apiMoveCharacter(mover.id, town.id, destTown.id);
+                  movements.push({
+                    name: mover.name, class: mover.class, level: mover.level,
+                    fromTown: town.name, fromTownId: town.id,
+                    toTown: destTown.name, toTownId: destTown.id,
+                    monthsLived: parseInt(mover.months_in_town || 0), month: mi,
+                    travelDays,
+                    distanceMiles,
+                  });
+                  const travelTxt = (travelDays && distanceMiles)
+                    ? ` <span style="color:var(--text-muted)">(${distanceMiles} mi, ~${travelDays} days)</span>`
+                    : '';
+                  simLog('🚶', `<strong>${mover.name}</strong> moved from ${town.name} → ${destTown.name}${travelTxt}`);
+                } catch { /* skip failed moves */ }
+              }
+            }
+          } catch { /* movement pass failed, not critical */ }
+        }
+        completed++;
+      }
     }
 
     // Build summaries from accumulated data
@@ -821,13 +882,14 @@ export default function WorldSimulateView(container) {
         <div class="detail-tab-content" id="ws-tab-movement">
           ${movements.length ? `
             <table class="srd-table srd-table-sm" style="margin-top:0.5rem;">
-              <thead><tr><th>Name</th><th>Class</th><th>From</th><th>To</th><th>Months Lived</th></tr></thead>
+              <thead><tr><th>Name</th><th>Class</th><th>From</th><th>To</th><th>Travel</th><th>Months Lived</th></tr></thead>
               <tbody>
                 ${movements.map(m => `<tr>
                   <td style="font-weight:600;">${m.name}</td>
                   <td>${m.class} ${m.level}</td>
                   <td>${m.fromTown}</td>
                   <td style="color:var(--accent);">→ ${m.toTown}</td>
+                  <td>${m.travelDays ? `${m.distanceMiles || '?'} mi / ${m.travelDays} d` : '—'}</td>
                   <td style="text-align:center;">${m.monthsLived}</td>
                 </tr>`).join('')}
               </tbody>

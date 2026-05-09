@@ -1,7 +1,8 @@
 <?php
 /**
  * Eon Weaver — Discord Integration
- * Sends messages to Discord channels via webhooks.
+ * Sends bug reports via webhooks. **Deploy announcements** are posted by the local
+ * `discord_deploy_notify.mjs` script (see `.env.discord.example`), not this file.
  *
  * ⚠️  Copy this file to discord.php and fill in your webhook URLs.
  *     Never commit discord.php to git.
@@ -144,10 +145,26 @@ function sendDiscordBugReport(
 
 /**
  * Send an update/announcement to the #updates Discord channel.
+ *
+ * @param array<int, array{name:string,value:string,inline?:bool}> $extraFields
+ *        Shown first (e.g. deploy target + rules editions from CI scripts).
  */
-function sendDiscordUpdate(string $title, string $description, array $changes = []): array
+function sendDiscordUpdate(string $title, string $description, array $changes = [], array $extraFields = []): array
 {
     $fields = [];
+
+    foreach ($extraFields as $ex) {
+        $nm = trim((string) ($ex['name'] ?? ''));
+        $val = trim((string) ($ex['value'] ?? ''));
+        if ($nm === '' || $val === '') {
+            continue;
+        }
+        $fields[] = [
+            'name' => mb_substr($nm, 0, 256),
+            'value' => mb_substr($val, 0, 1024),
+            'inline' => !empty($ex['inline']),
+        ];
+    }
 
     if ($description) {
         $fields[] = [

@@ -10,7 +10,97 @@ import { showToast } from '../components/Toast.js';
 import { getState, setState } from '../stores/appState.js';
 import { setCurrentEdition, clearSrdCache } from '../api/srd.js';
 import { renderSidebar } from '../components/Sidebar.js';
-import { apiGetCampaignRules, apiSaveCampaignRules } from '../api/simulation.js';
+import { apiGetCampaignRules, apiSaveCampaignRules, apiGenerateCampaignWeather } from '../api/simulation.js';
+import { apiIntegrationStatus } from '../api/integrations.js';
+import { confirmAiCost } from '../components/AiCostConfirm.js';
+import { renderWeatherPreviewInto } from '../utils/weatherPreview.js';
+import { SHARED_BIOME_VALUES } from '../constants/sharedTownSettings.js';
+import { navigate } from '../router.js';
+import { TOKENS_PER_CREDIT } from '../constants/credits.js';
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/** HTML for collapsible plan matrix from `campaigns` API `tier_catalog`. */
+function formatSubscriptionCatalogHtml(catalog, currentTierId) {
+  if (!Array.isArray(catalog) || !catalog.length) return '';
+  const fmtStorage = (b) => {
+    const n = Number(b) || 0;
+    if (n >= 1024 * 1024 * 1024) {
+      const gb = n / (1024 * 1024 * 1024);
+      return `${gb % 1 < 0.05 ? Math.round(gb) : gb.toFixed(1)} GB`;
+    }
+    return `${Math.round(n / (1024 * 1024))} MB`;
+  };
+  const fmtFileMb = (b) => `${Math.round((Number(b) || 0) / (1024 * 1024))} MB`;
+  const qty = (n) => ((Number(n) || 0) >= 999 ? '∞' : String(n));
+  const priceCell = (usd) => {
+    const p = Number(usd) || 0;
+    if (p <= 0) return 'Free';
+    return Number.isInteger(p) ? `$${p}/mo` : `$${p.toFixed(2)}/mo`;
+  };
+  const rows = catalog.map((t) => {
+    const cap = Number(t.monthly_raw_token_cap) || 0;
+    const aiStr =
+      t.id === 'free' && cap <= 0
+        ? 'Wallet only'
+        : (() => {
+            const aiTc = cap / TOKENS_PER_CREDIT;
+            return aiTc >= 100 ? aiTc.toFixed(0) : aiTc >= 10 ? aiTc.toFixed(1) : aiTc.toFixed(1);
+          })();
+    const cur = t.id === currentTierId ? ' tier-catalog-row-current' : '';
+    return `<tr class="tier-catalog-row${cur}">
+      <td class="tier-catalog-tier"><span class="tier-badge tier-${t.id}">${t.label || t.id}</span></td>
+      <td>${priceCell(t.price_usd_month)}</td>
+      <td>${qty(t.max_campaigns)}</td>
+      <td>${qty(t.max_towns_per_campaign)}</td>
+      <td>${fmtFileMb(t.content_max_file_bytes)}</td>
+      <td>${fmtStorage(t.content_max_storage_bytes)}</td>
+      <td title="Platform-wallet AI, calendar month (BYOK excluded). Free: no monthly cap—starter EC wallet only.">${
+        t.id === 'free' && cap <= 0 ? aiStr : `~${aiStr} EC`
+      }</td>
+    </tr>`;
+  }).join('');
+  const includesBlocks = catalog
+    .map((t) => {
+      const lines = Array.isArray(t.includes) ? t.includes : [];
+      const cur = t.id === currentTierId ? ' tier-includes-one-current' : '';
+      const lis = lines.map((line) => `<li>${escHtml(line)}</li>`).join('');
+      return `<details class="tier-includes-one${cur}"><summary class="tier-includes-summary"><span class="tier-badge tier-${escHtml(t.id)}">${escHtml(t.label || t.id)}</span></summary><ul class="tier-includes-ul">${lis}</ul></details>`;
+    })
+    .join('');
+  return `
+    <details class="tier-catalog-details">
+      <summary class="tier-catalog-summary">Compare subscription plans</summary>
+      <p class="tier-catalog-note">Prices are the retail targets in <code>Price_Analysis.md</code>; checkout is not wired yet (tiers are set manually or by admin). Paid tiers get a monthly <strong>Eon Credits (EC)</strong> cap on the platform AI wallet; <strong>Free</strong> has no monthly cap—only the starter EC wallet (BYOK always skips the platform wallet).</p>
+      <div class="tier-catalog-scroll">
+        <table class="tier-catalog-table">
+          <thead>
+            <tr>
+              <th>Tier</th>
+              <th>Price</th>
+              <th>Campaigns</th>
+              <th>Towns / campaign</th>
+              <th>Max file</th>
+              <th>Content library</th>
+              <th>AI cap / mo</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </details>
+    <details class="tier-includes-wrap">
+      <summary class="tier-catalog-summary">What each plan includes</summary>
+      <p class="tier-catalog-note">Summaries from the server (<code>tier_limits.php</code>) so quotas and policy stay in sync with billing docs.</p>
+      <div class="tier-includes-stack">${includesBlocks}</div>
+    </details>`;
+}
 
 export default function SettingsView(container) {
   container.innerHTML = `
@@ -22,8 +112,17 @@ export default function SettingsView(container) {
       <div class="settings-grid">
         <section class="settings-section-card">
           <h3 class="settings-section">📜 Campaigns</h3>
+          <p class="muted" style="margin:0 0 0.5rem;font-size:0.8rem;">
+            <button type="button" class="btn-link" id="settings-open-plans" style="padding:0;font-size:inherit;">Open full plans & pricing page</button>
+          </p>
           <div id="campaigns-panel">Loading campaigns...</div>
           <div id="usage-meter-panel"></div>
+        </section>
+
+        <section class="settings-section-card">
+          <h3 class="settings-section">🌦️ World climate</h3>
+          <small class="settings-hint" style="display:block;margin-bottom:0.75rem;">One paid AI call generates a full <strong>in-game year</strong> of monthly climate for the <strong>active campaign</strong>. Calendar months come from your campaign calendar; each town still localizes day-to-day weather by biome and map position.</small>
+          <div id="campaign-climate-panel" class="muted">Loading…</div>
         </section>
 
         <section class="settings-section-card">
@@ -478,9 +577,129 @@ export default function SettingsView(container) {
   loadCampaignRules(container);
   loadUsageMeter(container);
 
+  container.querySelector('#settings-open-plans')?.addEventListener('click', () => navigate('subscription'));
+
   // Save handler
   container.querySelector('#settings-save-btn').addEventListener('click', () => saveSettings(container));
 
+}
+
+/* ── World climate (campaign-level yearly AI pass) ─── */
+async function loadCampaignClimate(container) {
+  const panel = container.querySelector('#campaign-climate-panel');
+  if (!panel) return;
+
+  const camp = getState().currentCampaign;
+  if (!camp?.id) {
+    panel.innerHTML = '<p class="muted">Create or activate a campaign to generate world climate.</p>';
+    return;
+  }
+
+  const biomeOpts = SHARED_BIOME_VALUES.map(
+    b => `<option value="${String(b).replace(/"/g, '&quot;')}">${b || '— Not set — (server defaults biome)'}</option>`
+  ).join('');
+
+  panel.innerHTML = `
+    <div class="campaign-climate-form">
+      <div class="form-group">
+        <label for="camp-wx-biome">Dominant biome / terrain</label>
+        <small class="settings-hint">Used as the climate baseline for the yearly prompt (town biomes still localize daily variation).</small>
+        <select id="camp-wx-biome" class="form-select" style="max-width:420px;margin-top:0.35rem;">${biomeOpts}</select>
+      </div>
+      <div class="form-group">
+        <label for="camp-wx-place">Place label</label>
+        <small class="settings-hint">Shown in the AI prompt (defaults to campaign name).</small>
+        <input type="text" id="camp-wx-place" class="form-input" style="max-width:420px;" placeholder="Realm name, region, etc.">
+      </div>
+      <div class="form-group">
+        <label for="camp-wx-context">Extra climate context <span class="muted">(optional)</span></label>
+        <textarea id="camp-wx-context" class="form-input" rows="2" style="max-width:560px;" placeholder="e.g. monsoon coast, altitude, magical auroras…"></textarea>
+      </div>
+      <div class="setup-actions" style="margin-top:0.5rem;">
+        <button type="button" class="btn-primary" id="camp-wx-generate">🌤️ Generate full year climate</button>
+      </div>
+      <div id="camp-wx-status" style="margin-top:0.5rem;"></div>
+      <div id="camp-wx-preview" class="setup-weather-preview"></div>
+    </div>
+  `;
+
+  const hydrateFromIntegration = async () => {
+    let settings = {};
+    try {
+      const intRes = await apiIntegrationStatus();
+      settings = intRes.settings || {};
+    } catch {
+      settings = {};
+    }
+
+    const seed = settings.world_weather_seed?.value;
+    const seedObj = seed && typeof seed === 'object' ? seed : {};
+    const wxWrap = settings.world_weather_year?.value;
+    const wxData = wxWrap?.weather || (wxWrap?.months ? wxWrap : null);
+
+    const biomeSel = panel.querySelector('#camp-wx-biome');
+    if (biomeSel) biomeSel.value = typeof seedObj.biome === 'string' ? seedObj.biome : '';
+    const placeInp = panel.querySelector('#camp-wx-place');
+    if (placeInp) placeInp.value = (typeof seedObj.place_label === 'string' && seedObj.place_label) ? seedObj.place_label : (camp.name || '');
+    const ctxInp = panel.querySelector('#camp-wx-context');
+    if (ctxInp) ctxInp.value = typeof seedObj.settlement_context === 'string' ? seedObj.settlement_context : '';
+
+    const statusEl = panel.querySelector('#camp-wx-status');
+    const previewEl = panel.querySelector('#camp-wx-preview');
+    if (wxData?.months?.length) {
+      renderWeatherPreviewInto(previewEl, wxData);
+      const updated = settings.world_weather_year?.updated_at || '';
+      if (statusEl) {
+        statusEl.innerHTML = `<span style="color:var(--success);">✅ Saved climate · ${wxData.months.length} months${updated ? ` · ${updated}` : ''}</span>`;
+      }
+    } else {
+      if (previewEl) previewEl.innerHTML = '';
+      if (statusEl) {
+        statusEl.innerHTML = '<span class="muted">No yearly climate yet — generate below.</span>';
+      }
+    }
+  };
+
+  await hydrateFromIntegration();
+
+  panel.querySelector('#camp-wx-generate')?.addEventListener('click', async () => {
+    const btn = panel.querySelector('#camp-wx-generate');
+    const statusEl = panel.querySelector('#camp-wx-status');
+    if (!btn || !statusEl) return;
+    btn.disabled = true;
+    btn.textContent = '⏳ Generating…';
+    statusEl.innerHTML = '<span style="color:var(--text-secondary);">Calling AI…</span>';
+
+    try {
+      const okCost = await confirmAiCost('scribe', { generatorType: 'weather' });
+      if (!okCost) {
+        statusEl.innerHTML = '<span class="muted">Cancelled.</span>';
+        return;
+      }
+
+      const biome = panel.querySelector('#camp-wx-biome')?.value ?? '';
+      const place = panel.querySelector('#camp-wx-place')?.value?.trim() ?? '';
+      const ctx = panel.querySelector('#camp-wx-context')?.value?.trim() ?? '';
+
+      const result = await apiGenerateCampaignWeather(camp.id, {
+        seed_biome: biome || undefined,
+        seed_place_name: place || undefined,
+        seed_settlement_context: ctx || undefined,
+      });
+
+      if (result.ok && result.weather) {
+        statusEl.innerHTML = `<span style="color:var(--success);">✅ ${result.months_generated || result.weather.months?.length || 0} months saved for this campaign.</span>`;
+        renderWeatherPreviewInto(panel.querySelector('#camp-wx-preview'), result.weather);
+      } else {
+        statusEl.innerHTML = `<span style="color:var(--error);">❌ ${result.error || 'Generation failed'}</span>`;
+      }
+    } catch (err) {
+      statusEl.innerHTML = `<span style="color:var(--error);">❌ ${err.message}</span>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '🌤️ Generate full year climate';
+    }
+  });
 }
 
 /* ── Campaign Management ────────────────────────────── */
@@ -492,6 +711,7 @@ async function loadCampaigns(container) {
     const campaigns = res.campaigns || [];
     const tier = res.tier || 'free';
     const maxCamps = res.max_campaigns || 1;
+    const tierCatalogHtml = formatSubscriptionCatalogHtml(res.tier_catalog, tier);
     const state = getState();
     const activeCampaignId = state.currentCampaign?.id;
 
@@ -529,6 +749,7 @@ async function loadCampaigns(container) {
       ` : `
         <div class="muted" style="margin-top:0.5rem;">Subscribe to create unlimited campaigns and towns.</div>
       `}
+      ${tierCatalogHtml}
     `;
 
     // Bind events
@@ -545,6 +766,7 @@ async function loadCampaigns(container) {
             if (sidebarEl) renderSidebar(sidebarEl);
             showToast(`Switched to "${res.campaign.name}"`, 'success');
             loadCampaigns(container);
+            loadCampaignClimate(container);
             loadCampaignRules(container); // Reload world sim & lore for new campaign
           }
         } catch (err) { showToast(err.message, 'error'); }
@@ -584,6 +806,8 @@ async function loadCampaigns(container) {
     });
 
     panel.querySelector('#campaign-create-btn')?.addEventListener('click', () => showCreateDialog(container));
+
+    await loadCampaignClimate(container);
   } catch (err) {
     panel.innerHTML = `<div class="muted">Error loading campaigns: ${err.message}</div>`;
   }
@@ -714,7 +938,9 @@ async function loadUsageMeter(container) {
     const res = await apiGetUsage();
     if (!res.ok) return;
 
-    const { tier, tier_label, tokens_used, token_limit, percentage, call_count, year_month } = res;
+    const {
+      tier, tier_label, tokens_used, token_limit, percentage, call_count, year_month, has_byok_key: hasByok,
+    } = res;
 
     // Format numbers for display
     const formatTokens = (n) => {
@@ -736,11 +962,55 @@ async function loadUsageMeter(container) {
     }
 
     const tierUpgrade = {
-      free: 'Upgrade to Adventurer for 4x more AI capacity.',
-      adventurer: 'Upgrade to Guild Master for 3x more capacity.',
-      guild_master: 'Upgrade to World Builder for 3x more capacity.',
+      free: 'Upgrade for a monthly EC allowance on the platform wallet and higher caps.',
+      apprentice: 'Upgrade to Adventurer or Guild Master for more monthly AI allowance.',
+      adventurer: 'Upgrade to Guild Master for a higher monthly AI allowance.',
+      guild_master: 'Upgrade to World Builder for the highest monthly AI allowance.',
       world_builder: '',
     };
+
+    if (hasByok) {
+      panel.innerHTML = `
+      <div class="usage-meter-card">
+        <div class="usage-meter-header">
+          <span class="usage-meter-title">📊 AI Usage This Month</span>
+          <span class="usage-meter-period">${year_month}</span>
+        </div>
+        <p class="usage-byok-note" style="margin:0.75rem 0;color:var(--muted);font-size:0.9rem;line-height:1.45">
+          You're using your own OpenRouter API key. Usage is tracked below for your records; Eon Weaver does not apply subscription monthly caps to BYOK accounts.
+        </p>
+        <div class="usage-meter-details">
+          <span class="usage-detail-item">🔮 ${call_count.toLocaleString()} AI calls</span>
+          <span class="usage-detail-item">📦 ${formatTokens(tokens_used || 0)} tokens</span>
+        </div>
+      </div>`;
+      return;
+    }
+
+    if (!token_limit || token_limit <= 0) {
+      const freeNote =
+        tier === 'free'
+          ? `<p class="usage-byok-note" style="margin:0.75rem 0;color:var(--muted);font-size:0.9rem;line-height:1.45">
+          <strong>Free tier:</strong> you get a <strong>~1.5 EC</strong> starter grant after email verification. There is <strong>no monthly platform AI cap</strong>—each call draws from your EC wallet until it is empty. EC top-ups are planned; use <strong>BYOK</strong> (OpenRouter key below) or upgrade for more runway.
+        </p>`
+          : `<p class="usage-byok-note" style="margin:0.75rem 0;color:var(--muted);font-size:0.9rem;line-height:1.45">
+          This plan has no monthly raw-token ceiling configured—platform AI is limited by your EC wallet only.
+        </p>`;
+      panel.innerHTML = `
+      <div class="usage-meter-card">
+        <div class="usage-meter-header">
+          <span class="usage-meter-title">📊 AI Usage This Month</span>
+          <span class="usage-meter-period">${year_month}</span>
+        </div>
+        ${freeNote}
+        <div class="usage-meter-details">
+          <span class="usage-detail-item">🔮 ${call_count.toLocaleString()} AI calls</span>
+          <span class="usage-detail-item">📦 ${formatTokens(tokens_used || 0)} tokens</span>
+        </div>
+        ${tierUpgrade[tier] ? `<div class="usage-upgrade-hint">${tierUpgrade[tier]}</div>` : ''}
+      </div>`;
+      return;
+    }
 
     panel.innerHTML = `
       <div class="usage-meter-card">

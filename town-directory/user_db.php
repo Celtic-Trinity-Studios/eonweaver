@@ -119,6 +119,19 @@ function initUserContentDB(PDO $pdo): void
         created_at      TEXT DEFAULT (datetime('now'))
     )");
 
+    $pdo->exec("CREATE TABLE IF NOT EXISTS custom_monsters (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        campaign_id     INTEGER NULL,
+        name            TEXT NOT NULL,
+        cr              TEXT DEFAULT '1',
+        type_line       TEXT DEFAULT '',
+        hit_dice        TEXT DEFAULT '2d8',
+        armor_class     TEXT DEFAULT '14',
+        abilities       TEXT DEFAULT '',
+        stat_summary    TEXT DEFAULT '',
+        created_at      TEXT DEFAULT (datetime('now'))
+    )");
+
     $pdo->exec("CREATE TABLE IF NOT EXISTS user_files (
         id              INTEGER PRIMARY KEY AUTOINCREMENT,
         campaign_id     INTEGER NULL,

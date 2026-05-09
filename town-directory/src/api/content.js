@@ -1,6 +1,6 @@
 /**
  * Custom Content API module
- * CRUD for homebrew SRD content (races, classes, feats, spells, equipment)
+ * CRUD for homebrew SRD content (races, classes, feats, spells, equipment, monsters)
  * and per-account file management.
  */
 import { apiFetch } from './client.js';
@@ -28,6 +28,10 @@ export function apiSaveCustomSpell(spell) {
 
 export function apiSaveCustomEquipment(equipment) {
     return apiFetch('save_custom_equipment', { method: 'POST', body: { equipment } });
+}
+
+export function apiSaveCustomMonster(monster) {
+    return apiFetch('save_custom_monster', { method: 'POST', body: { monster } });
 }
 
 export function apiDeleteCustomContent(contentType, contentId) {

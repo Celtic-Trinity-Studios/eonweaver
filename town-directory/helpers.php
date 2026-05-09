@@ -4,6 +4,8 @@
  * Reusable functions used by both api.php and simulate.php.
  */
 
+require_once __DIR__ . '/tier_economics.php';
+
 /**
  * Metadata OpenRouter expects on chat requests (HTTP-Referer + X-Title).
  * Override in config.php: APP_PUBLIC_URL and APP_PUBLIC_TITLE (see config.example.php).
@@ -15,12 +17,30 @@ function openRouterAppHeaders(?string $xTitle = null): array
     $url = defined('APP_PUBLIC_URL') ? APP_PUBLIC_URL : 'https://eonscribe.com';
     $title = ($xTitle !== null && $xTitle !== '')
         ? $xTitle
-        : (defined('APP_PUBLIC_TITLE') ? APP_PUBLIC_TITLE : (defined('APP_NAME') ? APP_NAME : 'Eon Scribe'));
+        : (defined('APP_PUBLIC_TITLE') ? APP_PUBLIC_TITLE : (defined('APP_NAME') ? APP_NAME : 'Eon Weaver'));
 
     return [
         'HTTP-Referer: ' . $url,
         'X-Title: ' . $title,
     ];
+}
+
+/**
+ * JSON-encode a chat/completions POST body for OpenRouter.
+ * Uses JSON_INVALID_UTF8_SUBSTITUTE so prompts containing bad DB bytes still produce valid JSON
+ * (avoids HTTP 400 "JSON parsing failed" when json_encode would otherwise return false).
+ *
+ * @param array<string,mixed> $data
+ */
+function ew_json_encode_openrouter_body(array $data): string
+{
+    $flags = JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE;
+    $json = json_encode($data, $flags);
+    if ($json === false) {
+        throw new Exception('Failed to encode OpenRouter request JSON: ' . json_last_error_msg());
+    }
+
+    return $json;
 }
 
 /**
@@ -234,15 +254,15 @@ function recalcCharStats($charId, $uid)
 
 /**
  * Track AI token usage for a user.
- * Deducts tokens from the user's credit_balance (wallet) AND logs to
- * user_token_usage for analytics/admin visibility.
+ * Deducts RAW LLM tokens from credit_balance (same units as OpenRouter usage).
+ * Sidebar/UI converts to "Eon Credits" via TOKENS_PER_CREDIT (default 200000) to match the cost modal.
  *
  * @param int $userId  The user's ID (from shared DB)
  * @param array $usage The 'usage' object from OpenRouter response
  */
 function trackTokenUsage($userId, $usage, $featureKey = null)
 {
-    global $LAST_RESOLVED_FEATURE_KEY;
+    global $LAST_RESOLVED_FEATURE_KEY, $OPENROUTER_USING_USER_KEY;
     if (!$featureKey) {
         $featureKey = $LAST_RESOLVED_FEATURE_KEY ?? 'global';
     }
@@ -271,12 +291,34 @@ function trackTokenUsage($userId, $usage, $featureKey = null)
             0 // shared DB
         );
 
-        // 2. Deduct from credit_balance wallet (never go below 0)
-        execute(
-            "UPDATE users SET credit_balance = GREATEST(0, credit_balance - ?) WHERE id = ?",
-            [$totalTokens, $userId],
-            0
-        );
+        // 1b. Daily roll-up for admin charts (server-side metrics)
+        if (file_exists(__DIR__ . '/metrics_lib.php')) {
+            require_once __DIR__ . '/metrics_lib.php';
+            ew_record_ai_usage_daily($userId, $featureKey, $totalTokens);
+        }
+
+        // 2. BYOK (Settings key): user pays OpenRouter — do not deduct platform wallet
+        if (!empty($OPENROUTER_USING_USER_KEY)) {
+            return;
+        }
+
+        // 3. Deduct from credit_balance wallet — billed in 0.01 EC buckets,
+        //    rounded UP. (0.01 EC = TOKENS_PER_CREDIT ÷ 100 raw.)
+        //    Analytics tables above keep the exact raw token count for truth.
+        $bucket = (int) (defined('TOKENS_PER_CREDIT') ? TOKENS_PER_CREDIT : 200000) / 100;
+        if ($bucket < 1) {
+            $bucket = 1;
+        }
+        $billable = $totalTokens > 0
+            ? (int) (ceil($totalTokens / $bucket) * $bucket)
+            : 0;
+        if ($billable > 0) {
+            execute(
+                "UPDATE users SET credit_balance = GREATEST(0, credit_balance - ?) WHERE id = ?",
+                [$billable, $userId],
+                0
+            );
+        }
     } catch (Exception $e) {
         // Non-fatal — don't break simulation if tracking fails
         error_log("Token tracking failed for user {$userId}: " . $e->getMessage());
@@ -293,24 +335,7 @@ function trackTokenUsage($userId, $usage, $featureKey = null)
  */
 function checkTokenBudget($userId, $tier = 'free')
 {
-    try {
-        $rows = query("SELECT credit_balance FROM users WHERE id = ?", [$userId], 0);
-        $balance = $rows ? (int) $rows[0]['credit_balance'] : 0;
-
-        // If balance is negative (shouldn't happen) or 0, block
-        // Special case: admin/world_builder accounts with 0 balance
-        // are checked but we allow a small grace buffer of 100k tokens
-        // to prevent mid-simulation cutoffs
-        if ($balance <= 0) {
-            // Check if they had a very recent deduction (mid-sim grace)
-            return true;
-        }
-
-        return false;
-    } catch (Exception $e) {
-        // If we can't check, allow (fail-open for DB issues)
-        return false;
-    }
+    return ew_platform_wallet_blocked($userId, $tier) !== null;
 }
 
 /**
@@ -379,23 +404,46 @@ function applyLevelToClass($classStr, $newLevel)
 
 /**
  * Resolve the API key for a specific feature.
- * Falls back to OPENROUTER_API_KEY → user DB key.
+ * Order: user's Settings key (BYOK) → per-feature constant → global OPENROUTER_API_KEY.
+ * When the user's own key is used, $OPENROUTER_USING_USER_KEY is set so wallet deduction is skipped.
+ *
+ * If $requireCredits is true (default), users on the platform wallet must have credit_balance > 0
+ * or the call is rejected here — gating EVERY paid AI call site through one function.
+ * Pass false only for free connectivity tests like `debug_llm`.
  */
-function resolveApiKey(string $featureKey, int $userId): string {
-    global $LAST_RESOLVED_FEATURE_KEY;
+function resolveApiKey(string $featureKey, int $userId, bool $requireCredits = true): string {
+    global $LAST_RESOLVED_FEATURE_KEY, $OPENROUTER_USING_USER_KEY;
     $LAST_RESOLVED_FEATURE_KEY = str_replace('OPENROUTER_KEY_', '', $featureKey);
+    $OPENROUTER_USING_USER_KEY = false;
 
-    // 1. Feature-specific key
+    $rows = query("SELECT gemini_api_key, credit_balance, subscription_tier FROM users WHERE id = ?", [$userId], 0);
+    $userKey = trim($rows ? ($rows[0]['gemini_api_key'] ?? '') : '');
+    if ($userKey !== '') {
+        $OPENROUTER_USING_USER_KEY = true;
+        return $userKey;
+    }
+
+    // Wallet gate for any paid action — uniform across every AI feature.
+    if ($requireCredits) {
+        $balance = $rows ? (int) ($rows[0]['credit_balance'] ?? 0) : 0;
+        if ($balance <= 0) {
+            throw new Exception('Insufficient Eon Credits — your wallet is empty. Top up credits, or add your own OpenRouter API key under ⚙️ Settings to use your own account.');
+        }
+        $subTier = trim((string) ($rows[0]['subscription_tier'] ?? 'free'));
+        if ($subTier === '') {
+            $subTier = 'free';
+        }
+        if (ew_monthly_platform_cap_exceeded($userId, $subTier)) {
+            throw new Exception('Monthly AI usage limit reached for your subscription tier. Try again next calendar month, upgrade, or add your own OpenRouter API key under ⚙️ Settings.');
+        }
+    }
+
     if (defined($featureKey) && constant($featureKey)) {
         return constant($featureKey);
     }
-    // 2. Global fallback
     if (defined('OPENROUTER_API_KEY') && OPENROUTER_API_KEY) {
         return OPENROUTER_API_KEY;
     }
-    // 3. User DB
-    $rows = query("SELECT gemini_api_key FROM users WHERE id = ?", [$userId], 0);
-    $key = $rows ? ($rows[0]['gemini_api_key'] ?? '') : '';
-    if (!$key) throw new Exception('No OpenRouter API key set. Go to ⚙️ Settings to add your key.');
-    return $key;
+
+    throw new Exception('No OpenRouter API key set. Go to ⚙️ Settings to add your key.');
 }

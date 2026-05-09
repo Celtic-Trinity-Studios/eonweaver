@@ -52,66 +52,144 @@ function requireAdmin(): array
     return $user;
 }
 
-function register(string $username, string $email, string $password, string $betaKey = ''): array
+function ew_signup_credit_grant_raw(): int
 {
-    if (!ALLOW_REGISTRATION)
-        throw new \Exception('Registration is currently disabled.');
+    return defined('FREE_SIGNUP_CREDIT_GRANT_RAW') ? max(0, (int) FREE_SIGNUP_CREDIT_GRANT_RAW) : 300000;
+}
 
-    // Beta key validation — database-backed, one-use keys
-    $betaKey = trim($betaKey);
-    if ($betaKey === '') {
-        throw new \Exception('A beta key is required to register. Contact the developer for access.');
+/**
+ * True when SMTP is configured — then new accounts must verify email before login / credits.
+ */
+function ew_registration_requires_email_confirmation(): bool
+{
+    require_once __DIR__ . '/smtp_mail.php';
+    return ew_mail_configured();
+}
+
+function register(string $username, string $email, string $password): array
+{
+    require_once __DIR__ . '/signup_policy.php';
+    require_once __DIR__ . '/smtp_mail.php';
+    if (file_exists(__DIR__ . '/metrics_lib.php')) {
+        require_once __DIR__ . '/metrics_lib.php';
     }
 
-    // Check database for valid, unused beta key
-    $keyRow = query('SELECT id, is_used FROM beta_keys WHERE `key_code` = ?', [$betaKey], 0);
-    if ($keyRow) {
-        if ((int) $keyRow[0]['is_used'] === 1) {
-            throw new \Exception('This beta key has already been used.');
+    $ip = ew_client_ip();
+    $emailDomain = '';
+    $atIdx = strrpos($email, '@');
+    if ($atIdx !== false) {
+        $emailDomain = strtolower(substr($email, $atIdx + 1));
+    }
+
+    $recordOutcome = function (string $outcome) use ($ip, $emailDomain) {
+        if (function_exists('ew_record_signup_outcome')) {
+            ew_record_signup_outcome($ip, $emailDomain, $outcome);
         }
-        // Key is valid and unused — will be marked as used after successful registration
-    } elseif (defined('BETA_KEY') && BETA_KEY && $betaKey === BETA_KEY) {
-        // Fallback: allow the legacy config constant (for backwards compat)
-        // The key won't be tracked as "used" since it's not in the DB
-    } else {
-        throw new \Exception('Invalid beta key. Contact the developer for access.');
+    };
+
+    try {
+        if (!ALLOW_REGISTRATION) {
+            throw new \Exception('Registration is currently disabled.');
+        }
+
+        $username = trim($username);
+        $email = trim(strtolower($email));
+
+        if (strlen($username) < 3 || strlen($username) > 50) {
+            $recordOutcome('bad_username');
+            throw new \Exception('Username must be 3–50 characters.');
+        }
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $recordOutcome('invalid_email');
+            throw new \Exception('Invalid email address.');
+        }
+        if (strlen($password) < 6) {
+            $recordOutcome('password_short');
+            throw new \Exception('Password must be at least 6 characters.');
+        }
+
+        if (ew_is_disposable_email($email)) {
+            $recordOutcome('disposable_email');
+            throw new \Exception('Please use a permanent email address (temporary/disposable domains are blocked).');
+        }
+
+        try {
+            ew_signup_rate_limit_throw_if_exceeded($ip);
+        } catch (\Exception $rl) {
+            $recordOutcome('rate_limit');
+            throw $rl;
+        }
+        try {
+            ew_signup_throw_if_datacenter_ip($ip);
+        } catch (\Exception $vp) {
+            $recordOutcome('vpn_block');
+            throw $vp;
+        }
+
+        $existing = query('SELECT id FROM users WHERE username = ? OR email = ?', [$username, $email], 0);
+        if ($existing) {
+            $recordOutcome('dup_user');
+            throw new \Exception('Username or email already taken.');
+        }
+
+        ew_signup_record_attempt($ip, $emailDomain);
+    } catch (\Throwable $t) {
+        throw $t;
     }
-
-    $username = trim($username);
-    $email = trim(strtolower($email));
-
-    if (strlen($username) < 3 || strlen($username) > 50)
-        throw new \Exception('Username must be 3–50 characters.');
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL))
-        throw new \Exception('Invalid email address.');
-    if (strlen($password) < 6)
-        throw new \Exception('Password must be at least 6 characters.');
-
-    // Uniqueness check — shared DB
-    $existing = query('SELECT id FROM users WHERE username = ? OR email = ?', [$username, $email], 0);
-    if ($existing)
-        throw new \Exception('Username or email already taken.');
 
     $hash = password_hash($password, PASSWORD_BCRYPT);
+    $grant = ew_signup_credit_grant_raw();
+    $needVerify = ew_registration_requires_email_confirmation();
+
+    $verifyTok = null;
+    $verifyExp = null;
+    $verifiedFlag = 1;
+    $initialCredits = $grant;
+
+    if ($needVerify) {
+        $verifiedFlag = 0;
+        $initialCredits = 0;
+        $verifyTok = bin2hex(random_bytes(32));
+        $verifyExp = date('Y-m-d H:i:s', time() + 86400 * 2);
+    }
+
     $id = insertAndGetId(
-        'INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)',
-        [$username, $email, $hash],
+        'INSERT INTO users (username, email, password_hash, credit_balance, subscription_tier, email_verified, email_verify_token, email_verify_expires, signup_ip)
+         VALUES (?, ?, ?, ?, \'free\', ?, ?, ?, ?)',
+        [$username, $email, $hash, $initialCredits, $verifiedFlag, $verifyTok, $verifyExp, $ip],
         0
     );
+
+    if ($needVerify && $verifyTok) {
+        $base = defined('APP_PUBLIC_URL') ? rtrim(APP_PUBLIC_URL, '/') : '';
+        $link = $base . '/verify_email.php?token=' . rawurlencode($verifyTok);
+        $site = defined('APP_PUBLIC_TITLE') ? APP_PUBLIC_TITLE : (defined('APP_NAME') ? APP_NAME : 'Eon Weaver');
+        $html = '<p>Confirm your email for <strong>' . htmlspecialchars($site) . '</strong>:</p>'
+            . '<p><a href="' . htmlspecialchars($link) . '">Verify my email</a></p>'
+            . '<p style="color:#666;font-size:12px">If you did not sign up, ignore this message.</p>';
+        $sent = ew_send_html_mail($email, $site . ' — confirm your email', $html, "Confirm your account:\n{$link}");
+        if (!$sent) {
+            execute('DELETE FROM users WHERE id = ?', [$id], 0);
+            $recordOutcome('mail_failed');
+            throw new \Exception('Could not send verification email. Check SMTP settings or try again later.');
+        }
+
+        $recordOutcome('pending_verify');
+
+        return [
+            'id' => $id,
+            'username' => $username,
+            'email' => $email,
+            'needs_verification' => true,
+        ];
+    }
+
+    $recordOutcome('success');
 
     startSession();
     $_SESSION['user_id'] = $id;
 
-    // Mark beta key as used in the database
-    if ($keyRow) {
-        execute(
-            'UPDATE beta_keys SET is_used = 1, used_by_user_id = ?, used_at = NOW() WHERE id = ?',
-            [$id, (int) $keyRow[0]['id']],
-            0
-        );
-    }
-
-    return ['id' => $id, 'username' => $username, 'email' => $email];
+    return ['id' => $id, 'username' => $username, 'email' => $email, 'needs_verification' => false];
 }
 
 function login(string $usernameOrEmail, string $password): array
@@ -127,10 +205,59 @@ function login(string $usernameOrEmail, string $password): array
         throw new \Exception('Invalid username/email or password.');
 
     $user = $rows[0];
+    if (isset($user['email_verified']) && (int) $user['email_verified'] === 0) {
+        throw new \Exception('Please verify your email before signing in. Check your inbox or request a new confirmation link from the registration screen.');
+    }
+
     startSession();
     $_SESSION['user_id'] = $user['id'];
 
     return ['id' => $user['id'], 'username' => $user['username'], 'email' => $user['email'], 'role' => $user['role'] ?? 'user'];
+}
+
+/**
+ * Resend verification email (public — uses email only).
+ */
+function resendVerificationEmail(string $email): bool
+{
+    require_once __DIR__ . '/smtp_mail.php';
+    if (!ew_mail_configured()) {
+        return false;
+    }
+
+    $email = trim(strtolower($email));
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return true;
+    }
+
+    $rows = query(
+        'SELECT id, username, email_verify_token, email_verify_expires FROM users WHERE email = ? AND email_verified = 0',
+        [$email],
+        0
+    );
+    if (!$rows) {
+        return true;
+    }
+
+    $verifyTok = $rows[0]['email_verify_token'] ?? null;
+    if (!$verifyTok || strlen((string) $verifyTok) < 20) {
+        $verifyTok = bin2hex(random_bytes(32));
+        $verifyExp = date('Y-m-d H:i:s', time() + 86400 * 2);
+        execute(
+            'UPDATE users SET email_verify_token = ?, email_verify_expires = ? WHERE id = ?',
+            [$verifyTok, $verifyExp, (int) $rows[0]['id']],
+            0
+        );
+    }
+
+    $base = defined('APP_PUBLIC_URL') ? rtrim(APP_PUBLIC_URL, '/') : '';
+    $link = $base . '/verify_email.php?token=' . rawurlencode($verifyTok);
+    $site = defined('APP_PUBLIC_TITLE') ? APP_PUBLIC_TITLE : (defined('APP_NAME') ? APP_NAME : 'Eon Weaver');
+    $html = '<p>Confirm your email for <strong>' . htmlspecialchars($site) . '</strong>:</p>'
+        . '<p><a href="' . htmlspecialchars($link) . '">Verify my email</a></p>';
+
+    ew_send_html_mail($email, $site . ' — confirm your email', $html, "Confirm your account:\n{$link}");
+    return true;
 }
 
 function logout(): void

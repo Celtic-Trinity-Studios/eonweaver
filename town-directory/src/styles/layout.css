@@ -428,6 +428,32 @@
 
 .muted { color: var(--text-muted); }
 
+/* Auth */
+.btn-link {
+    background: none;
+    border: none;
+    color: var(--accent);
+    cursor: pointer;
+    font: inherit;
+    text-decoration: underline;
+    padding: 0;
+}
+
+/* Free tier — sidebar ad slot (AdSense or placeholder) */
+.sidebar-free-ad-slot {
+    margin: 0 0.75rem 0.75rem;
+    min-height: 70px;
+}
+
+.sidebar-ad-placeholder {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    padding: 0.5rem;
+    border: 1px dashed var(--border);
+    border-radius: 6px;
+    line-height: 1.35;
+}
+
 
 /* responsive — collapse sidebar on narrow screens */
 @media (max-width: 768px) {

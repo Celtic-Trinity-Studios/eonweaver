@@ -1,4 +1,6 @@
 <?php
+            require_once __DIR__ . '/sim_prompt_lib.php';
+
             $months = max(0, min(24, (int) ($input['months'] ?? 1)));
             $rules = trim($input['rules'] ?? '');
             $instructions = trim($input['instructions'] ?? '');
@@ -43,6 +45,8 @@
                 $townMeta = [];
                 foreach ($metaRows as $m)
                     $townMeta[$m['key']] = $m['value'];
+                $rollingSummary = trim((string) ($townMeta[EW_SIM_ROLLING_SUMMARY_KEY] ?? ''));
+                $rollingSummary = ew_sim_rolling_summary_maybe_seed($tId, $hist, $rollingSummary, $uid);
                 $demographics = trim($townMeta['demographics'] ?? '');
                 $demoText = $demographics ? "\nMANDATORY RACE DISTRIBUTION (set by DM — follow EXACTLY): {$demographics}. Any new arrivals or births MUST match these race percentages. Do NOT generate races not listed here." : "";
 
@@ -51,27 +55,14 @@
                 $diffMultsAll = ['peaceful' => 1.0, 'struggling' => 1.5, 'frontier' => 2.0, 'warzone' => 3.0];
                 $diffMultAll = $diffMultsAll[$diffLevelAll] ?? 1.5;
 
-                $roster = [];
-                foreach ($chars as $c) {
-                    $e = "{$c['name']} — {$c['race']} {$c['class']}, Age {$c['age']}, {$c['gender']}";
-                    $e .= ", Status:{$c['status']}";
-                    if ($c['spouse'] && $c['spouse'] !== 'None')
-                        $e .= ", {$c['spouse_label']}:{$c['spouse']}";
-                    if ($c['role'])
-                        $e .= ", Role:{$c['role']}";
-                    $e .= ", XP:{$c['xp']}, HP:{$c['hp']}, AC:{$c['ac']}";
-                    $roster[] = $e;
-                }
-                $rosterText = implode("\n", $roster);
+                $rosterText = ew_sim_tiered_roster_simple($chars, 10);
                 $charCount = count($chars);
-                $historyText = '';
-                foreach ($hist as $h)
-                    $historyText .= "### {$h['heading']}\n{$h['content']}\n\n";
+                $historyText = ew_sim_prompt_history_block($hist, $rollingSummary);
 
                 if ($months === 0) {
                     $prompt = "You are a D&D {$dndEdition} world manager. No time passes. Add new characters or relationships to \"{$tName}\".\n{$demoText}\nAll new characters MUST start at exactly Level 1 (0 XP) unless instructions override.\nTown ({$charCount} residents):\n(CRITICAL: Do NOT reuse names from this roster. Use highly unique D&D names.)\n{$rosterText}\n\nInstructions: {$instructions}\n\nRespond ONLY valid JSON with fields: summary, new_characters, new_relationships, stat_changes, xp_gains (empty), deaths (MUST be empty), role_changes, history_entry.";
                 } else {
-                    $prompt = "You are a D&D {$dndEdition} simulation engine. Simulate {$months} month(s) in \"{$tName}\" (pop {$charCount}).\nSettings: relSpeed={$relSpeed}, birthRate={$birthRate}, deathRule={$popText}, childGrowth={$childGrowth}, conflict={$conflictFreq}\n{$demoText}\nAll new characters MUST start at exactly Level 1 (0 XP) unless instructions override.\nXP: Town difficulty={$diffLevelAll} (x{$diffMultAll}). Use Growth Score tags for XP.\nRules: {$rules}\nInstructions: {$instructions}\n\nRoster:\n(CRITICAL: Do NOT reuse names from this roster. Use highly unique D&D names.)\n{$rosterText}\n\nHistory:\n{$historyText}\n\nRespond ONLY valid JSON with the standard simulation structure (summary, events, changes:{new_characters,deaths,new_relationships,xp_gains,stat_changes,role_changes}, new_history_entry).";
+                    $prompt = "You are a D&D {$dndEdition} simulation engine. Simulate {$months} month(s) in \"{$tName}\" (pop {$charCount}).\nSettings: relSpeed={$relSpeed}, birthRate={$birthRate}, deathRule={$popText}, childGrowth={$childGrowth}, conflict={$conflictFreq}\n{$demoText}\nAll new characters MUST start at exactly Level 1 (0 XP) unless instructions override.\nXP: Town difficulty={$diffLevelAll} (x{$diffMultAll}). Use Growth Score tags for XP.\nRules: {$rules}\nInstructions: {$instructions}\n\nRoster (NPC_<id> = database character id):\n(CRITICAL: Do NOT reuse names from this roster. Use highly unique D&D names.)\n{$rosterText}\n\nHistory:\n{$historyText}\n\nIn changes, prefer character_id / character1_id / character2_id from roster for mechanical entries.\n\nRespond ONLY valid JSON with the standard simulation structure (summary, events, changes:{new_characters,deaths,new_relationships,xp_gains,stat_changes,role_changes}, new_history_entry).";
                 }
 
                 // ── LLM routing: local first, Gemini fallback ──

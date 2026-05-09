@@ -6,9 +6,11 @@
  *   /dev/sunday/yart (campaign-name/town-name)
  */
 import { getState, subscribe } from './stores/appState.js';
+import { pingVisit } from './utils/visitMetrics.js';
 
 const routes = {};
 let currentCleanup = null;
+let routerInitialized = false;
 
 const slugify = str => (str || '').toString().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
@@ -109,6 +111,9 @@ function handleRoute() {
     document.querySelectorAll('.nav-item').forEach(el => {
         el.classList.toggle('active', el.dataset.route === path);
     });
+
+    // Anonymous pageview ping (server-side metrics, deduped per session)
+    pingVisit(path);
 }
 
 /**
@@ -173,10 +178,13 @@ function checkAndRewriteURL(state) {
  * Initialize the router — listen for back/forward buttons and handle clean URLs.
  */
 export function initRouter() {
-    window.addEventListener('popstate', handleRoute);
+    if (!routerInitialized) {
+        routerInitialized = true;
+        window.addEventListener('popstate', handleRoute);
 
-    // Subscribe to state changes for cosmetic URL rewriting
-    subscribe(checkAndRewriteURL);
+        // Subscribe to state changes for cosmetic URL rewriting
+        subscribe(checkAndRewriteURL);
+    }
 
     // Handle initial route
     const base = getBasePath();

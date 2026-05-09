@@ -1,8 +1,16 @@
 <?php
+            require_once __DIR__ . '/sim_prompt_lib.php';
+
             $townId = (int) ($input['town_id'] ?? 0);
             $months = max(1, min(24, (int) ($input['months'] ?? 1)));
             $rulesRaw = $input['rules'] ?? '';
-            $rules = is_string($rulesRaw) ? trim($rulesRaw) : (is_array($rulesRaw) ? json_encode($rulesRaw) : '');
+            $rules = '';
+            if (is_string($rulesRaw)) {
+                $rules = trim($rulesRaw);
+            } elseif (is_array($rulesRaw)) {
+                $enc = json_encode($rulesRaw, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+                $rules = ($enc === false) ? '' : $enc;
+            }
             $instructions = is_string($input['instructions'] ?? '') ? trim($input['instructions'] ?? '') : '';
 
             verifyTownOwnership($userId, $townId, $uid);
@@ -14,7 +22,7 @@
                 throw new Exception('Town not found.');
             $townName = $town[0]['name'];
 
-            $characters = query('SELECT name, race, class, gender, age, role, status FROM characters WHERE town_id = ? ORDER BY name', [$townId], $uid);
+            $characters = query('SELECT id, name, race, class, gender, age, role, status FROM characters WHERE town_id = ? ORDER BY name', [$townId], $uid);
             $charCount = count($characters);
             $aliveCount = count(array_filter($characters, fn($c) => ($c['status'] ?? 'Alive') === 'Alive'));
 
@@ -23,7 +31,7 @@
             foreach ($characters as $c) {
                 if (($c['status'] ?? 'Alive') !== 'Alive')
                     continue;
-                $rosterSummary[] = "{$c['name']} ({$c['race']} {$c['class']}, {$c['gender']}, age {$c['age']}, {$c['role']})";
+                $rosterSummary[] = ew_sim_roster_id_prefix($c) . "{$c['name']} ({$c['race']} {$c['class']}, {$c['gender']}, age {$c['age']}, {$c['role']})";
             }
             $rosterText = implode("\n", $rosterSummary);
 
@@ -90,7 +98,7 @@ PLAN;
             // Quick AI call with low token limit
             $openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
             $model = defined("OPENROUTER_MODEL_CHEAP") ? OPENROUTER_MODEL_CHEAP : (defined("OPENROUTER_MODEL") ? OPENROUTER_MODEL : "google/gemini-2.5-flash-lite");
-            $payload = json_encode([
+            $payload = ew_json_encode_openrouter_body([
                 "model" => $model,
                 "messages" => [["role" => "user", "content" => $planPrompt]],
                 "temperature" => 0.8,
@@ -106,7 +114,7 @@ PLAN;
                     "Content-Type: application/json",
                     "Authorization: Bearer $apiKey",
                 ], openRouterAppHeaders(
-                    (defined('APP_PUBLIC_TITLE') ? APP_PUBLIC_TITLE : 'Eon Scribe') . ' Planner'
+                    (defined('APP_PUBLIC_TITLE') ? APP_PUBLIC_TITLE : 'Eon Weaver') . ' Planner'
                 )),
                 CURLOPT_TIMEOUT => 60
             ]);
