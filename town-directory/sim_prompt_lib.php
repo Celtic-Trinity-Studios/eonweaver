@@ -4,6 +4,116 @@
  * Used by sim_run.php, sim_single_town.php, sim_world.php.
  */
 
+require_once __DIR__ . '/toon_lib.php';
+
+if (!function_exists('ew_sim_roster_spouse_cell')) {
+    /** Single cell for spouse / partner columns in TOON roster rows. */
+    function ew_sim_roster_spouse_cell(array $c): string
+    {
+        $sp = trim((string) ($c['spouse'] ?? ''));
+        if ($sp === '' || strcasecmp($sp, 'None') === 0) {
+            return '';
+        }
+        $label = trim((string) ($c['spouse_label'] ?? ''));
+        if ($label === '') {
+            $label = 'Spouse';
+        }
+
+        return "{$label}: {$sp}";
+    }
+}
+
+if (!function_exists('ew_sim_roster_relationships_cell')) {
+    function ew_sim_roster_relationships_cell(array $c, array $relsByChar): string
+    {
+        $name = (string) ($c['name'] ?? '');
+        if ($name === '' || empty($relsByChar[$name])) {
+            return '';
+        }
+
+        return implode('; ', $relsByChar[$name]);
+    }
+}
+
+if (!function_exists('ew_sim_demographics_toon_snapshot')) {
+    /**
+     * Compact demographics block for arrival-generation prompts.
+     *
+     * @param array<string,int> $raceCounts
+     * @param array<string,int> $classCounts
+     * @param array<string,int> $genderCounts
+     */
+    function ew_sim_demographics_toon_snapshot(int $charCount, array $raceCounts, array $classCounts, array $genderCounts, string $demographics): string
+    {
+        $parts = [];
+        $parts[] = 'population: ' . $charCount;
+        $raceRows = [];
+        foreach ($raceCounts as $race => $cnt) {
+            $raceRows[] = ['race' => (string) $race, 'count' => (int) $cnt];
+        }
+        if ($raceRows !== []) {
+            usort($raceRows, function ($a, $b) {
+                return strcmp($a['race'], $b['race']);
+            });
+            $parts[] = ew_toon_fenced(ew_toon_tabular_inner('race_counts', ['race', 'count'], $raceRows, ','));
+        }
+        $classRows = [];
+        foreach ($classCounts as $cl => $cnt) {
+            $classRows[] = ['class' => (string) $cl, 'count' => (int) $cnt];
+        }
+        if ($classRows !== []) {
+            usort($classRows, function ($a, $b) {
+                return strcmp($a['class'], $b['class']);
+            });
+            $parts[] = ew_toon_fenced(ew_toon_tabular_inner('class_counts', ['class', 'count'], $classRows, ','));
+        }
+        $genderRows = [
+            ['code' => 'M', 'count' => (int) ($genderCounts['M'] ?? 0)],
+            ['code' => 'F', 'count' => (int) ($genderCounts['F'] ?? 0)],
+        ];
+        $parts[] = ew_toon_fenced(ew_toon_tabular_inner('gender_counts', ['code', 'count'], $genderRows, ','));
+        $dm = trim($demographics);
+        if ($dm !== '') {
+            $parts[] = "demographic_targets (DM):\n{$dm}";
+        }
+
+        return implode("\n\n", $parts);
+    }
+}
+
+if (!function_exists('ew_sim_plan_roster_toon_alive')) {
+    /**
+     * Alive-resident table for sim_plan.php (tabular TOON).
+     *
+     * @param list<array<string,mixed>> $characters
+     */
+    function ew_sim_plan_roster_toon_alive(array $characters): string
+    {
+        $rows = [];
+        foreach ($characters as $c) {
+            if (($c['status'] ?? 'Alive') !== 'Alive') {
+                continue;
+            }
+            $rows[] = [
+                'npc_id' => (int) ($c['id'] ?? 0),
+                'name' => (string) ($c['name'] ?? ''),
+                'race' => (string) ($c['race'] ?? ''),
+                'class' => (string) ($c['class'] ?? ''),
+                'gender' => (string) ($c['gender'] ?? ''),
+                'age' => (int) ($c['age'] ?? 0),
+                'role' => (string) ($c['role'] ?? ''),
+            ];
+        }
+        $n = count($rows);
+        if ($n === 0) {
+            return '(no alive residents)';
+        }
+        $fields = ['npc_id', 'name', 'race', 'class', 'gender', 'age', 'role'];
+
+        return ew_toon_fenced(ew_toon_tabular_inner('alive_residents', $fields, $rows, "\t"));
+    }
+}
+
 if (!function_exists('ew_sim_truncate')) {
     function ew_sim_truncate(string $text, int $maxChars): string
     {
@@ -134,7 +244,8 @@ if (!function_exists('ew_sim_roster_line_compact')) {
 
 if (!function_exists('ew_sim_tiered_roster_main_run')) {
     /**
-     * Full mechanical detail for the highest-priority NPCs; one-line tags for the rest.
+     * Full mechanical detail for the highest-priority NPCs; compact tabular rows for the rest.
+     * Uses TOON tabular format (tab-separated) for token efficiency.
      *
      * @param list<array<string,mixed>> $characters
      * @param array<string,list<string>> $relsByChar
@@ -146,12 +257,57 @@ if (!function_exists('ew_sim_tiered_roster_main_run')) {
             return '(no residents)';
         }
         $detailMax = max(4, min(24, $detailMax));
+        $delim = "\t";
+        $detailFields = ['npc_id', 'name', 'race', 'class', 'age', 'gender', 'status', 'spouse', 'role', 'hp', 'ac', 'str', 'dex', 'con', 'int_val', 'wis', 'cha', 'alignment', 'xp', 'relationships'];
+        $compactFields = ['npc_id', 'name', 'race', 'class', 'role', 'gender', 'age', 'status', 'alignment'];
+
+        $makeDetailRow = function (array $c) use ($relsByChar): array {
+            return [
+                'npc_id' => (int) ($c['id'] ?? 0),
+                'name' => (string) ($c['name'] ?? ''),
+                'race' => (string) ($c['race'] ?? ''),
+                'class' => (string) ($c['class'] ?? ''),
+                'age' => (int) ($c['age'] ?? 0),
+                'gender' => (string) ($c['gender'] ?? ''),
+                'status' => (string) ($c['status'] ?? ''),
+                'spouse' => ew_sim_roster_spouse_cell($c),
+                'role' => (string) ($c['role'] ?? ''),
+                'hp' => $c['hp'] ?? '',
+                'ac' => $c['ac'] ?? '',
+                'str' => $c['str'] ?? '',
+                'dex' => $c['dex'] ?? '',
+                'con' => $c['con'] ?? '',
+                'int_val' => $c['int_'] ?? '',
+                'wis' => $c['wis'] ?? '',
+                'cha' => $c['cha'] ?? '',
+                'alignment' => (string) ($c['alignment'] ?? ''),
+                'xp' => $c['xp'] ?? '',
+                'relationships' => ew_sim_roster_relationships_cell($c, $relsByChar),
+            ];
+        };
+
+        $makeCompactRow = function (array $c): array {
+            return [
+                'npc_id' => (int) ($c['id'] ?? 0),
+                'name' => (string) ($c['name'] ?? ''),
+                'race' => (string) ($c['race'] ?? ''),
+                'class' => (string) ($c['class'] ?? ''),
+                'role' => (string) ($c['role'] ?? ''),
+                'gender' => (string) ($c['gender'] ?? ''),
+                'age' => (int) ($c['age'] ?? 0),
+                'status' => (string) ($c['status'] ?? ''),
+                'alignment' => (string) ($c['alignment'] ?? ''),
+            ];
+        };
+
         if ($n <= $detailMax) {
-            $lines = [];
+            $rows = [];
             foreach ($characters as $c) {
-                $lines[] = ew_sim_roster_line_main_run($c, $relsByChar);
+                $rows[] = $makeDetailRow($c);
             }
-            return "## Current Residents ({$n} — full detail, each line starts with NPC_<id> = database character id)\n" . implode("\n", $lines);
+
+            return "## Current Residents ({$n} — TOON tabular; npc_id = characters.id; int_val = INT score)\n"
+                . ew_toon_fenced(ew_toon_tabular_inner('residents', $detailFields, $rows, $delim));
         }
 
         $scored = [];
@@ -164,38 +320,42 @@ if (!function_exists('ew_sim_tiered_roster_main_run')) {
             if ($a['score'] !== $b['score']) {
                 return $b['score'] <=> $a['score'];
             }
+
             return strcmp((string) ($a['c']['name'] ?? ''), (string) ($b['c']['name'] ?? ''));
         });
 
         $detailSet = [];
-        $detailLines = [];
+        $detailRows = [];
         for ($i = 0; $i < $detailMax && $i < count($scored); $i++) {
             $c = $scored[$i]['c'];
-            $nm = $c['name'] ?? '';
-            $detailSet[$nm] = true;
-            $detailLines[] = ew_sim_roster_line_main_run($c, $relsByChar);
+            $detailSet[$c['name'] ?? ''] = true;
+            $detailRows[] = $makeDetailRow($c);
         }
 
-        $compactLines = [];
+        $compactRows = [];
         foreach ($characters as $c) {
             $nm = $c['name'] ?? '';
             if (isset($detailSet[$nm])) {
                 continue;
             }
-            $compactLines[] = ew_sim_roster_line_compact($c);
+            $compactRows[] = $makeCompactRow($c);
         }
-        sort($compactLines, SORT_STRING);
+        usort($compactRows, function ($a, $b) {
+            return strcmp((string) $a['name'], (string) $b['name']);
+        });
 
-        return "## Current Residents ({$n} total)\n"
-            . "### Full detail ({$detailMax} socially central NPCs — reference by character_id or NPC_<id> from roster)\n"
-            . implode("\n", $detailLines)
-            . "\n\n### Other residents (compact — same NPC_<id> prefix; use character_id in JSON)\n"
-            . implode("\n", $compactLines);
+        return "## Current Residents ({$n} total — TOON tabular; npc_id = characters.id)\n"
+            . "### Priority NPCs ({$detailMax} max — full mechanics + relationships; int_val = INT score)\n"
+            . ew_toon_fenced(ew_toon_tabular_inner('residents_priority', $detailFields, $detailRows, $delim))
+            . "### Other residents (compact)\n"
+            . ew_toon_fenced(ew_toon_tabular_inner('residents_other', $compactFields, $compactRows, $delim));
     }
 }
 
 if (!function_exists('ew_sim_tiered_roster_simple')) {
     /**
+     * TOON tabular roster for multi-town / chunked sims (no relationship strings).
+     *
      * @param list<array<string,mixed>> $characters
      */
     function ew_sim_tiered_roster_simple(array $characters, int $detailMax = 10): string
@@ -205,12 +365,49 @@ if (!function_exists('ew_sim_tiered_roster_simple')) {
             return '(no residents)';
         }
         $detailMax = max(4, min(24, $detailMax));
+        $delim = "\t";
+        $detailFields = ['npc_id', 'name', 'race', 'class', 'age', 'gender', 'status', 'spouse', 'role', 'xp', 'hp', 'ac'];
+        $compactFields = ['npc_id', 'name', 'race', 'class', 'role', 'gender', 'age', 'status', 'alignment'];
+
+        $makeDetailRow = function (array $c): array {
+            return [
+                'npc_id' => (int) ($c['id'] ?? 0),
+                'name' => (string) ($c['name'] ?? ''),
+                'race' => (string) ($c['race'] ?? ''),
+                'class' => (string) ($c['class'] ?? ''),
+                'age' => (int) ($c['age'] ?? 0),
+                'gender' => (string) ($c['gender'] ?? ''),
+                'status' => (string) ($c['status'] ?? ''),
+                'spouse' => ew_sim_roster_spouse_cell($c),
+                'role' => (string) ($c['role'] ?? ''),
+                'xp' => $c['xp'] ?? '',
+                'hp' => $c['hp'] ?? '',
+                'ac' => $c['ac'] ?? '',
+            ];
+        };
+
+        $makeCompactRow = function (array $c): array {
+            return [
+                'npc_id' => (int) ($c['id'] ?? 0),
+                'name' => (string) ($c['name'] ?? ''),
+                'race' => (string) ($c['race'] ?? ''),
+                'class' => (string) ($c['class'] ?? ''),
+                'role' => (string) ($c['role'] ?? ''),
+                'gender' => (string) ($c['gender'] ?? ''),
+                'age' => (int) ($c['age'] ?? 0),
+                'status' => (string) ($c['status'] ?? ''),
+                'alignment' => (string) ($c['alignment'] ?? ''),
+            ];
+        };
+
         if ($n <= $detailMax) {
-            $lines = [];
+            $rows = [];
             foreach ($characters as $c) {
-                $lines[] = ew_sim_roster_line_simple($c);
+                $rows[] = $makeDetailRow($c);
             }
-            return "## Current Residents ({$n} — full detail, NPC_<id> = characters.id)\n" . implode("\n", $lines);
+
+            return "## Current Residents ({$n} — TOON tabular; npc_id = characters.id)\n"
+                . ew_toon_fenced(ew_toon_tabular_inner('residents', $detailFields, $rows, $delim));
         }
 
         $scored = [];
@@ -221,31 +418,34 @@ if (!function_exists('ew_sim_tiered_roster_simple')) {
             if ($a['score'] !== $b['score']) {
                 return $b['score'] <=> $a['score'];
             }
+
             return strcmp((string) ($a['c']['name'] ?? ''), (string) ($b['c']['name'] ?? ''));
         });
 
         $detailSet = [];
-        $detailLines = [];
+        $detailRows = [];
         for ($i = 0; $i < $detailMax && $i < count($scored); $i++) {
             $c = $scored[$i]['c'];
             $detailSet[$c['name'] ?? ''] = true;
-            $detailLines[] = ew_sim_roster_line_simple($c);
+            $detailRows[] = $makeDetailRow($c);
         }
 
-        $compactLines = [];
+        $compactRows = [];
         foreach ($characters as $c) {
             if (isset($detailSet[$c['name'] ?? ''])) {
                 continue;
             }
-            $compactLines[] = ew_sim_roster_line_compact($c);
+            $compactRows[] = $makeCompactRow($c);
         }
-        sort($compactLines, SORT_STRING);
+        usort($compactRows, function ($a, $b) {
+            return strcmp((string) $a['name'], (string) $b['name']);
+        });
 
-        return "## Current Residents ({$n} total)\n"
+        return "## Current Residents ({$n} total — TOON tabular; npc_id = characters.id)\n"
             . "### Full detail ({$detailMax} key NPCs)\n"
-            . implode("\n", $detailLines)
-            . "\n\n### Other residents (compact)\n"
-            . implode("\n", $compactLines);
+            . ew_toon_fenced(ew_toon_tabular_inner('residents_priority', $detailFields, $detailRows, $delim))
+            . "### Other residents (compact)\n"
+            . ew_toon_fenced(ew_toon_tabular_inner('residents_other', $compactFields, $compactRows, $delim));
     }
 }
 

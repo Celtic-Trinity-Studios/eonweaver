@@ -267,23 +267,7 @@
                     $genderCounts[$g] = ($genderCounts[$g] ?? 0) + 1;
                 }
 
-                $demoSnap = "Current population: {$charCount}\n";
-                if (!empty($raceCounts)) {
-                    $parts = [];
-                    foreach ($raceCounts as $race => $cnt)
-                        $parts[] = "{$race}: {$cnt}";
-                    $demoSnap .= "Races: " . implode(', ', $parts) . "\n";
-                }
-                if (!empty($classCounts)) {
-                    $parts = [];
-                    foreach ($classCounts as $cl => $cnt)
-                        $parts[] = "{$cl}: {$cnt}";
-                    $demoSnap .= "Classes: " . implode(', ', $parts) . "\n";
-                }
-                $demoSnap .= "Gender: M={$genderCounts['M']}, F={$genderCounts['F']}\n";
-                if ($demographics) {
-                    $demoSnap .= "\nDemographic Targets (set by DM):\n{$demographics}\n";
-                }
+                $demoSnap = ew_sim_demographics_toon_snapshot($charCount, $raceCounts, $classCounts, $genderCounts, $demographics);
 
                 // Determine model & endpoint
                 $openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
@@ -304,7 +288,9 @@
                     $allNames = array_merge($existingNames, array_map(function ($c) {
                         return $c['name'];
                     }, $newCharacters));
-                    $existingNamesList = !empty($allNames) ? implode(', ', $allNames) : '(none yet)';
+                    $existingNamesBlock = empty($allNames)
+                        ? '(none yet)'
+                        : ew_toon_fenced(ew_toon_primitive_array_line('names_already_used', $allNames, "\t"));
                     $currentPop = $charCount + count($newCharacters);
                     $charNum = $charIdx + 1;
 
@@ -350,8 +336,8 @@ This is character #{$charNum} of {$numArrivals} being added.
 {$historyText}
 {$instrBlock}
 
-## EXISTING RESIDENTS (DO NOT duplicate any name):
-{$existingNamesList}
+## EXISTING RESIDENTS (DO NOT duplicate any name — TOON primitive list):
+{$existingNamesBlock}
 
 ## DEMOGRAPHIC GUIDANCE:
 - Look at the current racial and class breakdown. Fill gaps (no healer? consider Adept. No smith? consider Expert blacksmith).
@@ -910,7 +896,7 @@ Provide: reason (narrative), plus optional matching hints: preferred_class, pref
 The system will find the best match. If no match exists, the death is skipped.
 
 ## CHARACTER IDs (mandatory for mechanical changes)
-Each roster line starts with NPC_<id> — that integer is the database character id (same as characters.id).
+The roster uses TOON tables: column `npc_id` is the database character id (same as characters.id; same meaning as legacy NPC_<id> prefixes).
 For xp_gains, stat_changes, and role_changes you MUST set "character_id" to that integer (preferred). You may include "name" for readability but id is authoritative.
 For new_relationships use "character1_id" and "character2_id" (preferred), or legacy char1/char2 as exact roster names OR strings like "NPC_47".
 New arrivals in new_characters do NOT use character_id — the server assigns ids after creation.
@@ -939,7 +925,7 @@ You MUST respond with ONLY a valid JSON object (no markdown, no code fences, JUS
 - Day numbers are 1-based within THIS calendar month (max {$daysPerMonth}). For partial-month runs (first {$days} days only), only use days 1–{$days}.
 - Headlines appear in Town History on the matching calendar day; write clear, distinct summaries.
 
-REMINDER: Prefer character_id / character1_id / character2_id from the roster NPC_<id> tokens. Legacy exact-name fields still work if ids are omitted. Deaths use criteria-based matching (no character id).
+REMINDER: Prefer character_id / character1_id / character2_id from the roster npc_id column (or legacy NPC_<id> tokens). Legacy exact-name fields still work if ids are omitted. Deaths use criteria-based matching (no character id).
 PROMPT;
             } // end if($months===0) else
 

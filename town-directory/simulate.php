@@ -324,14 +324,10 @@ try {
             $xpMax = $xpCaps[$xpSpeed] ?? 50;
             $popText = $deathThreshold === 'unlimited' ? 'No population cap.' : "Pop over {$deathThreshold} increases death rate.";
 
-            // Build roster (tiered when large — same names, less verbatim stats per call)
+            // Build roster (tiered when large — TOON tabular for token efficiency)
             $chars = query('SELECT * FROM characters WHERE town_id = ? ORDER BY name', [$tId], $uid);
             $charCount = count($chars);
-            $rosterText = $charCount > 22
-                ? ew_sim_tiered_roster_simple($chars, 12)
-                : implode("\n", array_map(function ($c) {
-                    return ew_sim_roster_line_simple($c);
-                }, $chars));
+            $rosterText = ew_sim_tiered_roster_simple($chars, 12);
 
             $biomeBlock = $biome ? " | Biome: {$biome}" : '';
             $ctx = $priorContext ? "Prior events:\n{$priorContext}\n\n" : '';
@@ -370,7 +366,7 @@ try {
                 ? (macroFoodEconomyPromptLine($tId, (int) $townCampIdC) . macroFoodAutonomyDirective($tId, (int) $townCampIdC))
                 : '';
 
-            $base = "D&D {$dndEdition} | Town: \"{$tName}\"{$biomeBlock}{$stBlock} | Month {$monthNum} of {$totalMonths}{$macroFoodChunk}\n{$ctx}{$buildingText}\n\nCURRENT ROSTER (each line starts with NPC_<id> = characters.id; CRITICAL: Do NOT reuse any names from this roster. Use highly unique D&D names):\n{$rosterText}";
+            $base = "D&D {$dndEdition} | Town: \"{$tName}\"{$biomeBlock}{$stBlock} | Month {$monthNum} of {$totalMonths}{$macroFoodChunk}\n{$ctx}{$buildingText}\n\nCURRENT ROSTER (TOON tabular below — npc_id column = characters.id; CRITICAL: Do NOT reuse any names from this roster. Use highly unique D&D names):\n{$rosterText}";
 
             // Category-specific prompt
             switch ($category) {

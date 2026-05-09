@@ -262,7 +262,9 @@ if ($action === 'intake_roster') {
     $existingNames = array_map(function ($c) {
         return $c['name'];
     }, $characters);
-    $existingNamesList = !empty($existingNames) ? implode(', ', $existingNames) : '(none yet)';
+    $existingNamesBlock = empty($existingNames)
+        ? '(none yet)'
+        : ew_toon_fenced(ew_toon_primitive_array_line('existing_character_names', $existingNames, "\t"));
     $charCount = count($characters);
 
     // Demographic snapshot
@@ -277,20 +279,6 @@ if ($action === 'intake_roster') {
         $g = strtoupper(substr($c['gender'] ?? 'M', 0, 1));
         $genderCounts[$g] = ($genderCounts[$g] ?? 0) + 1;
     }
-    $demoSnap = "Current population: {$charCount}\n";
-    if (!empty($raceCounts)) {
-        $parts = [];
-        foreach ($raceCounts as $race => $cnt)
-            $parts[] = "{$race}: {$cnt}";
-        $demoSnap .= "Races: " . implode(', ', $parts) . "\n";
-    }
-    if (!empty($classCounts)) {
-        $parts = [];
-        foreach ($classCounts as $cl => $cnt)
-            $parts[] = "{$cl}: {$cnt}";
-        $demoSnap .= "Classes: " . implode(', ', $parts) . "\n";
-    }
-    $demoSnap .= "Gender: M={$genderCounts['M']}, F={$genderCounts['F']}\n";
 
     $metaRows = query('SELECT `key`, value FROM town_meta WHERE town_id = ?', [$townId], $uid);
     $townMeta = [];
@@ -299,12 +287,13 @@ if ($action === 'intake_roster') {
     $demographics = trim($townMeta['demographics'] ?? '');
     $biome = trim($townMeta['biome'] ?? '');
     $settlementType = trim($townMeta['settlement_type'] ?? '');
-    if ($demographics)
-        $demoSnap .= "\nDemographic Targets:\n{$demographics}\n";
-    if ($biome)
-        $demoSnap .= "\nBiome/Terrain: {$biome}\n";
-    if ($settlementType)
-        $demoSnap .= "\nSettlement Type: {$settlementType}\n";
+    $demoSnap = ew_sim_demographics_toon_snapshot($charCount, $raceCounts, $classCounts, $genderCounts, $demographics);
+    if ($biome !== '') {
+        $demoSnap .= "\n\nBiome/Terrain: {$biome}";
+    }
+    if ($settlementType !== '') {
+        $demoSnap .= "\n\nSettlement Type: {$settlementType}";
+    }
 
     // Campaign rules scoped by campaign
     // Load gen_rules for level constraints
@@ -523,7 +512,7 @@ For each creature provide ONLY: name, race, class, gender, age, role, alignment.
 {$rules}
 
 ## EXISTING NAMES (DO NOT duplicate any):
-{$existingNamesList}
+{$existingNamesBlock}
 
 ## OUTPUT (VALID JSON ONLY — no markdown, no code fences, JUST the raw JSON array):
 [{\"name\":\"Stirge Alpha\",\"race\":\"Stirge\",\"class\":\"Magical Beast 1\",\"gender\":\"N\",\"age\":2,\"role\":\"Alpha\",\"alignment\":\"N\"},...]";
@@ -626,7 +615,7 @@ For each character provide ONLY: name, race, class, gender, age, role, alignment
 {$historyText}
 {$instrBlock}
 ## EXISTING NAMES (DO NOT duplicate any):
-{$existingNamesList}
+{$existingNamesBlock}
 
 ## DIVERSITY RULES:
 - EVERY character must have a UNIQUE first name. Never reuse the same first name twice in this list or from the existing names.
@@ -1390,7 +1379,9 @@ elseif ($action === 'intake_custom') {
 
     $characters = query('SELECT name FROM characters WHERE town_id = ? ORDER BY name', [$townId], $uid);
     $existingNames = array_map(function ($c) { return $c['name']; }, $characters ?: []);
-    $existingNamesList = !empty($existingNames) ? implode(', ', $existingNames) : '(none)';
+    $existingNamesToon = empty($existingNames)
+        ? '(none)'
+        : ew_toon_fenced(ew_toon_primitive_array_line('existing_character_names', $existingNames, "\t"));
 
     // Campaign rules scoped by campaign
     if ($intakeCampId) {
@@ -1440,7 +1431,8 @@ Town: \"{$townName}\"
 - Generate relevant skills for their class and background.
 - Give them appropriate gear/equipment for their class, level, and role.
 - Write a rich 2-4 sentence backstory ('history') that ties into their description.
-- Name MUST NOT duplicate any existing name: {$existingNamesList}
+- Name MUST NOT duplicate any name in this TOON list (literal \"(none)\" means no residents yet):
+{$existingNamesToon}
 - 'class' format: 'ClassName Level', e.g. 'Fighter 5', 'Expert 3'.
 - 'gender' must be 'M' or 'F'.
 - All ability scores and hp must be NUMBERS, not strings.

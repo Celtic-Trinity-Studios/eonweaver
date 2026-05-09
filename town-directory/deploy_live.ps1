@@ -2,11 +2,14 @@
 # Credentials: deploy.env.eonweaver (recommended) or legacy deploy.env with EW_ALLOW_EONWEAVER_DEPLOY=true
 #
 # Prefer instead:  npm run build  &&  node deploy.cjs eonweaver
+# Auto-commit before Discord: see deploy_git_snapshot.ps1. Skip with -SkipGitCommit or EW_SKIP_DEPLOY_COMMIT=1.
 param(
-    [string[]]$Changes = @()
+    [string[]]$Changes = @(),
+    [switch]$SkipGitCommit
 )
 
 $localRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+. (Join-Path $localRoot "deploy_git_snapshot.ps1")
 
 function Load-DeployEnv {
     param([string]$EnvFile)
@@ -99,8 +102,8 @@ Write-Host "`n=== Eon Weaver LIVE Deploy ===" -ForegroundColor Red
 Write-Host "Target: $ftpUri (PRODUCTION, user $ftpUser)" -ForegroundColor Gray
 
 # 1. Upload PHP backend files
-Write-Host "`n[1/4] Uploading PHP backend files..." -ForegroundColor Yellow
-$phpFiles = @("api.php", "db.php", "setup_mysql.php", "config.php", "simulate.php", "sim_apply.php", "sim_run.php", "sim_plan.php", "sim_prompt_lib.php", "weather_daily_lib.php", "sim_single_town.php", "sim_world.php", "sim_level_up.php", "intake_actions.php", "scribe_actions.php", "auth.php", "upload_portrait.php", "upload_world_map.php", "upload_content.php", "helpers.php", "llm_local.php", "import_srd.php", "import_5e_srd.php", "setup_srd_dbs.php", "migrate_srd.php", "reset_app_data.php", "discord.php", "discord_member_sync_lib.php", "macro_framework_lib.php", "tier_policy.php", "tier_limits.php", "tier_economics.php", "signup_policy.php", "smtp_mail.php", "verify_email.php", "calendar_advance_lib.php", "calendar_display_lib.php", "metrics_lib.php", "sitemap.php", "user_db.php")
+Write-Host "`n[1/6] Uploading PHP backend files..." -ForegroundColor Yellow
+$phpFiles = @("api.php", "db.php", "setup_mysql.php", "config.php", "simulate.php", "sim_apply.php", "sim_run.php", "sim_plan.php", "sim_prompt_lib.php", "toon_lib.php", "weather_daily_lib.php", "sim_single_town.php", "sim_world.php", "sim_level_up.php", "intake_actions.php", "scribe_actions.php", "auth.php", "upload_portrait.php", "upload_world_map.php", "upload_content.php", "helpers.php", "llm_local.php", "import_srd.php", "import_5e_srd.php", "setup_srd_dbs.php", "migrate_srd.php", "reset_app_data.php", "discord.php", "discord_member_sync_lib.php", "macro_framework_lib.php", "tier_policy.php", "tier_limits.php", "tier_economics.php", "signup_policy.php", "smtp_mail.php", "verify_email.php", "calendar_advance_lib.php", "calendar_display_lib.php", "metrics_lib.php", "sitemap.php", "user_db.php")
 foreach ($f in $phpFiles) {
     $path = Join-Path $localRoot $f
     if (Test-Path $path) {
@@ -109,7 +112,7 @@ foreach ($f in $phpFiles) {
 }
 
 # 2. Upload live/index.html + SEO root files
-Write-Host "`n[2/4] Uploading index.html (LIVE)..." -ForegroundColor Yellow
+Write-Host "`n[2/6] Uploading index.html (LIVE)..." -ForegroundColor Yellow
 FtpUpload (Join-Path $localRoot "live\index.html") "index.html"
 if (Test-Path (Join-Path $localRoot "404.html")) {
     FtpUpload (Join-Path $localRoot "404.html") "404.html"
@@ -122,7 +125,7 @@ foreach ($rootFile in @("robots.txt", "sitemap.xml", "favicon.svg")) {
 }
 
 # 3. Upload live/assets/
-Write-Host "`n[3/4] Uploading assets/ (JS/CSS bundles)..." -ForegroundColor Yellow
+Write-Host "`n[3/6] Uploading assets/ (JS/CSS bundles)..." -ForegroundColor Yellow
 FtpMkdir "assets"
 $assetFiles = Get-ChildItem (Join-Path $localRoot "live\assets") -File
 foreach ($f in $assetFiles) {
@@ -130,7 +133,7 @@ foreach ($f in $assetFiles) {
 }
 
 # 4. .htaccess
-Write-Host "`n[4/4] Uploading .htaccess..." -ForegroundColor Yellow
+Write-Host "`n[4/6] Uploading .htaccess..." -ForegroundColor Yellow
 $htaccess = Join-Path $localRoot "live\.htaccess"
 if (Test-Path $htaccess) {
     FtpUpload $htaccess ".htaccess"
@@ -140,8 +143,12 @@ Write-Host "`n=== LIVE Deploy Complete! ===" -ForegroundColor Green
 Write-Host "Site: https://eonweaver.com/" -ForegroundColor Cyan
 Write-Host "Run setup: https://eonweaver.com/setup_mysql.php?key=setup2024" -ForegroundColor Cyan
 
-# 5. Discord - local bot post (.env.discord + node; no call to production PHP)
-Write-Host "`n[5/5] Sending Discord deploy notification (local)..." -ForegroundColor Yellow
+# 5. Git snapshot commit (so Discord can list real commits; optional)
+Write-Host "`n[5/6] Git snapshot commit (before Discord)..." -ForegroundColor Yellow
+Invoke-DeployGitSnapshotCommit -TownDirectoryPath $localRoot -DeployLabel "eonweaver production" -Skip $SkipGitCommit.IsPresent
+
+# 6. Discord - local bot post (.env.discord + node; no call to production PHP)
+Write-Host "`n[6/6] Sending Discord deploy notification (local)..." -ForegroundColor Yellow
 $tmpNotify = $null
 try {
     $notify = @{

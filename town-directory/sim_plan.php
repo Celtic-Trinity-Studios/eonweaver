@@ -26,14 +26,7 @@
             $charCount = count($characters);
             $aliveCount = count(array_filter($characters, fn($c) => ($c['status'] ?? 'Alive') === 'Alive'));
 
-            // Build quick roster summary
-            $rosterSummary = [];
-            foreach ($characters as $c) {
-                if (($c['status'] ?? 'Alive') !== 'Alive')
-                    continue;
-                $rosterSummary[] = ew_sim_roster_id_prefix($c) . "{$c['name']} ({$c['race']} {$c['class']}, {$c['gender']}, age {$c['age']}, {$c['role']})";
-            }
-            $rosterText = implode("\n", $rosterSummary);
+            $rosterText = ew_sim_plan_roster_toon_alive($characters);
 
             // Calendar info
             $campId = $town[0]['campaign_id'] ?? null;
@@ -71,7 +64,7 @@ You are a D&D world simulation planner. Plan what happens to the settlement of {
 - Calendar months: {$monthLabelStr}, Year {$year} {$era}
 {$macroFoodPlanBlock}
 
-## Current Residents:
+## Current Residents (alive; TOON — npc_id is characters.id):
 {$rosterText}
 
 ## Campaign Rules:
