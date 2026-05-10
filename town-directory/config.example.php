@@ -38,6 +38,7 @@ define('BLOCK_DATACENTER_SIGNUPS', false);
 define('FREE_SIGNUP_CREDIT_GRANT_RAW', 300000);
 // Optional: must match src/constants/credits.js — billing buckets in helpers.php use this.
 // define('TOKENS_PER_CREDIT', 200000);
+// Intake wallet debits use fixed raw amounts in pricing.php (keep in sync with src/constants/pricing.js).
 
 // Optional: default monthly raw-token caps (when site_settings has no override) use list prices
 // from tier_limits.php and your loaded LLM cost per displayed EC:

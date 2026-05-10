@@ -403,10 +403,6 @@ SPROMPT;
                     }
 
                     $data = json_decode($response, true);
-                    // Track token usage (hidden)
-                    if (!empty($data['usage'])) {
-                        trackTokenUsage($userId, $data['usage']);
-                    }
                     $respText = $data["choices"][0]["message"]["content"] ?? "";
                     $respText = preg_replace('/^\s*`+\w*\s*/i', '', $respText);
                     $respText = preg_replace('/\s*`+\s*$/', '', $respText);
@@ -467,6 +463,12 @@ SPROMPT;
                     }
                     $newCharacters[] = $newChar;
                     $failures = 0;
+                    ew_track_ai_fixed_billing(
+                        $userId,
+                        !empty($data['usage']) ? $data['usage'] : null,
+                        ew_pricing_sim_forced_arrival_one_wallet_raw(),
+                        'sim_forced_arrival'
+                    );
 
                     // Update demographic counts for next iteration
                     $r = $newChar['race'] ?? 'Human';
@@ -945,6 +947,7 @@ PROMPT;
             // ── LLM: prefer local first, fall back to OpenRouter ────────────
             $text = null;
             $llmSource = "gemini";
+            $lastOpenRouterUsage = null;
 
             if (defined("LLAMA_HOST") && LLAMA_HOST && isLocalLLMAvailable()) {
                 $llamaPrompt = "[INST] " . $prompt . " [/INST]";
@@ -999,10 +1002,7 @@ PROMPT;
                     throw new Exception("OpenRouter API error (HTTP {$httpCode}): " . substr($response, 0, 500));
                 }
                 $data = json_decode($response, true);
-                // Track token usage (hidden)
-                if (!empty($data['usage'])) {
-                    trackTokenUsage($userId, $data['usage']);
-                }
+                $lastOpenRouterUsage = $data['usage'] ?? null;
                 $text = $data["choices"][0]["message"]["content"] ?? "";
                 $GLOBALS['EW_SIM_LAST_OPENROUTER_FINISH_REASON'] = $data['choices'][0]['finish_reason'] ?? '';
             }
@@ -1015,6 +1015,13 @@ PROMPT;
                 $frHint = $fr !== '' ? " (finish_reason={$fr}" . ($fr === 'length' ? ' — output hit max_tokens; raise EW_SIM_RUN_MAX_OUTPUT_* or use 1 month per call' : '') . ')' : '';
                 throw new Exception('Failed to parse Gemini response as JSON: ' . json_last_error_msg() . $frHint . "\n\nRaw response:\n" . substr($text, 0, 500));
             }
+
+            ew_track_ai_fixed_billing(
+                $userId,
+                $lastOpenRouterUsage,
+                ew_pricing_sim_run_wallet_raw(max(1, $months), $charCount, 1),
+                'sim_run'
+            );
 
             if (!empty($simulation['daily_log']) && is_array($simulation['daily_log'])) {
                 usort($simulation['daily_log'], function ($a, $b) {

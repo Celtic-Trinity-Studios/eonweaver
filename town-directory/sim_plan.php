@@ -119,14 +119,19 @@ PLAN;
                 CURLOPT_TIMEOUT => 60
             ]);
             $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
             curl_close($ch);
+            resetDB();
 
             $respData = json_decode($response, true);
-            $planText = $respData['choices'][0]['message']['content'] ?? '';
-            // Track token usage (hidden)
-            if (!empty($respData['usage'])) {
-                trackTokenUsage($userId, $respData['usage']);
+            if ($httpCode !== 200 || !is_array($respData) || empty($respData['choices'][0])) {
+                $msg = is_array($respData) && isset($respData['error']['message'])
+                    ? $respData['error']['message']
+                    : substr((string) $response, 0, 400);
+                throw new Exception('Planning AI failed (HTTP ' . $httpCode . '): ' . $msg);
             }
+
+            $planText = $respData['choices'][0]['message']['content'] ?? '';
 
             // Try to parse as JSON
             $planText = preg_replace('/^`+\w*\s*/m', '', $planText);
@@ -139,6 +144,13 @@ PLAN;
                     $planJson = json_decode($matches[0], true);
                 }
             }
+
+            ew_track_ai_fixed_billing(
+                $userId,
+                $respData['usage'] ?? null,
+                ew_pricing_sim_planning_wallet_raw(1, $months),
+                'sim_planning'
+            );
 
             simRespond([
                 'ok' => true,

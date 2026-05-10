@@ -384,8 +384,13 @@ try {
                 );
             }
             foreach ($towns as &$t) {
-                $cnt = query('SELECT COUNT(*) as c FROM characters WHERE town_id = ?', [$t['id']], $uid);
+                $cnt = query(
+                    'SELECT COUNT(*) AS c, COALESCE(SUM(CASE WHEN COALESCE(TRIM(status), \'\') = \'Deceased\' THEN 0 ELSE 1 END), 0) AS alive_c FROM characters WHERE town_id = ?',
+                    [$t['id']],
+                    $uid
+                );
                 $t['character_count'] = (int) ($cnt[0]['c'] ?? 0);
+                $t['alive_character_count'] = (int) ($cnt[0]['alive_c'] ?? 0);
             }
             respond(['ok' => true, 'towns' => $towns]);
             break;

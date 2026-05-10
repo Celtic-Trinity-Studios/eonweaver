@@ -45,24 +45,287 @@
 
     <!-- Public Landing -->
     <div id="landing-screen" class="landing-screen">
-        <div class="landing-card">
-            <p class="landing-eyebrow">EON WEAVER</p>
-            <h1 class="landing-title">Your setting keeps moving—even when the table is quiet.</h1>
-            <p class="landing-subtitle">
-                Months roll forward across towns: demographics, drama, and macro-scale change—tied to an in-game calendar and real geography on your world map (pins, travel—not just a relationship chart).
-            </p>
-            <div class="landing-actions">
+        <aside class="landing-sidebar" aria-label="Site navigation">
+            <div class="landing-sidebar-brand">
+                <div class="landing-sidebar-title">Eon Weaver</div>
+                <p class="landing-sidebar-subtitle">AI campaign manager for D&amp;D &amp; OSR</p>
+            </div>
+
+            <nav class="landing-sidebar-nav" role="tablist" aria-label="Landing sections">
+                <button type="button" class="landing-nav-item active" data-landing-section="overview" role="tab" aria-selected="true">
+                    <span class="landing-nav-icon">🏰</span><span>Overview</span>
+                </button>
+                <button type="button" class="landing-nav-item" data-landing-section="how" role="tab" aria-selected="false">
+                    <span class="landing-nav-icon">🪄</span><span>How it works</span>
+                </button>
+                <button type="button" class="landing-nav-item" data-landing-section="features" role="tab" aria-selected="false">
+                    <span class="landing-nav-icon">⚙️</span><span>Features</span>
+                </button>
+                <button type="button" class="landing-nav-item" data-landing-section="editions" role="tab" aria-selected="false">
+                    <span class="landing-nav-icon">🎲</span><span>Editions</span>
+                </button>
+                <button type="button" class="landing-nav-item" data-landing-section="preview" role="tab" aria-selected="false">
+                    <span class="landing-nav-icon">🖼️</span><span>Preview</span>
+                </button>
+                <button type="button" class="landing-nav-item" data-landing-section="dms" role="tab" aria-selected="false">
+                    <span class="landing-nav-icon">📜</span><span>For DMs</span>
+                </button>
+            </nav>
+
+            <div class="landing-sidebar-cta">
                 <button id="landing-signin-btn" class="btn-primary">Sign In</button>
                 <button id="landing-register-btn" class="btn-secondary">Create Account</button>
             </div>
-            <div class="landing-feature-grid">
-                <div class="landing-feature"><strong>🌍 Town &amp; world simulation</strong><span>Run one town or simulate every settlement in one pass</span></div>
-                <div class="landing-feature"><strong>🗺️ Geographic world maps</strong><span>Place pins on your uploaded map; estimate travel between locations</span></div>
-                <div class="landing-feature"><strong>📅 In-game calendar</strong><span>Advance time between sessions; anchor plots to campaign dates</span></div>
-                <div class="landing-feature"><strong>📜 Timeline &amp; codex</strong><span>Evolving history plus AI scribe &amp; wiki when you need depth</span></div>
-            </div>
-        </div>
+
+            <footer class="landing-sidebar-footer">
+                <div class="landing-footer-links">
+                    <a href="https://discord.gg/dqeUxNbHHj" target="_blank" rel="noopener">Discord</a>
+                    <span aria-hidden="true">·</span>
+                    <a href="mailto:admin@celtictrinitystudios.com">Contact</a>
+                </div>
+                <p class="landing-footer-meta">© 2026 Eon Weaver · Beta</p>
+            </footer>
+        </aside>
+
+        <main class="landing-main">
+            <!-- Overview -->
+            <section class="landing-section active" data-landing-section="overview" role="tabpanel" aria-label="Overview">
+                <p class="landing-eyebrow">EON WEAVER</p>
+                <h1 class="landing-title">Your setting keeps moving—even when the table is quiet.</h1>
+                <p class="landing-subtitle">
+                    Months roll forward across towns: demographics, drama, and macro-scale change—tied to an in-game calendar and real geography on your world map (pins, travel—not just a relationship chart).
+                </p>
+                <div class="landing-actions">
+                    <button type="button" class="btn-primary" data-landing-cta="signin">Sign In</button>
+                    <button type="button" class="btn-secondary" data-landing-cta="register">Create Account</button>
+                </div>
+                <div class="landing-feature-grid">
+                    <div class="landing-feature"><strong>🌍 Town &amp; world simulation</strong><span>Run one town or simulate every settlement in one pass</span></div>
+                    <div class="landing-feature"><strong>🗺️ Geographic world maps</strong><span>Place pins on your uploaded map; estimate travel between locations</span></div>
+                    <div class="landing-feature"><strong>📅 In-game calendar</strong><span>Advance time between sessions; anchor plots to campaign dates</span></div>
+                    <div class="landing-feature"><strong>📜 Timeline &amp; codex</strong><span>Evolving history plus AI scribe &amp; wiki when you need depth</span></div>
+                </div>
+                <p class="landing-note">
+                    Bring your own <strong>OpenRouter</strong> API key—you control AI usage and cost. No vendor lock-in.
+                </p>
+            </section>
+
+            <!-- How it works -->
+            <section class="landing-section" data-landing-section="how" role="tabpanel" aria-label="How it works" hidden>
+                <p class="landing-eyebrow">HOW IT WORKS</p>
+                <h2 class="landing-section-title">From empty world to living campaign in four steps.</h2>
+                <ol class="landing-steps">
+                    <li class="landing-step">
+                        <div class="landing-step-num">1</div>
+                        <div class="landing-step-body">
+                            <h3>Build your towns &amp; world</h3>
+                            <p>Add settlements, set demographics &amp; rules per town, upload your world map, and drop pins on the locations that matter to your party.</p>
+                        </div>
+                    </li>
+                    <li class="landing-step">
+                        <div class="landing-step-num">2</div>
+                        <div class="landing-step-body">
+                            <h3>Run a month between sessions</h3>
+                            <p>Simulate one town or every settlement in a single pass. Births, arrivals, departures, relationships, drama, and the occasional disaster—all configurable.</p>
+                        </div>
+                    </li>
+                    <li class="landing-step">
+                        <div class="landing-step-num">3</div>
+                        <div class="landing-step-body">
+                            <h3>Anchor everything to the calendar</h3>
+                            <p>Every event lands on a real campaign date. Hook plots to specific moons, festivals, or seasons your players already recognize.</p>
+                        </div>
+                    </li>
+                    <li class="landing-step">
+                        <div class="landing-step-num">4</div>
+                        <div class="landing-step-body">
+                            <h3>Keep the lore current</h3>
+                            <p>The AI scribe writes wiki entries from the events that just happened, so your codex grows with the campaign instead of after it.</p>
+                        </div>
+                    </li>
+                </ol>
+            </section>
+
+            <!-- Features -->
+            <section class="landing-section" data-landing-section="features" role="tabpanel" aria-label="Features" hidden>
+                <p class="landing-eyebrow">FEATURES</p>
+                <h2 class="landing-section-title">A campaign manager, a world simulator, and a lore engine.</h2>
+                <div class="landing-feature-deep-grid">
+                    <article class="landing-feature-card">
+                        <h3>🌍 Town &amp; World Simulation</h3>
+                        <p>Configurable rates for birth, death, conflict, and relationship formation. Run 0–24 months per pass; preview changes before applying.</p>
+                    </article>
+                    <article class="landing-feature-card">
+                        <h3>🗺️ Geographic World Maps</h3>
+                        <p>Upload your own map, place pins for towns and landmarks, and estimate travel distance and duration between any two points.</p>
+                    </article>
+                    <article class="landing-feature-card">
+                        <h3>📅 In-Game Calendar</h3>
+                        <p>Custom calendar config. Advance days, weeks, or months. Sims and plot hooks tie back to campaign dates automatically.</p>
+                    </article>
+                    <article class="landing-feature-card">
+                        <h3>📜 AI Scribe &amp; Wiki</h3>
+                        <p>Auto-generate town histories, NPC bios, and recap entries. Searchable, editable wiki you can share with your table.</p>
+                    </article>
+                    <article class="landing-feature-card">
+                        <h3>🧙 Characters &amp; Level-Up</h3>
+                        <p>Full character sheets plus a guided level-up wizard (3.5e most complete). Roster import from statblocks.</p>
+                    </article>
+                    <article class="landing-feature-card">
+                        <h3>⚔️ Encounters</h3>
+                        <p>Build encounters from your roster and the SRD; track combat state in a dedicated view.</p>
+                    </article>
+                    <article class="landing-feature-card">
+                        <h3>🎮 VTT Export</h3>
+                        <p>Export rosters and characters in formats your virtual tabletop can read.</p>
+                    </article>
+                    <article class="landing-feature-card">
+                        <h3>👥 Player Portal</h3>
+                        <p>Optional read-only view your players can bookmark—just the lore and campaign info you choose to share.</p>
+                    </article>
+                    <article class="landing-feature-card">
+                        <h3>💬 Discord Integration</h3>
+                        <p>Deploy notices, scribe pings, and bug reports route to your Discord. Optional and configurable.</p>
+                    </article>
+                </div>
+            </section>
+
+            <!-- Editions -->
+            <section class="landing-section" data-landing-section="editions" role="tabpanel" aria-label="Editions" hidden>
+                <p class="landing-eyebrow">EDITIONS</p>
+                <h2 class="landing-section-title">Built around 3.5e. Friendly to the rest.</h2>
+                <p class="landing-section-lead">
+                    Eon Weaver's roster, sim, calendar, and scribe are edition-agnostic. The character sheet and level-up wizard go deepest on 3.5e today; other editions are usable now and growing.
+                </p>
+                <div class="landing-editions-grid">
+                    <div class="landing-edition full">
+                        <span class="landing-edition-name">3.5e</span>
+                        <span class="landing-edition-status">Full support</span>
+                        <small>Default · level-up wizard · SRD browser</small>
+                    </div>
+                    <div class="landing-edition partial">
+                        <span class="landing-edition-name">Pathfinder 1e</span>
+                        <span class="landing-edition-status">Full support</span>
+                        <small>Shares the 3.5e foundation</small>
+                    </div>
+                    <div class="landing-edition partial">
+                        <span class="landing-edition-name">5e</span>
+                        <span class="landing-edition-status">Roster &amp; sim</span>
+                        <small>Sheet WIP</small>
+                    </div>
+                    <div class="landing-edition partial">
+                        <span class="landing-edition-name">Pathfinder 2e</span>
+                        <span class="landing-edition-status">Roster &amp; sim</span>
+                        <small>Sheet WIP</small>
+                    </div>
+                    <div class="landing-edition partial">
+                        <span class="landing-edition-name">AD&amp;D 1e / 2e</span>
+                        <span class="landing-edition-status">Roster &amp; sim</span>
+                        <small>Sheet WIP</small>
+                    </div>
+                    <div class="landing-edition partial">
+                        <span class="landing-edition-name">OD&amp;D · 4e</span>
+                        <span class="landing-edition-status">Roster &amp; sim</span>
+                        <small>Sheet WIP</small>
+                    </div>
+                </div>
+                <p class="landing-note">Edition is set per campaign in Settings—switch any time.</p>
+            </section>
+
+            <!-- Preview -->
+            <section class="landing-section" data-landing-section="preview" role="tabpanel" aria-label="Preview" hidden>
+                <p class="landing-eyebrow">PREVIEW</p>
+                <h2 class="landing-section-title">A glimpse of the workspace.</h2>
+                <p class="landing-section-lead">Screenshots from the in-app views. (Live previews coming soon.)</p>
+                <div class="landing-preview-grid">
+                    <div class="landing-preview-card">
+                        <div class="landing-preview-thumb" aria-hidden="true">🏘️</div>
+                        <h3>Town roster</h3>
+                        <p>Residents with stats, relationships, and history—filterable by race, class, and status.</p>
+                    </div>
+                    <div class="landing-preview-card">
+                        <div class="landing-preview-thumb" aria-hidden="true">🗺️</div>
+                        <h3>World map with pins</h3>
+                        <p>Your uploaded map with locations pinned and travel context between them.</p>
+                    </div>
+                    <div class="landing-preview-card">
+                        <div class="landing-preview-thumb" aria-hidden="true">📜</div>
+                        <h3>AI scribe entry</h3>
+                        <p>Auto-generated lore tied to the events that just unfolded in your towns.</p>
+                    </div>
+                    <div class="landing-preview-card">
+                        <div class="landing-preview-thumb" aria-hidden="true">📅</div>
+                        <h3>In-game calendar</h3>
+                        <p>Advance time between sessions; everything stays anchored to campaign dates.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- For DMs -->
+            <section class="landing-section" data-landing-section="dms" role="tabpanel" aria-label="For DMs" hidden>
+                <p class="landing-eyebrow">FOR DMS</p>
+                <h2 class="landing-section-title">Built for the DM running long campaigns.</h2>
+                <blockquote class="landing-quote">
+                    “Your setting keeps moving—even when the table is quiet.”
+                </blockquote>
+                <ul class="landing-bullets">
+                    <li>You run a campaign that's been going for years and you're tired of the world standing still between sessions.</li>
+                    <li>You want demographics, drama, and macro-scale change without writing every NPC's life by hand.</li>
+                    <li>You care about real geography—where places are and how long it takes to get between them—not just a relationship chart.</li>
+                    <li>You have more lore in your head than time to write down, and you want an AI scribe that catches up for you.</li>
+                    <li>You want to bring your own AI key (OpenRouter) and not be locked into one vendor.</li>
+                </ul>
+                <div class="landing-actions landing-actions-end">
+                    <button type="button" class="btn-primary" data-landing-cta="signin">Sign In</button>
+                    <button type="button" class="btn-secondary" data-landing-cta="register">Create Account</button>
+                </div>
+            </section>
+        </main>
     </div>
+
+    <script>
+        // Self-contained landing nav: tab-style section switching.
+        // Lives outside main.js so it works the moment HTML parses.
+        (function () {
+            const root = document.getElementById('landing-screen');
+            if (!root) return;
+            const navItems = root.querySelectorAll('[data-landing-section]');
+            const sections = root.querySelectorAll('section.landing-section');
+            const navButtons = root.querySelectorAll('.landing-nav-item');
+
+            function activate(name) {
+                sections.forEach(sec => {
+                    const match = sec.getAttribute('data-landing-section') === name;
+                    sec.classList.toggle('active', match);
+                    if (match) sec.removeAttribute('hidden');
+                    else sec.setAttribute('hidden', '');
+                });
+                navButtons.forEach(btn => {
+                    const match = btn.getAttribute('data-landing-section') === name;
+                    btn.classList.toggle('active', match);
+                    btn.setAttribute('aria-selected', match ? 'true' : 'false');
+                });
+                const main = root.querySelector('.landing-main');
+                if (main) main.scrollTop = 0;
+            }
+
+            navButtons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    activate(btn.getAttribute('data-landing-section'));
+                });
+            });
+
+            // In-content CTAs (Sign In / Create Account inside sections) defer to the
+            // sidebar buttons that main.js already wires up.
+            root.addEventListener('click', (e) => {
+                const target = e.target.closest('[data-landing-cta]');
+                if (!target) return;
+                const which = target.getAttribute('data-landing-cta');
+                const id = which === 'register' ? 'landing-register-btn' : 'landing-signin-btn';
+                document.getElementById(id)?.click();
+            });
+        })();
+    </script>
 
     <!-- Auth Screen -->
     <div id="auth-screen" style="display:none;">

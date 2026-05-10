@@ -78,6 +78,7 @@
 
             // LLM routing: local first, Gemini fallback
             $simText = null;
+            $singleTownOrUsage = null;
             if (defined('LLAMA_HOST') && LLAMA_HOST && isLocalLLMAvailable()) {
                 try {
                     $simText = callLocalLLM('[INST] ' . $prompt . ' [/INST]', (int) (LLAMA_MAX_TOKENS ?? 1024));
@@ -112,14 +113,19 @@
                 if ($code !== 200)
                     throw new Exception("OpenRouter API error for {$tName}: " . substr($resp, 0, 100));
                 $orResp = json_decode($resp, true);
-                // Track token usage (hidden)
-                if (!empty($orResp['usage'])) {
-                    trackTokenUsage($userId, $orResp['usage']);
-                }
+                $singleTownOrUsage = $orResp['usage'] ?? null;
                 $simText = $orResp['choices'][0]['message']['content'] ?? '';
             }
             resetDB();
             $sim = robustJsonDecode($simText);
+            if ($simText !== null && $simText !== '') {
+                ew_track_ai_fixed_billing(
+                    $userId,
+                    $singleTownOrUsage,
+                    ew_pricing_sim_run_wallet_raw(max(1, $months), $charCount, 1),
+                    'sim_single_town'
+                );
+            }
             simRespond([
                 'ok' => true,
                 'town_id' => $tId,

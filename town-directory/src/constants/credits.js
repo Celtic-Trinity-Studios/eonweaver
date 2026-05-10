@@ -1,7 +1,7 @@
 /**
  * Eon Credits (TC) scale — must match AiCostConfirm / backend wallet storage.
  * Wallet `credit_balance` is stored as RAW LLM tokens; divide by this for TC display.
- * See helpers.php trackTokenUsage().
+ * Wallet debits use fixed raw amounts from pricing.php (see helpers.php ew_track_ai_fixed_billing).
  */
 export const TOKENS_PER_CREDIT = 200_000;
 

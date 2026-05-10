@@ -283,12 +283,12 @@ export default function SimulationView(container) {
     const popMatch = townInfo?.textContent?.match(/(\d+)\s*residents/i);
     const population = popMatch ? parseInt(popMatch[1]) : 50;
 
-    // Show AI cost confirmation
-    const costType = intakeCount > 0 && selectedMonths === 0 ? 'intake' : 'simulation';
-    const costParams = costType === 'intake'
-      ? { count: intakeCount }
-      : { months: Math.max(1, selectedMonths), population };
-    const proceed = await confirmAiCost(costType, costParams);
+    // Show AI cost confirmation (fixed catalog debits — see pricing.js / sim_run.php)
+    const proceed = await confirmAiCost('simulation', {
+      months: selectedMonths,
+      population,
+      intakeCount,
+    });
     if (!proceed) return;
 
     log(`--- Starting simulation: ${selectedMonths} month(s)${daysCount ? ` (${daysCount} days)` : ''}, town ID ${townId} ---`);

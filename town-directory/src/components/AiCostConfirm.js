@@ -1,22 +1,28 @@
 /**
  * Eon Weaver — AI Cost Confirmation Modal
- * Shows approximate Token Credit (TC) cost before any AI operation.
+ * Shows Token Credit (EC) cost before any AI operation.
  * The user must click Proceed or Cancel before the operation runs.
  *
  * CREDIT SCALE:
- *   1 TC ≈ 1 full town simulation (100 pop × 12 months)
- *   Rough order-of-magnitude estimates from typical prompt sizes (see server / OpenRouter usage).
- *
- * Cost estimates (in TC):
- *   - Simulation (1 town, 100 pop, 12 months): ~1.0 TC
- *   - Simulation (1 town, 50 pop, 1 month):    ~0.04 TC
- *   - World Sim (3 towns × 100 pop × 12 mo):   ~3.0 TC
- *   - Intake (50 NPCs, batched flesh):          ~0.36 TC typical (varies with rules text length)
- *   - Scribe Generate:                         ~0.02 TC
- *   - Custom AI Prompt:                        ~0.01 TC
+ *   1 EC (display) maps from raw wallet tokens via TOKENS_PER_CREDIT in credits.js.
+ *   All operations listed here use fixed catalog prices (see pricing.php / constants/pricing.js);
+ *   the modal shows exact debits where exactPrice is true.
  */
 
 import { TOKENS_PER_CREDIT, formatWalletTc } from '../constants/credits.js';
+import {
+    intakeStandardNpcWalletRaw,
+    intakeFullAiCreatureWalletRaw,
+    simForcedIntakeWalletRaw,
+    singleTownSimTotalWalletRaw,
+    worldSimulatePhasedWalletRaw,
+    worldSimulateDashboardWalletRaw,
+    scribeWalletRaw,
+    levelUpWalletRaw,
+    customPromptWalletRaw,
+    autoSpellsWalletRaw,
+    simPlanningWalletRaw,
+} from '../constants/pricing.js';
 import { apiGetUsage } from '../api/settings.js';
 
 /**
@@ -52,102 +58,104 @@ export function refreshUsageCache() {
  */
 const COST_ESTIMATES = {
     /**
-     * Town Simulation: ~1 LLM call per month.
-     * Token budget scales with simulated span + roster size.
+     * Town Simulation (SimulationView): matches sim_run sequence — intake mode uses per-arrival
+     * fixed pricing; month mode uses one catalog debit per API call (1 month per call when span > 1).
      */
-    simulation: ({ months = 1, population = 50, numTowns = 1 }) => {
-        const popFactor = Math.max(1, population / 50);
-        const total = Math.round(7600 * popFactor * Math.max(1, months) * numTowns);
-        let label = `${months} month${months > 1 ? 's' : ''}`;
-        if (numTowns > 1) label += ` × ${numTowns} town${numTowns > 1 ? 's' : ''}`;
-        label += ` (~${population} chars)`;
-        return { tokens: total, label: `Simulation — ${label}` };
+    simulation: ({ months = 1, population = 50, intakeCount = 0 } = {}) => {
+        const m = Number(months) || 0;
+        const pop = Math.max(1, Number(population) || 50);
+        const ic = Math.max(0, Number(intakeCount) || 0);
+        const tokens = singleTownSimTotalWalletRaw(m, pop, ic);
+        let label;
+        if (m === 0) {
+            label = `Intake mode (${Math.max(1, ic)} arrival${Math.max(1, ic) > 1 ? 's' : ''})`;
+        } else if (m <= 1) {
+            label = `${m} month — ~${pop} residents`;
+        } else {
+            label = `${m} months (${m} API calls) — ~${pop} residents`;
+        }
+        return { tokens, label: `Simulation — ${label}`, exactPrice: true };
     },
 
     /**
-     * Intake: standard NPC roster is usually procedural (no LLM); flesh runs in batches of 10
-     * (one shared prompt per batch — see intake_actions.php). Creature roster paths still bill separately.
+     * Town setup intake (must match pricing.php). Default: procedural roster + batched flesh only.
+     * Pass aiRoster: true if instructions force an LLM roster for every arrival (creature-style path).
+     * simForced: sim_run months=0 forced arrivals (per-arrival debits), not wizard intake.
      */
-    intake: ({ count = 1 }) => {
+    intake: ({ count = 1, aiRoster = false, simForced = false } = {}) => {
         const n = Math.max(1, count);
-        const batches = Math.ceil(n / 10);
-        // ~9k fixed-ish prompt+feat slice per batch + ~550/NPC completion-ish (aligned to telemetry; bucket rounding adds noise).
-        const total = Math.round(batches * 9000 + n * 550);
-        return { tokens: total, label: `Intake — ${count} character${count > 1 ? 's' : ''}` };
-    },
-
-    /**
-     * Level Up: complex rules call.
-     */
-    levelUp: () => {
-        return { tokens: 2500, label: 'AI Level Up — 1 character' };
-    },
-
-    /**
-     * Scribe (Lore, Quest, Dungeon, Item, Trap, Weather generators)
-     * Per-type estimates calibrated against observed actual usage.
-     * Item / Trap / Weather are short, single-object responses;
-     * Lore / Quest / Dungeon are multi-paragraph and run longer prompts/outputs.
-     */
-    scribe: ({ generatorType = 'content' }) => {
-        const tokenBudget = {
-            item: 900,
-            trap: 900,
-            weather: 900,
-            lore: 3000,
-            quest: 3500,
-            dungeon: 4500,
+        const tokens = simForced
+            ? simForcedIntakeWalletRaw(n)
+            : (aiRoster ? intakeFullAiCreatureWalletRaw(n) : intakeStandardNpcWalletRaw(n));
+        return {
+            tokens,
+            label: `Intake — ${count} NPC${count > 1 ? 's' : ''}`,
+            exactPrice: true,
         };
+    },
+
+    levelUp: () => ({
+        tokens: levelUpWalletRaw(),
+        label: 'AI Level Up — 1 character',
+        exactPrice: true,
+    }),
+
+    scribe: ({ generatorType = 'content' }) => {
         const labels = {
             lore: 'Lore Scribe', quest: 'Quest Forge', dungeon: 'Dungeon Architect',
             item: 'Item Enchanter', trap: 'Trap Designer', weather: 'Weather Generation',
         };
         return {
-            tokens: tokenBudget[generatorType] || 2000,
+            tokens: scribeWalletRaw(generatorType),
             label: `AI Scribe — ${labels[generatorType] || 'Content Generation'}`,
+            exactPrice: true,
+        };
+    },
+
+    customPrompt: () => ({
+        tokens: customPromptWalletRaw(),
+        label: 'AI Character Generation',
+        exactPrice: true,
+    }),
+
+    autoSpells: ({ count = 1 }) => {
+        const c = Math.max(1, Number(count) || 1);
+        return {
+            tokens: autoSpellsWalletRaw(c),
+            label: `Auto-assign Spells — ${c} caster${c > 1 ? 's' : ''}`,
+            exactPrice: true,
+        };
+    },
+
+    /** One sim_plan call (per town in world sim); numTowns is the argument passed to pricing.php. */
+    planning: ({ numTowns = 1, months = 2 } = {}) => {
+        const nt = Math.max(1, Number(numTowns) || 1);
+        const mo = Number(months) || 1;
+        return {
+            tokens: simPlanningWalletRaw(nt, mo),
+            label: `Simulation Planning — ${nt} town${nt > 1 ? 's' : ''} × ${mo} month${mo > 1 ? 's' : ''}`,
+            exactPrice: true,
         };
     },
 
     /**
-     * Custom AI character prompt
+     * World simulation: `billingMode` `phased` (WorldSimulateView) or `dashboard` (one sim_run per town).
      */
-    customPrompt: () => {
-        return { tokens: 1300, label: 'AI Character Generation' };
-    },
-
-    /**
-     * Auto-assign spells (town-wide)
-     */
-    autoSpells: ({ count = 1 }) => {
-        const total = Math.max(1300, Math.round(count * 200));
-        return { tokens: total, label: `Auto-assign Spells — ~${count} caster${count > 1 ? 's' : ''}` };
-    },
-
-    /**
-     * Planning phase for multi-month simulation
-     */
-    planning: ({ numTowns = 1 }) => {
-        const total = 2500 * numTowns;
-        return { tokens: total, label: `Simulation Planning — ${numTowns} town${numTowns > 1 ? 's' : ''}` };
-    },
-
-    /**
-     * World Simulation (multiple towns × months)
-     * Includes planning + simulation + movement overhead
-     */
-    worldSimulation: ({ months = 1, towns = [], intakeCount = 0 }) => {
+    worldSimulation: ({ months = 1, towns = [], intakeCount = 0, billingMode = 'phased' } = {}) => {
         const numTowns = towns.length || 1;
-        const avgPop = towns.length > 0
-            ? Math.round(towns.reduce((s, t) => s + (t.population || 50), 0) / numTowns)
-            : 50;
-        const planTokens = months > 1 ? 2500 * numTowns : 0;
-        const popFactor = Math.max(1, avgPop / 50);
-        const simTokens = Math.round(7600 * popFactor * Math.max(1, months) * numTowns);
-        const intakeBatches = intakeCount > 0 ? Math.ceil(intakeCount / 10) : 0;
-        const intakeTokens =
-            intakeCount > 0 ? Math.round((intakeBatches * 9000 + intakeCount * 550) * numTowns) : 0;
-        const total = planTokens + simTokens + intakeTokens;
-        return { tokens: total, label: `World Simulation — ${numTowns} town${numTowns > 1 ? 's' : ''} × ${months} month${months > 1 ? 's' : ''}` };
+        const pops = towns.length > 0
+            ? towns.map((t) => Math.max(1, t.population || 50))
+            : [50];
+        const m = Math.max(1, Number(months) || 1);
+        const ic = Math.max(0, Number(intakeCount) || 0);
+        const tokens = billingMode === 'dashboard'
+            ? worldSimulateDashboardWalletRaw(m, pops)
+            : worldSimulatePhasedWalletRaw(m, pops, ic);
+        return {
+            tokens,
+            label: `World Simulation — ${numTowns} town${numTowns > 1 ? 's' : ''} × ${m} month${m > 1 ? 's' : ''}`,
+            exactPrice: true,
+        };
     },
 
     /**
@@ -166,8 +174,7 @@ function tokensToCredits(tokens) {
 }
 
 /**
- * Round a TC value up to the nearest 0.01 EC. Matches the server-side
- * billing bucket — see helpers.php trackTokenUsage().
+ * Round a TC value up to the nearest 0.01 EC (legacy display path when exactPrice is false).
  */
 function roundUpCredits(tc) {
     const n = Number(tc) || 0;
@@ -202,15 +209,22 @@ export function confirmAiCost(operationType, params = {}) {
         return Promise.resolve(true);
     }
 
-    const { tokens, label } = estimator(params);
+    const est = estimator(params);
+    const tokens = est.tokens;
+    const label = est.label;
+    const exactPrice = !!est.exactPrice;
 
     // Free operations skip the modal
     if (tokens === 0) return Promise.resolve(true);
 
     const tc = tokensToCredits(tokens);
-    const displayValue = formatCredits(tc);
-    // Use ~ prefix except for the <0.01 case which already has its own prefix
-    const prefix = displayValue.startsWith('<') ? '' : '~';
+    const displayValue = exactPrice ? formatWalletTc(tc) : formatCredits(tc);
+    const prefix = exactPrice || displayValue.startsWith('<') ? '' : '~';
+    const billedTcForHeadroom = exactPrice ? tc : roundUpCredits(tc);
+    const modalTitle = exactPrice ? 'AI Credit Price' : 'AI Credit Estimate';
+    const modalNote = exactPrice
+        ? 'This is the exact wallet debit for this action (fixed catalog pricing). Provider token counts are still logged for analytics.'
+        : '1 TC ≈ one full town simulation (100 pop × 12 months). Actual usage may vary.';
 
     return new Promise(async (resolve) => {
         const overlay = document.createElement('div');
@@ -220,18 +234,18 @@ export function confirmAiCost(operationType, params = {}) {
         overlay.innerHTML = `
             <div class="modal-content ai-cost-content">
                 <div class="ai-cost-icon">🪙</div>
-                <h2 class="ai-cost-title">AI Credit Estimate</h2>
+                <h2 class="ai-cost-title">${modalTitle}</h2>
                 <p class="ai-cost-operation">${label}</p>
                 <div class="ai-cost-amount">
                     <span class="ai-cost-value">${prefix}${displayValue}</span>
-                    <span class="ai-cost-unit">Token Credits</span>
+                    <span class="ai-cost-unit">Eon Credits (EC)</span>
                 </div>
                 <div class="ai-cost-balance" id="ai-cost-balance">
                     <span class="ai-cost-balance-label">Your wallet:</span>
                     <span class="ai-cost-balance-value">…</span>
                 </div>
                 <div class="ai-cost-warn" id="ai-cost-warn" style="display:none"></div>
-                <p class="ai-cost-note">1 TC ≈ one full town simulation (100 pop × 12 months). Actual usage may vary.</p>
+                <p class="ai-cost-note">${modalNote}</p>
                 <div class="ai-cost-actions">
                     <button class="btn-primary ai-cost-proceed" id="ai-cost-proceed" disabled>✨ Proceed</button>
                     <button class="btn-secondary ai-cost-cancel" id="ai-cost-cancel">Cancel</button>
@@ -316,20 +330,19 @@ export function confirmAiCost(operationType, params = {}) {
             // the backend caps the deduction at 0 (no overdraft).
             if (rawBalance < tokens) {
                 warnEl.style.display = '';
-                warnEl.innerHTML =
-                    `Heads up — the estimate (~${displayValue} EC) is higher than your current balance (${formatWalletTc(balanceTc)} EC). ` +
-                    `Estimates are approximate; you'll only be charged for actual tokens used, capped at your remaining balance.`;
+                warnEl.innerHTML = exactPrice
+                    ? `Heads up — this action debits a fixed <strong>${displayValue} EC</strong>, but your balance is <strong>${formatWalletTc(balanceTc)} EC</strong>. The run may fail when the server checks credits.`
+                    : `Heads up — the estimate (~${displayValue} EC) is higher than your current balance (${formatWalletTc(balanceTc)} EC). ` +
+                      `Estimates are approximate; you'll only be charged for actual tokens used, capped at your remaining balance.`;
                 balanceEl.classList.add('ai-cost-balance-low');
                 return;
             }
 
             // Soft amber: would leave less than 25% headroom after the action.
-            // Subtract the rounded-up billed amount, matching server-side bucket billing.
-            const billedTc = roundUpCredits(tc);
             if (rawBalance - tokens < tokens * 0.25) {
                 warnEl.style.display = '';
                 warnEl.classList.add('ai-cost-warn-soft');
-                warnEl.textContent = `Heads up — this will leave roughly ${formatWalletTc(Math.max(0, balanceTc - billedTc))} EC.`;
+                warnEl.textContent = `Heads up — this will leave roughly ${formatWalletTc(Math.max(0, balanceTc - billedTcForHeadroom))} EC.`;
             }
         } catch (e) {
             // Same fail-open path as above

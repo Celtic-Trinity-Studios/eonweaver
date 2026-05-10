@@ -37,6 +37,7 @@
 
             $results = [];
             foreach ($allTowns as $town) {
+                $townOrUsage = null;
                 $tId = (int) $town['id'];
                 $tName = $town['name'];
                 $chars = query('SELECT * FROM characters WHERE town_id = ? ORDER BY name', [$tId], $uid);
@@ -109,14 +110,19 @@
                         continue;
                     }
                     $orResp = json_decode($resp, true);
+                    $townOrUsage = $orResp['usage'] ?? null;
                     $simText = $orResp['choices'][0]['message']['content'] ?? '';
-                    // Track token usage (hidden)
-                    if (!empty($orResp['usage'])) {
-                        trackTokenUsage($userId, $orResp['usage']);
-                    }
                 }
                 resetDB();
                 $sim = robustJsonDecode($simText);
+                if ($simText !== null && $simText !== '') {
+                    ew_track_ai_fixed_billing(
+                        $userId,
+                        $townOrUsage,
+                        ew_pricing_sim_run_wallet_raw(max(1, $months), count($chars), 1),
+                        'sim_world'
+                    );
+                }
                 $results[] = ['town_id' => $tId, 'town_name' => $tName, 'simulation' => $sim ?? ['error' => 'Parse failed: ' . json_last_error_msg(), 'raw' => substr($simText, 0, 200)]];
             }
 

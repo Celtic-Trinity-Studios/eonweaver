@@ -5,6 +5,7 @@
  */
 
 require_once __DIR__ . '/tier_economics.php';
+require_once __DIR__ . '/pricing.php';
 
 /**
  * Metadata OpenRouter expects on chat requests (HTTP-Referer + X-Title).
@@ -300,36 +301,42 @@ function ew_ensure_ai_usage_cost_columns(): void
 }
 
 /**
- * Track AI token usage for a user.
- * Deducts RAW LLM tokens from credit_balance (same units as OpenRouter usage).
- * Sidebar/UI converts to "Eon Credits" via TOKENS_PER_CREDIT (default 200000) to match the cost modal.
- *
- * @param int $userId  The user's ID (from shared DB)
- * @param array $usage The 'usage' object from OpenRouter response
+ * Raw token total from an OpenRouter-style usage object.
  */
-function trackTokenUsage($userId, $usage, $featureKey = null)
+function ew_ai_usage_total_tokens_from_response(array $usage): int
 {
-    global $LAST_RESOLVED_FEATURE_KEY, $OPENROUTER_USING_USER_KEY;
+    $totalTokens = (int) ($usage['total_tokens'] ?? 0);
+    if ($totalTokens <= 0) {
+        $totalTokens = (int) ($usage['prompt_tokens'] ?? 0) + (int) ($usage['completion_tokens'] ?? 0);
+    }
+
+    return $totalTokens;
+}
+
+/**
+ * Log one completion to analytics / metrics only (no wallet change).
+ */
+function ew_ai_log_usage_analytics_row(int $userId, array $usage, ?string $featureKey = null): void
+{
+    global $LAST_RESOLVED_FEATURE_KEY;
     if (!$featureKey) {
         $featureKey = $LAST_RESOLVED_FEATURE_KEY ?? 'global';
     }
-
-    if (!$userId || !$usage) return;
-
-    $totalTokens = (int) ($usage['total_tokens'] ?? 0);
-    if ($totalTokens <= 0) {
-        // Estimate from prompt + completion if total not provided
-        $totalTokens = (int) ($usage['prompt_tokens'] ?? 0) + (int) ($usage['completion_tokens'] ?? 0);
+    if (!$userId) {
+        return;
     }
-    if ($totalTokens <= 0) return;
+
+    $totalTokens = ew_ai_usage_total_tokens_from_response($usage);
+    if ($totalTokens <= 0) {
+        return;
+    }
 
     $costUsd = ew_openrouter_usage_cost_usd($usage);
-    $yearMonth = date('Y-m'); // e.g. "2026-03"
+    $yearMonth = date('Y-m');
 
     try {
         ew_ensure_ai_usage_cost_columns();
 
-        // 1. Log to analytics table (keeps monthly breakdown for admin)
         execute(
             "INSERT INTO user_token_usage (user_id, `year_month`, feature_key, tokens_used, cost_usd, call_count, updated_at)
              VALUES (?, ?, ?, ?, ?, 1, NOW())
@@ -339,41 +346,93 @@ function trackTokenUsage($userId, $usage, $featureKey = null)
                 call_count = call_count + 1,
                 updated_at = NOW()",
             [$userId, $yearMonth, $featureKey, $totalTokens, $costUsd],
-            0 // shared DB
+            0
         );
 
-        // 1b. Daily roll-up for admin charts (server-side metrics)
         if (file_exists(__DIR__ . '/metrics_lib.php')) {
             require_once __DIR__ . '/metrics_lib.php';
             ew_record_ai_usage_daily($userId, $featureKey, $totalTokens, $costUsd);
         }
-
-        // 2. BYOK (Settings key): user pays OpenRouter — do not deduct platform wallet
-        if (!empty($OPENROUTER_USING_USER_KEY)) {
-            return;
-        }
-
-        // 3. Deduct from credit_balance wallet — billed in 0.01 EC buckets,
-        //    rounded UP. (0.01 EC = TOKENS_PER_CREDIT ÷ 100 raw.)
-        //    Analytics tables above keep the exact raw token count for truth.
-        $bucket = (int) (defined('TOKENS_PER_CREDIT') ? TOKENS_PER_CREDIT : 200000) / 100;
-        if ($bucket < 1) {
-            $bucket = 1;
-        }
-        $billable = $totalTokens > 0
-            ? (int) (ceil($totalTokens / $bucket) * $bucket)
-            : 0;
-        if ($billable > 0) {
-            execute(
-                "UPDATE users SET credit_balance = GREATEST(0, credit_balance - ?) WHERE id = ?",
-                [$billable, $userId],
-                0
-            );
-        }
     } catch (Exception $e) {
-        // Non-fatal — don't break simulation if tracking fails
-        error_log("Token tracking failed for user {$userId}: " . $e->getMessage());
+        error_log("Token analytics log failed for user {$userId}: " . $e->getMessage());
     }
+}
+
+/**
+ * Deduct an exact raw amount from the platform wallet (no per-0.01-EC bucket rounding).
+ * BYOK users skip wallet entirely.
+ */
+function ew_wallet_deduct_exact_raw(int $userId, int $rawTokens): void
+{
+    global $OPENROUTER_USING_USER_KEY;
+    if (!$userId || $rawTokens <= 0) {
+        return;
+    }
+    if (!empty($OPENROUTER_USING_USER_KEY)) {
+        return;
+    }
+
+    try {
+        execute(
+            'UPDATE users SET credit_balance = GREATEST(0, credit_balance - ?) WHERE id = ?',
+            [$rawTokens, $userId],
+            0
+        );
+    } catch (Exception $e) {
+        error_log("Wallet deduct failed for user {$userId}: " . $e->getMessage());
+    }
+}
+
+/**
+ * Intake flesh: log each OpenRouter usage row, then charge one fixed batch price (see pricing.php).
+ *
+ * @param array<int, array|null> $usageSnapshots
+ */
+function ew_track_intake_flesh_billing(int $userId, int $stubCountInBatch, array $usageSnapshots, ?string $featureKey = null): void
+{
+    if (!$featureKey) {
+        $featureKey = 'intake_flesh';
+    }
+    foreach ($usageSnapshots as $u) {
+        if (is_array($u) && !empty($u)) {
+            ew_ai_log_usage_analytics_row($userId, $u, $featureKey);
+        }
+    }
+    $bill = ew_pricing_intake_flesh_batch_wallet_raw($stubCountInBatch);
+    ew_wallet_deduct_exact_raw($userId, $bill);
+}
+
+/** AI roster phase (creature / non-procedural roster). */
+function ew_track_intake_roster_ai_billing(int $userId, int $numArrivals, ?array $usage): void
+{
+    if (is_array($usage) && !empty($usage)) {
+        ew_ai_log_usage_analytics_row($userId, $usage, 'intake_roster');
+    }
+    ew_wallet_deduct_exact_raw($userId, ew_pricing_intake_roster_ai_wallet_raw($numArrivals));
+}
+
+/** intake_custom full character generation. */
+function ew_track_intake_custom_billing(int $userId, ?array $usage): void
+{
+    if (is_array($usage) && !empty($usage)) {
+        ew_ai_log_usage_analytics_row($userId, $usage, 'intake_custom');
+    }
+    ew_wallet_deduct_exact_raw($userId, ew_pricing_intake_custom_wallet_raw());
+}
+
+/**
+ * Log OpenRouter usage to analytics and deduct a fixed catalog raw amount from the platform wallet.
+ * All AI features use pricing.php — no usage-based bucket rounding.
+ */
+function ew_track_ai_fixed_billing(int $userId, ?array $usage, int $walletRawTokens, ?string $featureKey = null): void
+{
+    if ($walletRawTokens <= 0 || !$userId) {
+        return;
+    }
+    if (is_array($usage) && !empty($usage)) {
+        ew_ai_log_usage_analytics_row($userId, $usage, $featureKey);
+    }
+    ew_wallet_deduct_exact_raw($userId, $walletRawTokens);
 }
 
 /**

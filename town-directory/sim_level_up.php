@@ -142,16 +142,19 @@
                 throw new Exception("API error: " . ($decoded['error']['message'] ?? 'Unknown'));
 
             $aiContent = $decoded['choices'][0]['message']['content'] ?? '';
-            // Track token usage (hidden)
-            if (!empty($decoded['usage'])) {
-                trackTokenUsage($userId, $decoded['usage']);
-            }
             $aiContent = preg_replace('/^\s*`+\w*\s*/i', '', trim($aiContent));
             $aiContent = preg_replace('/\s*`+\s*$/', '', $aiContent);
 
             $updated = json_decode($aiContent, true);
             if (!$updated)
                 throw new Exception('Failed to parse AI response.');
+
+            ew_track_ai_fixed_billing(
+                $userId,
+                $decoded['usage'] ?? null,
+                ew_pricing_level_up_wallet_raw(),
+                'level_up'
+            );
 
             // Save to database
             $saveFields = [

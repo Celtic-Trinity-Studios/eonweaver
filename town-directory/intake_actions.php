@@ -372,7 +372,7 @@ OUTPUT (VALID JSON ONLY, no markdown):
     $d2 = json_decode($resp2, true);
     $t2 = $d2['choices'][0]['message']['content'] ?? '';
     if (!empty($d2['usage'])) {
-        trackTokenUsage($userId, $d2['usage']);
+        ew_track_intake_flesh_billing($userId, 1, [$d2['usage']]);
     }
     $t2 = preg_replace('/^\s*`+\w*\s*/i', '', $t2);
     $t2 = preg_replace('/\s*`+\s*$/', '', $t2);
@@ -537,13 +537,16 @@ OUTPUT: Valid JSON array ONLY, exactly {$n} objects. No markdown or commentary."
 
     $parsedArr = ew_intake_decode_json_character_array($t2);
 
+    $usageForBatch = [];
+
     if ($parsedArr !== null && count($parsedArr) === $n) {
         if (!empty($d2['usage'])) {
-            trackTokenUsage($userId, $d2['usage']);
+            $usageForBatch[] = $d2['usage'];
         }
+        ew_track_intake_flesh_billing($userId, $n, $usageForBatch);
     } else {
         if (!empty($d2['usage'])) {
-            trackTokenUsage($userId, $d2['usage']);
+            $usageForBatch[] = $d2['usage'];
         }
 
         $payloadRetry = json_encode([
@@ -572,10 +575,18 @@ OUTPUT: Valid JSON array ONLY, exactly {$n} objects. No markdown or commentary."
         if ($codeR === 200 && $respR) {
             $dR = json_decode($respR, true);
             if (!empty($dR['usage'])) {
-                trackTokenUsage($userId, $dR['usage']);
+                $usageForBatch[] = $dR['usage'];
             }
             $tR = $dR['choices'][0]['message']['content'] ?? '';
             $parsedArr = ew_intake_decode_json_character_array($tR);
+        }
+
+        if ($parsedArr !== null && count($parsedArr) === $n) {
+            ew_track_intake_flesh_billing($userId, $n, $usageForBatch);
+        } else {
+            foreach ($usageForBatch as $uLog) {
+                ew_ai_log_usage_analytics_row($userId, $uLog, 'intake_flesh');
+            }
         }
     }
 
@@ -1071,10 +1082,6 @@ For each character provide ONLY: name, race, class, gender, age, role, alignment
 
     $data = json_decode($response, true);
     $finishReason = $data["choices"][0]["finish_reason"] ?? "";
-    // Track token usage (hidden)
-    if (!empty($data['usage'])) {
-        trackTokenUsage($userId, $data['usage']);
-    }
     $respText = $data["choices"][0]["message"]["content"] ?? "";
     $respText = preg_replace('/^\s*`+\w*\s*/i', '', $respText);
     $respText = preg_replace('/\s*`+\s*$/', '', $respText);
@@ -1166,6 +1173,9 @@ For each character provide ONLY: name, race, class, gender, age, role, alignment
             $validRoster[$li]['class'] = applyLevelToClass($validRoster[$li]['class'], $rolledLevel);
         }
     }
+
+    // Bill only after a usable roster exists (fixed price; see pricing.php).
+    ew_track_intake_roster_ai_billing($userId, $numArrivals, $data['usage'] ?? null);
 
     simRespond(['ok' => true, 'roster' => $validRoster, 'town_id' => $townId, 'is_creature_intake' => $isCreatureIntake]);
 }
@@ -1810,9 +1820,6 @@ Town: \"{$townName}\"
     }
 
     $data = json_decode($response, true);
-    if (!empty($data['usage'])) {
-        trackTokenUsage($userId, $data['usage']);
-    }
     $respText = $data["choices"][0]["message"]["content"] ?? "";
     $respText = preg_replace('/^\s*`+\w*\s*/i', '', $respText);
     $respText = preg_replace('/\s*`+\s*$/', '', $respText);
@@ -1837,6 +1844,8 @@ Town: \"{$townName}\"
     }
     $parsed['status'] = $parsed['status'] ?? 'Alive';
     $parsed['age'] = (int) ($parsed['age'] ?? 25);
+
+    ew_track_intake_custom_billing($userId, $data['usage'] ?? null);
 
     simRespond(['ok' => true, 'character' => $parsed, 'town_id' => $townId]);
 }

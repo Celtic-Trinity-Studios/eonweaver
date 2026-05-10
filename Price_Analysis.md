@@ -1,7 +1,7 @@
 # Eon Weaver — Price & economics analysis
 
 > AI cost assumptions, competitor context, subscription tiers, **Eon Credits (EC)** / raw-token wallet behavior, and sustainability notes.  
-> **Source of truth for live numbers:** `town-directory/tier_limits.php`, `town-directory/tier_economics.php`, `town-directory/tier_policy.php`, `town-directory/helpers.php` (`trackTokenUsage`), and `town-directory/src/constants/credits.js`.
+> **Source of truth for live numbers:** `town-directory/tier_limits.php`, `town-directory/tier_economics.php`, `town-directory/tier_policy.php`, `town-directory/helpers.php` (`ew_track_ai_fixed_billing` / intake wallet helpers), `town-directory/pricing.php`, and `town-directory/src/constants/credits.js` / `pricing.js`.
 
 ---
 
@@ -29,7 +29,7 @@ Chunked town simulation (`simulate.php`): **story** uses the smart model; **popu
 
 - **`users.credit_balance`** is stored as **raw LLM tokens** (integer).
 - **Displayed EC** = `credit_balance ÷ TOKENS_PER_CREDIT` with **`TOKENS_PER_CREDIT = 200_000`** (`town-directory/src/constants/credits.js`, optional PHP `TOKENS_PER_CREDIT` in `config.php`).
-- **Wallet deductions** round usage **up** to **0.01 EC** buckets (2000 raw tokens per bucket at default TC) so the balance stays aligned with fine-grained UI (`helpers.php` → `trackTokenUsage()`).
+- **Wallet deductions** for AI features use **fixed raw-token prices** from `pricing.php` (exact debit per action); OpenRouter `usage` is still logged for analytics. Display uses `formatWalletTc` / `TOKENS_PER_CREDIT` without per-call bucket rounding.
 
 ### Monthly platform ceiling (per tier)
 

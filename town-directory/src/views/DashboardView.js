@@ -194,8 +194,11 @@ async function startWorldSimulation(container) {
     // Show AI cost confirmation
     const proceed = await confirmAiCost('worldSimulation', {
       months: selectedMonths,
-      towns: towns.map(() => ({ population: 50 })),
+      towns: towns.map((t) => ({
+        population: Math.max(1, Number(t.alive_character_count) || Number(t.character_count) || 50),
+      })),
       intakeCount: 0,
+      billingMode: 'dashboard',
     });
     if (!proceed) return;
     await runWorldSim(content, towns, selectedMonths, rules, instructions);

@@ -470,6 +470,7 @@ Respond ONLY with valid JSON:
 
             // LLM call
             $chunkText = null;
+            $chunkOrUsage = null;
             if (defined('LLAMA_HOST') && LLAMA_HOST && isLocalLLMAvailable()) {
                 try {
                     $chunkText = callLocalLLM('[INST] ' . $prompt . ' [/INST]', 512);
@@ -504,11 +505,16 @@ Respond ONLY with valid JSON:
                 if ($code !== 200)
                     throw new Exception("OpenRouter error for chunk {$category}: " . substr($resp, 0, 100));
                 $gr = json_decode($resp, true);
-                // Track token usage (hidden)
-                if (!empty($gr['usage'])) {
-                    trackTokenUsage($userId, $gr['usage']);
-                }
+                $chunkOrUsage = $gr['usage'] ?? null;
                 $chunkText = $gr['choices'][0]['message']['content'] ?? '';
+            }
+            if ($chunkText !== null && $chunkText !== '') {
+                ew_track_ai_fixed_billing(
+                    $userId,
+                    $chunkOrUsage,
+                    ew_pricing_sim_chunk_wallet_raw($category),
+                    'sim_chunk_' . $category
+                );
             }
             resetDB();
             $chunkData = robustJsonDecode($chunkText);
@@ -555,6 +561,7 @@ REQUIREMENTS:
 PROMPT;
 
             $promptText = null;
+            $portraitOrUsage = null;
             // Try local LLM first
             if (defined('LLAMA_HOST') && LLAMA_HOST && isLocalLLMAvailable()) {
                 try {
@@ -597,16 +604,20 @@ PROMPT;
                     throw new Exception("AI prompt generation failed: $msg");
                 }
                 $orResp = json_decode($resp, true);
-                // Track token usage (hidden)
-                if (!empty($orResp['usage'])) {
-                    trackTokenUsage($userId, $orResp['usage']);
-                }
+                $portraitOrUsage = $orResp['usage'] ?? null;
                 $promptText = trim($orResp['choices'][0]['message']['content'] ?? '');
             }
 
             if (!$promptText) {
                 throw new Exception('LLM returned an empty prompt.');
             }
+
+            ew_track_ai_fixed_billing(
+                $userId,
+                $portraitOrUsage,
+                ew_pricing_portrait_prompt_wallet_raw(),
+                'portrait_prompt'
+            );
 
             simRespond(['ok' => true, 'prompt' => $promptText]);
             break;
@@ -988,15 +999,19 @@ WPROMPT;
             }
 
             $data = json_decode($response, true);
-            if (!empty($data['usage'])) {
-                trackTokenUsage($userId, $data['usage']);
-            }
             $respText = $data["choices"][0]["message"]["content"] ?? "";
             $weatherData = robustJsonDecode($respText);
 
             if (!$weatherData || empty($weatherData['months'])) {
                 throw new Exception('AI returned invalid weather data. Try again.');
             }
+
+            ew_track_ai_fixed_billing(
+                $userId,
+                $data['usage'] ?? null,
+                ew_pricing_weather_year_wallet_raw(),
+                'weather_year'
+            );
 
             $weatherJson = json_encode($weatherData, JSON_UNESCAPED_UNICODE);
             $worldSaved = false;
@@ -1189,7 +1204,6 @@ REPROMPT;
                 throw new Exception("AI encounter generation failed (HTTP {$httpCode})");
 
             $data = json_decode($resp, true);
-            if (!empty($data['usage'])) trackTokenUsage($userId, $data['usage']);
             $respText = $data['choices'][0]['message']['content'] ?? '';
 
             // Try to extract JSON if wrapped in markdown or extra text
@@ -1203,6 +1217,13 @@ REPROMPT;
                 $preview = substr($respText, 0, 200);
                 throw new Exception("AI returned invalid encounter data. Preview: {$preview}");
             }
+
+            ew_track_ai_fixed_billing(
+                $userId,
+                $data['usage'] ?? null,
+                ew_pricing_random_encounter_wallet_raw(),
+                'random_encounter'
+            );
 
             simRespond(['ok' => true, 'encounter' => $encounterData]);
             break;
@@ -1294,11 +1315,17 @@ LPROMPT;
                 throw new Exception("AI loot generation failed (HTTP {$httpCode})");
 
             $data = json_decode($resp, true);
-            if (!empty($data['usage'])) trackTokenUsage($userId, $data['usage']);
             $respText = $data['choices'][0]['message']['content'] ?? '';
             $lootData = robustJsonDecode($respText);
             if (!$lootData)
                 throw new Exception('AI returned invalid loot data. Try again.');
+
+            ew_track_ai_fixed_billing(
+                $userId,
+                $data['usage'] ?? null,
+                ew_pricing_loot_gen_wallet_raw(),
+                'loot_gen'
+            );
 
             simRespond(['ok' => true, 'loot' => $lootData]);
             break;
@@ -1411,11 +1438,17 @@ SPROMPT;
                 throw new Exception("AI magic shop generation failed (HTTP {$httpCode})");
 
             $data = json_decode($resp, true);
-            if (!empty($data['usage'])) trackTokenUsage($userId, $data['usage']);
             $respText = $data['choices'][0]['message']['content'] ?? '';
             $shopData = robustJsonDecode($respText);
             if (!$shopData)
                 throw new Exception('AI returned invalid shop data. Try again.');
+
+            ew_track_ai_fixed_billing(
+                $userId,
+                $data['usage'] ?? null,
+                ew_pricing_magic_shop_wallet_raw(),
+                'magic_shop'
+            );
 
             simRespond(['ok' => true, 'shop' => $shopData]);
             break;

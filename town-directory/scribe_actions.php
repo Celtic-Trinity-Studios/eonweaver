@@ -71,9 +71,12 @@ if ($action === 'scribe_generate') {
     }
 
     $data = json_decode($response, true);
-    if (!empty($data['usage'])) {
-        trackTokenUsage($userId, $data['usage'], 'scribe_generator');
-    }
+    ew_track_ai_fixed_billing(
+        $userId,
+        $data['usage'] ?? null,
+        ew_pricing_scribe_wallet_raw((string) $generatorType),
+        'scribe_generator'
+    );
     
     $generatedText = $data["choices"][0]["message"]["content"] ?? "";
     $generatedText = trim($generatedText);
