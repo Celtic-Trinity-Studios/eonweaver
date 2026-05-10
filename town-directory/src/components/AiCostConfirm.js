@@ -11,7 +11,7 @@
  *   - Simulation (1 town, 100 pop, 12 months): ~1.0 TC
  *   - Simulation (1 town, 50 pop, 1 month):    ~0.04 TC
  *   - World Sim (3 towns × 100 pop × 12 mo):   ~3.0 TC
- *   - Intake (5 NPCs):                         ~0.03 TC
+ *   - Intake (50 NPCs, batched flesh):          ~0.36 TC typical (varies with rules text length)
  *   - Scribe Generate:                         ~0.02 TC
  *   - Custom AI Prompt:                        ~0.01 TC
  */
@@ -65,10 +65,14 @@ const COST_ESTIMATES = {
     },
 
     /**
-     * Intake mode: roster stubs + fleshing out.
+     * Intake: standard NPC roster is usually procedural (no LLM); flesh runs in batches of 10
+     * (one shared prompt per batch — see intake_actions.php). Creature roster paths still bill separately.
      */
     intake: ({ count = 1 }) => {
-        const total = Math.round(count * 1050);
+        const n = Math.max(1, count);
+        const batches = Math.ceil(n / 10);
+        // ~9k fixed-ish prompt+feat slice per batch + ~550/NPC completion-ish (aligned to telemetry; bucket rounding adds noise).
+        const total = Math.round(batches * 9000 + n * 550);
         return { tokens: total, label: `Intake — ${count} character${count > 1 ? 's' : ''}` };
     },
 
@@ -139,7 +143,9 @@ const COST_ESTIMATES = {
         const planTokens = months > 1 ? 2500 * numTowns : 0;
         const popFactor = Math.max(1, avgPop / 50);
         const simTokens = Math.round(7600 * popFactor * Math.max(1, months) * numTowns);
-        const intakeTokens = intakeCount > 0 ? intakeCount * 1050 * numTowns : 0;
+        const intakeBatches = intakeCount > 0 ? Math.ceil(intakeCount / 10) : 0;
+        const intakeTokens =
+            intakeCount > 0 ? Math.round((intakeBatches * 9000 + intakeCount * 550) * numTowns) : 0;
         const total = planTokens + simTokens + intakeTokens;
         return { tokens: total, label: `World Simulation — ${numTowns} town${numTowns > 1 ? 's' : ''} × ${months} month${months > 1 ? 's' : ''}` };
     },

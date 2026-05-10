@@ -2,7 +2,7 @@
 /**
  * Intake Actions — Two-phase character generation
  * Phase 1 (intake_roster): Generate lightweight character list in ONE AI call
- * Phase 2 (intake_flesh):  Flesh out stubs with full D&D stats + backstory
+ * Phase 2 (intake_flesh):  Flesh out stubs (batched LLM — up to 10 stubs per call, shared prompt)
  *
  * Called from simulate.php BEFORE the switch block:
  *   if ($action === 'intake_roster' || $action === 'intake_flesh') { require ...; exit; }
@@ -226,6 +226,412 @@ function intakeFetchCustomMonstersForCreature(int $userId, int $townId, int $uid
         if (!empty($out)) {
             break;
         }
+    }
+
+    return $out;
+}
+
+/**
+ * Group consecutive stubs so each group is either all creatures or all NPCs (batched prompts differ).
+ *
+ * @param array[] $stubs
+ * @return array<int, array{creature: bool, stubs: array}>
+ */
+function ew_intake_group_stubs_by_creature_flag(array $stubs): array
+{
+    $groups = [];
+    foreach ($stubs as $stub) {
+        $isC = !empty($stub['is_creature']);
+        $n = count($groups);
+        if ($n === 0 || $groups[$n - 1]['creature'] !== $isC) {
+            $groups[] = ['creature' => $isC, 'stubs' => [$stub]];
+        } else {
+            $groups[$n - 1]['stubs'][] = $stub;
+        }
+    }
+
+    return $groups;
+}
+
+/**
+ * Decode a JSON array of character objects from model output (tolerates fences / light noise).
+ *
+ * @return array<int, array>|null
+ */
+function ew_intake_decode_json_character_array(string $raw): ?array
+{
+    $t = trim(preg_replace('/^\s*`+\w*\s*/i', '', $raw));
+    $t = preg_replace('/\s*`+\s*$/', '', $t);
+    $t = trim($t);
+    $arr = json_decode($t, true);
+    if (json_last_error() !== JSON_ERROR_NONE || !is_array($arr)) {
+        $t2 = preg_replace('/[\x00-\x1F\x7F]/u', ' ', $t);
+        $arr = json_decode($t2, true);
+    }
+    if (json_last_error() !== JSON_ERROR_NONE || !is_array($arr)) {
+        return null;
+    }
+    if (isset($arr['characters']) && is_array($arr['characters'])) {
+        $arr = $arr['characters'];
+    }
+
+    return array_values($arr);
+}
+
+/**
+ * Phase 2: flesh one stub (single OpenRouter round-trip). Used as fallback inside batches.
+ *
+ * @return array<string, mixed>|null
+ */
+function ew_intake_flesh_single_stub(
+    array $stub,
+    bool $isCreature,
+    string $townName,
+    string $dndEdition,
+    string $campaignDesc,
+    string $campaignRules,
+    string $rules,
+    string $featRef,
+    string $apiKey,
+    string $model,
+    string $openRouterUrl,
+    int $userId
+): ?array {
+    $sn = trim($stub['name'] ?? 'Unknown');
+    $sr = trim($stub['race'] ?? 'Human');
+    $sc = trim($stub['class'] ?? 'Commoner 1');
+    $sg = ($stub['gender'] ?? 'M');
+    $sa = (int) ($stub['age'] ?? 25);
+    $srl = trim($stub['role'] ?? '');
+    $sal = trim($stub['alignment'] ?? 'TN');
+
+    $campDescLine = $campaignDesc ? "\nWorld Setting: {$campaignDesc}" : '';
+
+    if ($isCreature) {
+        $fleshPrompt = "Generate creature details for this D&D {$dndEdition} creature in \"{$townName}\":
+Name: {$sn} | Race/Type: {$sr} | Monster Type: {$sc} | Gender: {$sg} | Age: {$sa} | Role: {$srl} | Alignment: {$sal}
+{$campDescLine}
+Campaign Rules: {$campaignRules}
+{$rules}
+
+Rules:
+- This is a MONSTER/CREATURE, NOT a classed character. Do NOT assign any player or NPC class.
+- DO NOT generate ability scores, HP, AC, gear, or spells. The system will use the creature's standard stat block.
+- Do NOT generate feats or skills — the creature uses its racial/monster abilities only.
+- 'class' field must remain exactly as given: \"{$sc}\" — this represents the creature's monster type and HD.
+- Generate a brief 'reason' (1-2 sentences) for why this creature is in/near {$townName}.
+
+OUTPUT (VALID JSON ONLY, no markdown):
+{\"name\":\"{$sn}\",\"race\":\"{$sr}\",\"class\":\"{$sc}\",\"gender\":\"{$sg}\",\"age\":{$sa},\"status\":\"Alive\",\"alignment\":\"{$sal}\",\"role\":\"{$srl}\",\"skills_feats\":\"\",\"feats\":\"\",\"reason\":\"...\",\"is_creature\":true}";
+    } else {
+        $fleshPrompt = "Generate character details for this D&D {$dndEdition} character in \"{$townName}\":
+Name: {$sn} | Race: {$sr} | Class: {$sc} | Gender: {$sg} | Age: {$sa} | Role: {$srl} | Alignment: {$sal}
+{$campDescLine}
+Campaign Rules: {$campaignRules}
+{$rules}
+
+Rules:
+- DO NOT generate ability scores (str/dex/con/int/wis/cha), HP, AC, ATK, gear, or spells. These are auto-calculated by the system.
+- Feats: 1 at 1st level + 1 per 3 levels. Humans get 1 extra at 1st. Fighters/Warriors get bonus combat feats. Pick from valid feats:
+{$featRef}
+- Skills: Pick appropriate class/cross-class skills. Just list them by name.
+
+Backstory \"reason\": 2-3 sentences — why they came to {$townName}, a personal detail/goal/secret. Tie their backstory into the world setting and town history if possible.
+
+OUTPUT (VALID JSON ONLY, no markdown):
+{\"name\":\"{$sn}\",\"race\":\"{$sr}\",\"class\":\"{$sc}\",\"gender\":\"{$sg}\",\"age\":{$sa},\"status\":\"Alive\",\"alignment\":\"{$sal}\",\"role\":\"{$srl}\",\"skills_feats\":\"Skill1, Skill2, Skill3\",\"feats\":\"Feat1, Feat2\",\"reason\":\"...\"}";
+    }
+
+    $payload = json_encode([
+        'model' => $model,
+        'messages' => [['role' => 'user', 'content' => $fleshPrompt]],
+        'temperature' => 0.9,
+        'max_tokens' => 1024,
+    ]);
+    $ch2 = curl_init($openRouterUrl);
+    curl_setopt_array($ch2, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $payload,
+        CURLOPT_HTTPHEADER => array_merge([
+            "Authorization: Bearer {$apiKey}",
+            'Content-Type: application/json',
+        ], openRouterAppHeaders()),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 90,
+        CURLOPT_SSL_VERIFYPEER => true,
+    ]);
+    $resp2 = curl_exec($ch2);
+    $code2 = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+    curl_close($ch2);
+    resetDB();
+
+    if ($code2 !== 200 || !$resp2) {
+        return null;
+    }
+
+    $d2 = json_decode($resp2, true);
+    $t2 = $d2['choices'][0]['message']['content'] ?? '';
+    if (!empty($d2['usage'])) {
+        trackTokenUsage($userId, $d2['usage']);
+    }
+    $t2 = preg_replace('/^\s*`+\w*\s*/i', '', $t2);
+    $t2 = preg_replace('/\s*`+\s*$/', '', $t2);
+    $t2 = trim($t2);
+
+    $parsed = json_decode($t2, true);
+    if (json_last_error() !== JSON_ERROR_NONE) {
+        $t2clean = preg_replace('/[\x00-\x1F\x7F]/u', ' ', $t2);
+        $parsed = json_decode($t2clean, true);
+    }
+    if ($parsed && isset($parsed['name'])) {
+        return $parsed;
+    }
+
+    return null;
+}
+
+/**
+ * One LLM call for up to 10 stubs of the same mode (NPC vs creature). Falls back to per-stub on failure.
+ *
+ * @param array[] $chunk
+ * @return array[]
+ */
+function ew_intake_flesh_batch_chunk(
+    array $chunk,
+    bool $allCreatures,
+    string $townName,
+    string $dndEdition,
+    string $campaignDesc,
+    string $campaignRules,
+    string $rules,
+    string $featRef,
+    string $apiKey,
+    string $model,
+    string $openRouterUrl,
+    int $userId
+): array {
+    $n = count($chunk);
+    if ($n === 0) {
+        return [];
+    }
+
+    if ($n === 1) {
+        $one = ew_intake_flesh_single_stub(
+            $chunk[0],
+            $allCreatures,
+            $townName,
+            $dndEdition,
+            $campaignDesc,
+            $campaignRules,
+            $rules,
+            $featRef,
+            $apiKey,
+            $model,
+            $openRouterUrl,
+            $userId
+        );
+
+        return $one ? [$one] : [];
+    }
+
+    $stubLines = [];
+    foreach ($chunk as $idx => $stub) {
+        $sn = trim($stub['name'] ?? 'Unknown');
+        $sr = trim($stub['race'] ?? 'Human');
+        $sc = trim($stub['class'] ?? 'Commoner 1');
+        $sg = $stub['gender'] ?? 'M';
+        $sa = (int) ($stub['age'] ?? 25);
+        $srl = trim($stub['role'] ?? '');
+        $sal = trim($stub['alignment'] ?? 'TN');
+        $stubLines[] = ($idx + 1) . ". Name: {$sn} | Race: {$sr} | Class: {$sc} | Gender: {$sg} | Age: {$sa} | Role: {$srl} | Alignment: {$sal}";
+    }
+    $stubBlock = implode("\n", $stubLines);
+    $campDescLine = $campaignDesc ? "\nWorld Setting: {$campaignDesc}\n" : '';
+
+    if ($allCreatures) {
+        $batchPrompt = "Generate creature flavor details for {$n} D&D {$dndEdition} creatures in \"{$townName}\".
+{$campDescLine}Campaign Rules: {$campaignRules}
+{$rules}
+
+STUBS (output array index MUST match line order — element [0] = line 1, etc.):
+{$stubBlock}
+
+Rules:
+- MONSTERS/CREATURES only — no player/NPC classes.
+- DO NOT output ability scores, HP, AC, gear, spells, feats (beyond empty string), or skills lists beyond empty strings.
+- Copy \"name\", \"race\", \"class\", \"gender\", \"age\", \"alignment\", \"role\" EXACTLY from each stub line.
+- Each object: \"status\":\"Alive\", \"skills_feats\":\"\", \"feats\":\"\", \"reason\" (1-2 sentences why near {$townName}), \"is_creature\":true.
+
+OUTPUT: Valid JSON array ONLY, exactly {$n} objects. No markdown or commentary.";
+    } else {
+        $batchPrompt = "Generate NPC flavor details for {$n} D&D {$dndEdition} characters in \"{$townName}\".
+{$campDescLine}Campaign Rules: {$campaignRules}
+{$rules}
+
+STUBS (output array index MUST match line order — element [0] = line 1, etc.):
+{$stubBlock}
+
+Rules:
+- DO NOT generate ability scores, HP, AC, ATK, gear, or spells (system-calculated).
+- Feats: 1 at 1st level + 1 per 3 levels. Humans get 1 extra at 1st. Fighters/Warriors get bonus combat feats. Pick from:
+{$featRef}
+- Skills: class/cross-class skill names only in \"skills_feats\".
+- Copy \"name\", \"race\", \"class\", \"gender\", \"age\", \"alignment\", \"role\" EXACTLY from each stub line.
+- Each object: \"status\":\"Alive\", \"skills_feats\", \"feats\", \"reason\" (2-3 sentences).
+
+OUTPUT: Valid JSON array ONLY, exactly {$n} objects. No markdown or commentary.";
+    }
+
+    $maxTok = min(8192, max(2048, (int) (600 * $n + 900)));
+
+    $payload = json_encode([
+        'model' => $model,
+        'messages' => [['role' => 'user', 'content' => $batchPrompt]],
+        'temperature' => 0.85,
+        'max_tokens' => $maxTok,
+    ]);
+    $ch2 = curl_init($openRouterUrl);
+    curl_setopt_array($ch2, [
+        CURLOPT_POST => true,
+        CURLOPT_POSTFIELDS => $payload,
+        CURLOPT_HTTPHEADER => array_merge([
+            "Authorization: Bearer {$apiKey}",
+            'Content-Type: application/json',
+        ], openRouterAppHeaders()),
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 120,
+        CURLOPT_SSL_VERIFYPEER => true,
+    ]);
+    $resp2 = curl_exec($ch2);
+    $code2 = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+    curl_close($ch2);
+    resetDB();
+
+    if ($code2 !== 200 || !$resp2) {
+        $fb = [];
+        foreach ($chunk as $stub) {
+            $one = ew_intake_flesh_single_stub(
+                $stub,
+                $allCreatures,
+                $townName,
+                $dndEdition,
+                $campaignDesc,
+                $campaignRules,
+                $rules,
+                $featRef,
+                $apiKey,
+                $model,
+                $openRouterUrl,
+                $userId
+            );
+            if ($one) {
+                $fb[] = $one;
+            }
+        }
+
+        return $fb;
+    }
+
+    $d2 = json_decode($resp2, true);
+    $t2 = $d2['choices'][0]['message']['content'] ?? '';
+
+    $parsedArr = ew_intake_decode_json_character_array($t2);
+
+    if ($parsedArr !== null && count($parsedArr) === $n) {
+        if (!empty($d2['usage'])) {
+            trackTokenUsage($userId, $d2['usage']);
+        }
+    } else {
+        if (!empty($d2['usage'])) {
+            trackTokenUsage($userId, $d2['usage']);
+        }
+
+        $payloadRetry = json_encode([
+            'model' => $model,
+            'messages' => [['role' => 'user', 'content' => $batchPrompt . "\n\nREMINDER: Output ONLY a JSON array of exactly {$n} objects. No markdown. Index order must match the stub list."]],
+            'temperature' => 0.35,
+            'max_tokens' => $maxTok,
+        ]);
+        $chR = curl_init($openRouterUrl);
+        curl_setopt_array($chR, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $payloadRetry,
+            CURLOPT_HTTPHEADER => array_merge([
+                "Authorization: Bearer {$apiKey}",
+                'Content-Type: application/json',
+            ], openRouterAppHeaders()),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 120,
+            CURLOPT_SSL_VERIFYPEER => true,
+        ]);
+        $respR = curl_exec($chR);
+        $codeR = curl_getinfo($chR, CURLINFO_HTTP_CODE);
+        curl_close($chR);
+        resetDB();
+
+        if ($codeR === 200 && $respR) {
+            $dR = json_decode($respR, true);
+            if (!empty($dR['usage'])) {
+                trackTokenUsage($userId, $dR['usage']);
+            }
+            $tR = $dR['choices'][0]['message']['content'] ?? '';
+            $parsedArr = ew_intake_decode_json_character_array($tR);
+        }
+    }
+
+    if ($parsedArr === null || count($parsedArr) !== $n) {
+        $fb = [];
+        foreach ($chunk as $stub) {
+            $one = ew_intake_flesh_single_stub(
+                $stub,
+                $allCreatures,
+                $townName,
+                $dndEdition,
+                $campaignDesc,
+                $campaignRules,
+                $rules,
+                $featRef,
+                $apiKey,
+                $model,
+                $openRouterUrl,
+                $userId
+            );
+            if ($one) {
+                $fb[] = $one;
+            }
+        }
+
+        return $fb;
+    }
+
+    $out = [];
+    for ($i = 0; $i < $n; $i++) {
+        $row = $parsedArr[$i];
+        if (!is_array($row) || empty($row['name'])) {
+            $fb = [];
+            foreach ($chunk as $stub) {
+                $one = ew_intake_flesh_single_stub(
+                    $stub,
+                    $allCreatures,
+                    $townName,
+                    $dndEdition,
+                    $campaignDesc,
+                    $campaignRules,
+                    $rules,
+                    $featRef,
+                    $apiKey,
+                    $model,
+                    $openRouterUrl,
+                    $userId
+                );
+                if ($one) {
+                    $fb[] = $one;
+                }
+            }
+
+            return $fb;
+        }
+        $out[] = $row;
     }
 
     return $out;
@@ -824,105 +1230,37 @@ elseif ($action === 'intake_flesh') {
     $model = defined("OPENROUTER_MODEL_CHEAP") ? OPENROUTER_MODEL_CHEAP : (defined("OPENROUTER_MODEL") ? OPENROUTER_MODEL : "google/gemini-2.5-flash");
 
     $startTime = time();
-    $timeLimit = 100;
+    $timeLimit = 180;
     $fleshedChars = [];
 
-    foreach ($stubs as $stub) {
-        if (time() - $startTime >= $timeLimit)
-            break;
-
-        $sn = trim($stub['name'] ?? 'Unknown');
-        $sr = trim($stub['race'] ?? 'Human');
-        $sc = trim($stub['class'] ?? 'Commoner 1');
-        $sg = ($stub['gender'] ?? 'M');
-        $sa = (int) ($stub['age'] ?? 25);
-        $srl = trim($stub['role'] ?? '');
-        $sal = trim($stub['alignment'] ?? 'TN');
-        $isCreature = !empty($stub['is_creature']);
-
-        $campDescLine = $campaignDesc ? "\nWorld Setting: {$campaignDesc}" : '';
-
-        if ($isCreature) {
-            // CREATURE MODE — no class features, just a backstory reason
-            $fleshPrompt = "Generate creature details for this D&D {$dndEdition} creature in \"{$townName}\":
-Name: {$sn} | Race/Type: {$sr} | Monster Type: {$sc} | Gender: {$sg} | Age: {$sa} | Role: {$srl} | Alignment: {$sal}
-{$campDescLine}
-Campaign Rules: {$campaignRules}
-{$rules}
-
-Rules:
-- This is a MONSTER/CREATURE, NOT a classed character. Do NOT assign any player or NPC class.
-- DO NOT generate ability scores, HP, AC, gear, or spells. The system will use the creature's standard stat block.
-- Do NOT generate feats or skills — the creature uses its racial/monster abilities only.
-- 'class' field must remain exactly as given: \"{$sc}\" — this represents the creature's monster type and HD.
-- Generate a brief 'reason' (1-2 sentences) for why this creature is in/near {$townName}.
-
-OUTPUT (VALID JSON ONLY, no markdown):
-{\"name\":\"{$sn}\",\"race\":\"{$sr}\",\"class\":\"{$sc}\",\"gender\":\"{$sg}\",\"age\":{$sa},\"status\":\"Alive\",\"alignment\":\"{$sal}\",\"role\":\"{$srl}\",\"skills_feats\":\"\",\"feats\":\"\",\"reason\":\"...\",\"is_creature\":true}";
-        } else {
-            // STANDARD NPC MODE
-            $fleshPrompt = "Generate character details for this D&D {$dndEdition} character in \"{$townName}\":
-Name: {$sn} | Race: {$sr} | Class: {$sc} | Gender: {$sg} | Age: {$sa} | Role: {$srl} | Alignment: {$sal}
-{$campDescLine}
-Campaign Rules: {$campaignRules}
-{$rules}
-
-Rules:
-- DO NOT generate ability scores (str/dex/con/int/wis/cha), HP, AC, ATK, gear, or spells. These are auto-calculated by the system.
-- Feats: 1 at 1st level + 1 per 3 levels. Humans get 1 extra at 1st. Fighters/Warriors get bonus combat feats. Pick from valid feats:
-{$featRef}
-- Skills: Pick appropriate class/cross-class skills. Just list them by name.
-
-Backstory \"reason\": 2-3 sentences — why they came to {$townName}, a personal detail/goal/secret. Tie their backstory into the world setting and town history if possible.
-
-OUTPUT (VALID JSON ONLY, no markdown):
-{\"name\":\"{$sn}\",\"race\":\"{$sr}\",\"class\":\"{$sc}\",\"gender\":\"{$sg}\",\"age\":{$sa},\"status\":\"Alive\",\"alignment\":\"{$sal}\",\"role\":\"{$srl}\",\"skills_feats\":\"Skill1, Skill2, Skill3\",\"feats\":\"Feat1, Feat2\",\"reason\":\"...\"}";
-        }
-
-
-        $payload = json_encode([
-            "model" => $model,
-            "messages" => [["role" => "user", "content" => $fleshPrompt]],
-            "temperature" => 0.9,
-            "max_tokens" => 1024
-        ]);
-        $ch2 = curl_init($openRouterUrl);
-        curl_setopt_array($ch2, [
-            CURLOPT_POST => true,
-            CURLOPT_POSTFIELDS => $payload,
-            CURLOPT_HTTPHEADER => array_merge([
-                "Authorization: Bearer {$apiKey}",
-                "Content-Type: application/json"
-            ], openRouterAppHeaders()),
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 90,
-            CURLOPT_SSL_VERIFYPEER => true
-        ]);
-        $resp2 = curl_exec($ch2);
-        $code2 = curl_getinfo($ch2, CURLINFO_HTTP_CODE);
-        curl_close($ch2);
-        resetDB();
-
-        if ($code2 !== 200 || !$resp2)
-            continue;
-
-        $d2 = json_decode($resp2, true);
-        $t2 = $d2["choices"][0]["message"]["content"] ?? "";
-        // Track token usage (hidden)
-        if (!empty($d2['usage'])) {
-            trackTokenUsage($userId, $d2['usage']);
-        }
-        $t2 = preg_replace('/^\s*`+\w*\s*/i', '', $t2);
-        $t2 = preg_replace('/\s*`+\s*$/', '', $t2);
-        $t2 = trim($t2);
-
-        $parsed = json_decode($t2, true);
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            $t2clean = preg_replace('/[\x00-\x1F\x7F]/u', ' ', $t2);
-            $parsed = json_decode($t2clean, true);
-        }
-        if ($parsed && isset($parsed['name'])) {
-            $fleshedChars[] = $parsed;
+    // One LLM call per up-to-10 stubs (shared feat/rules prompt) — see ew_intake_flesh_batch_chunk().
+    $fleshBatchSize = 10;
+    $groups = ew_intake_group_stubs_by_creature_flag($stubs);
+    foreach ($groups as $group) {
+        $creature = $group['creature'];
+        $list = $group['stubs'];
+        for ($gi = 0; $gi < count($list); $gi += $fleshBatchSize) {
+            if (time() - $startTime >= $timeLimit) {
+                break 2;
+            }
+            $chunk = array_slice($list, $gi, $fleshBatchSize);
+            $part = ew_intake_flesh_batch_chunk(
+                $chunk,
+                $creature,
+                $townName,
+                $dndEdition,
+                $campaignDesc,
+                $campaignRules,
+                $rules,
+                $featRef,
+                $apiKey,
+                $model,
+                $openRouterUrl,
+                $userId
+            );
+            foreach ($part as $row) {
+                $fleshedChars[] = $row;
+            }
         }
     }
 
