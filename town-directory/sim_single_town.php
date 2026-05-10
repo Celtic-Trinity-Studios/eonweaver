@@ -66,7 +66,7 @@
             $rollingMetaRow = query('SELECT value FROM town_meta WHERE town_id = ? AND `key` = ?', [$tId, EW_SIM_ROLLING_SUMMARY_KEY], $uid);
             $rollingSummary = $rollingMetaRow ? trim((string) ($rollingMetaRow[0]['value'] ?? '')) : '';
             $rollingSummary = ew_sim_rolling_summary_maybe_seed($tId, $hist, $rollingSummary, $uid);
-            $rosterText = ew_sim_tiered_roster_simple($chars, 10);
+            $rosterText = ew_sim_tiered_roster_simple($chars, ew_sim_budget_roster_detail_cap());
             $charCount = count($chars);
             $historyText = ew_sim_prompt_history_block($hist, $rollingSummary);
 

@@ -56,7 +56,18 @@ export default function SimulationView(container) {
             <label>📅 Days (Partial Month)</label>
             <div style="display:flex;align-items:center;gap:0.5rem;">
               <input type="number" id="sim-days" class="form-input" min="0" max="30" value="0" style="width:70px;text-align:center;" title="Days to simulate within the month (0 = full month)">
-              <span style="font-size:0.75rem;color:var(--text-muted)">0 = full month. For multi-month runs, simulation executes one API call per month; partial days apply only to single-month runs.</span>
+              <span style="font-size:0.75rem;color:var(--text-muted)">0 = full month. Partial days apply only to single-month runs.</span>
+            </div>
+          </div>
+          <div class="sim-field">
+            <label>🧩 Months per AI request</label>
+            <div style="display:flex;align-items:center;gap:0.5rem;">
+              <select id="sim-months-batch" class="form-input" style="width:min(220px,100%);" title="Fewer requests = less overhead; larger prompts per call">
+                <option value="1">1 (safest — default)</option>
+                <option value="2">2 (fewer API calls)</option>
+                <option value="3">3 (fewest calls — heavier prompts)</option>
+              </select>
+              <span style="font-size:0.75rem;color:var(--text-muted)">Multi-month runs normally call the AI once per month. Use 2–3 to reduce requests; quality may dip if the model loses track.</span>
             </div>
           </div>
           <div class="sim-field">
@@ -105,6 +116,20 @@ export default function SimulationView(container) {
 
   let selectedMonths = 1;
   let simResult = null;
+
+  const LS_MONTHS_BATCH = 'ew_sim_months_per_batch';
+  function readMonthsPerBatch() {
+    try {
+      const v = parseInt(localStorage.getItem(LS_MONTHS_BATCH) || '1', 10);
+      if (v === 2 || v === 3) return v;
+    } catch (e) { /* ignore */ }
+    return 1;
+  }
+  function writeMonthsPerBatch(v) {
+    try {
+      localStorage.setItem(LS_MONTHS_BATCH, String(v));
+    } catch (e) { /* ignore */ }
+  }
 
   // Debug log helper
   function log(msg, type = 'info') {
@@ -160,6 +185,15 @@ export default function SimulationView(container) {
   container.querySelector('#sim-clear-log').addEventListener('click', () => {
     container.querySelector('#sim-log-entries').innerHTML = '';
   });
+
+  const batchSel = container.querySelector('#sim-months-batch');
+  if (batchSel) {
+    batchSel.value = String(readMonthsPerBatch());
+    batchSel.addEventListener('change', () => {
+      const v = parseInt(batchSel.value, 10);
+      writeMonthsPerBatch(Number.isFinite(v) ? v : 1);
+    });
+  }
 
   // Debug LLM button
   container.querySelector('#sim-debug-btn').addEventListener('click', async () => {
@@ -338,10 +372,10 @@ export default function SimulationView(container) {
         showResults(cont, result);
 
       } else {
-        // Multi-month: one API call per month (smaller prompts, less context bloat).
-        const effectiveBatchSize = 1;
+        // Multi-month: batch months per request (default 1 — user can raise to reduce API call count).
+        const effectiveBatchSize = Math.max(1, Math.min(3, readMonthsPerBatch()));
         const totalBatches = Math.ceil(selectedMonths / effectiveBatchSize);
-        log(`Running ${selectedMonths} month(s) in ${totalBatches} API call(s) (1 month per call)...`, 'info');
+        log(`Running ${selectedMonths} month(s) in ${totalBatches} API call(s) (up to ${effectiveBatchSize} month(s) per call)...`, 'info');
 
         // Accumulated result
         const merged = {
@@ -377,7 +411,7 @@ export default function SimulationView(container) {
           const batchIntake = batch === 0 ? intakeCount : 0;
           const batchInstructions = batch === 0
             ? fullInstructions
-            : `[Continuing prior simulation — cover ONLY calendar months ${batchStart}-${batchEnd} of ${selectedMonths} total. Earlier months are already applied in the database. Stay consistent with existing town state.]\n`;
+            : `[Continuing prior simulation — cover ONLY calendar months ${batchStart}-${batchEnd} of ${selectedMonths} total (${batchMonths} month(s) in THIS request). Earlier months are already applied in the database. Stay consistent with existing town state.]\n`;
 
           try {
             const partialDaysArg = (daysCount > 0 && selectedMonths === 1) ? daysCount : 0;

@@ -175,7 +175,7 @@
             }
 
             // Tiered roster + compressed history (token/cost control)
-            $rosterText = ew_sim_tiered_roster_main_run($characters, $relsByChar, 10);
+            $rosterText = ew_sim_tiered_roster_main_run($characters, $relsByChar, ew_sim_budget_roster_detail_cap());
             $historyText = ew_sim_prompt_history_block($history, $rollingSummary);
 
             // Population threshold text
@@ -759,6 +759,18 @@ CAL;
                     $partialText = " (PARTIAL: only the first {$days} days of the month — scale all events, XP, arrivals, etc. proportionally to {$days}/{$daysPerMonth} of a full month)";
                 }
 
+                $multiMonthCompactHint = '';
+                if ($months > 1) {
+                    $multiMonthCompactHint = <<<HINT
+
+## MULTI-MONTH REQUEST ({$months} calendar months in ONE response):
+- The JSON must stay complete and valid — if you run out of space, shorten prose inside strings; do NOT truncate braces.
+- daily_log: at MOST about 6-10 entries **per simulated month** (skip routine quiet days). Do NOT emit a beat for every calendar day.
+- events: at least one notable row per month; merge minor happenings into "summary" / new_history_entry instead of huge arrays.
+- Keep building_changes and relationship churn proportional — quality over quantity.
+HINT;
+                }
+
                 $prompt = <<<PROMPT
 
 {$demoBlock}
@@ -880,6 +892,7 @@ A realistic town is NOT a utopia. You MUST include conflict and tension:
 {$instructions}
 
 {$closedBordersBlock}
+{$multiMonthCompactHint}
 ## Your Task:
 Simulate {$months} month(s){$partialText} of time passing. You MUST include:
 - XP gains, new relationships (positive AND negative), births, deaths, drama, events, role changes.
@@ -944,7 +957,20 @@ PROMPT;
                 // Fall back to OpenRouter
                 $openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
                 $model = defined("OPENROUTER_MODEL_CHEAP") ? OPENROUTER_MODEL_CHEAP : (defined("OPENROUTER_MODEL") ? OPENROUTER_MODEL : "google/gemini-2.5-flash-lite");
-                $maxTok = 65536;
+                // Single-month stays generous; batched multi-month needs higher completion budget or JSON truncates mid-object.
+                if (defined('EW_SIM_RUN_MAX_OUTPUT_TOKENS')) {
+                    $maxTok = max(4096, min(131072, (int) EW_SIM_RUN_MAX_OUTPUT_TOKENS));
+                } elseif ($months <= 1) {
+                    $maxTok = 65536;
+                } else {
+                    $mmBase = defined('EW_SIM_RUN_MAX_OUTPUT_MULTIMONTH_BASE')
+                        ? (int) EW_SIM_RUN_MAX_OUTPUT_MULTIMONTH_BASE
+                        : 22000;
+                    $mmPer = defined('EW_SIM_RUN_MAX_OUTPUT_TOKENS_PER_EXTRA_MONTH')
+                        ? (int) EW_SIM_RUN_MAX_OUTPUT_TOKENS_PER_EXTRA_MONTH
+                        : 18000;
+                    $maxTok = min(65536, max(28672, $mmBase + $mmPer * max(0, $months - 1)));
+                }
                 $payload = ew_json_encode_openrouter_body([
                     "model" => $model,
                     "messages" => [["role" => "user", "content" => $prompt]],
@@ -978,13 +1004,16 @@ PROMPT;
                     trackTokenUsage($userId, $data['usage']);
                 }
                 $text = $data["choices"][0]["message"]["content"] ?? "";
+                $GLOBALS['EW_SIM_LAST_OPENROUTER_FINISH_REASON'] = $data['choices'][0]['finish_reason'] ?? '';
             }
 
             // ── Parse JSON response ───────────────────────────────────
             $simulation = robustJsonDecode($text);
 
             if ($simulation === null) {
-                throw new Exception('Failed to parse Gemini response as JSON: ' . json_last_error_msg() . "\n\nRaw response:\n" . substr($text, 0, 500));
+                $fr = $GLOBALS['EW_SIM_LAST_OPENROUTER_FINISH_REASON'] ?? '';
+                $frHint = $fr !== '' ? " (finish_reason={$fr}" . ($fr === 'length' ? ' — output hit max_tokens; raise EW_SIM_RUN_MAX_OUTPUT_* or use 1 month per call' : '') . ')' : '';
+                throw new Exception('Failed to parse Gemini response as JSON: ' . json_last_error_msg() . $frHint . "\n\nRaw response:\n" . substr($text, 0, 500));
             }
 
             if (!empty($simulation['daily_log']) && is_array($simulation['daily_log'])) {

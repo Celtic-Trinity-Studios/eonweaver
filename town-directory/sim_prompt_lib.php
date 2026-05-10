@@ -6,6 +6,82 @@
 
 require_once __DIR__ . '/toon_lib.php';
 
+/**
+ * Optional config.php defines — tighter values = smaller prompts (may reduce coherence).
+ * All functions clamp to safe ranges.
+ */
+if (!function_exists('ew_sim_budget_roster_detail_cap')) {
+    function ew_sim_budget_roster_detail_cap(): int
+    {
+        $v = defined('EW_SIM_ROSTER_DETAIL_CAP') ? (int) EW_SIM_ROSTER_DETAIL_CAP : 10;
+
+        return max(4, min(24, $v));
+    }
+}
+
+if (!function_exists('ew_sim_budget_chunk_roster_detail_cap')) {
+    function ew_sim_budget_chunk_roster_detail_cap(): int
+    {
+        $v = defined('EW_SIM_CHUNK_ROSTER_DETAIL_CAP') ? (int) EW_SIM_CHUNK_ROSTER_DETAIL_CAP : 10;
+
+        return max(4, min(24, $v));
+    }
+}
+
+if (!function_exists('ew_sim_budget_rolling_summary_prompt_max')) {
+    function ew_sim_budget_rolling_summary_prompt_max(): int
+    {
+        $v = defined('EW_SIM_ROLLING_SUMMARY_PROMPT_MAX') ? (int) EW_SIM_ROLLING_SUMMARY_PROMPT_MAX : 2400;
+
+        return max(400, min(12000, $v));
+    }
+}
+
+if (!function_exists('ew_sim_budget_history_recent_when_rolling')) {
+    function ew_sim_budget_history_recent_when_rolling(): int
+    {
+        $v = defined('EW_SIM_HISTORY_RECENT_WHEN_ROLLING') ? (int) EW_SIM_HISTORY_RECENT_WHEN_ROLLING : 1;
+
+        return max(1, min(3, $v));
+    }
+}
+
+if (!function_exists('ew_sim_budget_history_recent_body_max')) {
+    function ew_sim_budget_history_recent_body_max(): int
+    {
+        $v = defined('EW_SIM_HISTORY_RECENT_BODY_MAX') ? (int) EW_SIM_HISTORY_RECENT_BODY_MAX : 1200;
+
+        return max(200, min(8000, $v));
+    }
+}
+
+if (!function_exists('ew_sim_budget_history_recent_keep')) {
+    function ew_sim_budget_history_recent_keep(): int
+    {
+        $v = defined('EW_SIM_HISTORY_RECENT_KEEP') ? (int) EW_SIM_HISTORY_RECENT_KEEP : 2;
+
+        return max(1, min(8, $v));
+    }
+}
+
+if (!function_exists('ew_sim_budget_history_older_digest_max')) {
+    function ew_sim_budget_history_older_digest_max(): int
+    {
+        $v = defined('EW_SIM_HISTORY_OLDER_DIGEST_MAX') ? (int) EW_SIM_HISTORY_OLDER_DIGEST_MAX : 120;
+
+        return max(40, min(800, $v));
+    }
+}
+
+if (!function_exists('ew_sim_budget_history_max_older_lines')) {
+    function ew_sim_budget_history_max_older_lines(): int
+    {
+        $v = defined('EW_SIM_HISTORY_MAX_OLDER_LINES') ? (int) EW_SIM_HISTORY_MAX_OLDER_LINES : 20;
+
+        return max(4, min(40, $v));
+    }
+}
+
 if (!function_exists('ew_sim_roster_spouse_cell')) {
     /** Single cell for spouse / partner columns in TOON roster rows. */
     function ew_sim_roster_spouse_cell(array $c): string
@@ -633,27 +709,24 @@ if (!function_exists('ew_sim_rolling_summary_append_entry')) {
      *
      * @param list<array{heading?:string,content?:string}> $historyRows
      */
-    function ew_sim_prompt_history_block(
-        array $historyRows,
-        string $rollingStored,
-        int $recentWhenRolling = 1,
-        int $recentBodyMax = 1200
-    ): string {
+    function ew_sim_prompt_history_block(array $historyRows, string $rollingStored): string
+    {
         $rolling = trim($rollingStored);
+        $recentWhenRolling = ew_sim_budget_history_recent_when_rolling();
+        $recentBodyMax = ew_sim_budget_history_recent_body_max();
         if ($rolling === '' && empty($historyRows)) {
             return '';
         }
         $blocks = [];
         if ($rolling !== '') {
             $blocks[] = "## Rolling summary (town_meta)\n"
-                . ew_sim_rolling_summary_for_prompt($rolling, 2400)
+                . ew_sim_rolling_summary_for_prompt($rolling, ew_sim_budget_rolling_summary_prompt_max())
                 . "\nContinuity backbone; do not contradict lightly.";
         }
         if (empty($historyRows)) {
             return $blocks ? "\n\n" . implode("\n\n", $blocks) . "\n" : '';
         }
         if ($rolling !== '') {
-            $recentWhenRolling = max(1, min(3, $recentWhenRolling));
             $recentBodyCap = min($recentBodyMax, 720);
             $recent = array_slice($historyRows, -$recentWhenRolling);
             $lines = ['## Latest history (newest last)'];
@@ -665,7 +738,14 @@ if (!function_exists('ew_sim_rolling_summary_append_entry')) {
             $blocks[] = implode("\n", $lines);
             return "\n\n" . implode("\n\n", $blocks) . "\n";
         }
-        return ew_sim_history_markdown($historyRows, 2, $recentBodyMax, 120, 20);
+
+        return ew_sim_history_markdown(
+            $historyRows,
+            ew_sim_budget_history_recent_keep(),
+            $recentBodyMax,
+            ew_sim_budget_history_older_digest_max(),
+            ew_sim_budget_history_max_older_lines()
+        );
     }
 }
 

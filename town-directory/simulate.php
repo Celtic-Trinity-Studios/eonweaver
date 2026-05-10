@@ -327,7 +327,7 @@ try {
             // Build roster (tiered when large — TOON tabular for token efficiency)
             $chars = query('SELECT * FROM characters WHERE town_id = ? ORDER BY name', [$tId], $uid);
             $charCount = count($chars);
-            $rosterText = ew_sim_tiered_roster_simple($chars, 12);
+            $rosterText = ew_sim_tiered_roster_simple($chars, ew_sim_budget_chunk_roster_detail_cap());
 
             $biomeBlock = $biome ? " | Biome: {$biome}" : '';
             $ctx = $priorContext ? "Prior events:\n{$priorContext}\n\n" : '';

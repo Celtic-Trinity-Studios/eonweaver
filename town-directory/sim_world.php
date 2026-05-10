@@ -61,7 +61,7 @@
                     ? (macroFoodEconomyPromptLine($tId, $campIdW) . macroFoodAutonomyDirective($tId, $campIdW))
                     : '';
 
-                $rosterText = ew_sim_tiered_roster_simple($chars, 10);
+                $rosterText = ew_sim_tiered_roster_simple($chars, ew_sim_budget_roster_detail_cap());
                 $charCount = count($chars);
                 $historyText = ew_sim_prompt_history_block($hist, $rollingSummary);
 

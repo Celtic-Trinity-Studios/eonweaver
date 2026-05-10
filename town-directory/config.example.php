@@ -90,6 +90,26 @@ define('OPENROUTER_MODEL', 'google/gemini-2.5-flash');
 define('OPENROUTER_MODEL_SMART', 'google/gemini-2.5-flash');
 define('OPENROUTER_MODEL_CHEAP', 'google/gemini-2.5-flash-lite');
 
+// ── AI prompt budgets (optional — trim context = fewer tokens per call) ──
+// Roster: how many NPCs get full-detail rows in tiered tables (clamped 4–24 server-side).
+// define('EW_SIM_ROSTER_DETAIL_CAP', 10);           // run_simulation / world / single-town
+// define('EW_SIM_CHUNK_ROSTER_DETAIL_CAP', 10);     // simulate_chunk multi-phase months
+// History block in sim prompts (when no rolling summary, uses digest + recent entries).
+// define('EW_SIM_HISTORY_RECENT_KEEP', 2);
+// define('EW_SIM_HISTORY_RECENT_BODY_MAX', 1200);
+// define('EW_SIM_HISTORY_OLDER_DIGEST_MAX', 120);
+// define('EW_SIM_HISTORY_MAX_OLDER_LINES', 20);
+// Rolling summary excerpt sent to the model (characters).
+// define('EW_SIM_ROLLING_SUMMARY_PROMPT_MAX', 2400);
+// When rolling summary exists, how many newest DB history rows to append (1–3).
+// define('EW_SIM_HISTORY_RECENT_WHEN_ROLLING', 1);
+
+// run_simulation OpenRouter completion budget (multi-month-in-one-call needs more headroom).
+// define('EW_SIM_RUN_MAX_OUTPUT_TOKENS', 65536);              // optional: fixed cap for ALL runs (single + multi)
+// If unset: single-month stays 65536; 2+ months uses base + per-extra-month (see sim_run.php).
+// define('EW_SIM_RUN_MAX_OUTPUT_MULTIMONTH_BASE', 22000);
+// define('EW_SIM_RUN_MAX_OUTPUT_TOKENS_PER_EXTRA_MONTH', 18000);
+
 // ── Local LLM (Ollama) ──────────────────────────────────
 define('LLAMA_HOST', 'http://localhost:11434');
 define('LLAMA_PORT', 11434);
