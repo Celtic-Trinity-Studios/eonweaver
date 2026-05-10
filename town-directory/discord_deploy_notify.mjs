@@ -20,7 +20,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import dotenv from 'dotenv';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -63,15 +63,36 @@ function onlyDigits(s) {
     return String(s || '').replace(/\D/g, '');
 }
 
-/** When deploy scripts omit `-Changes`, use recent commits from this repo. */
-function changesFromGit(cwd, maxCommits = 12) {
+/** Resolve repo root (town-directory may not be the git top-level). */
+function gitTopLevel(startDir) {
     try {
-        const out = execSync(`git log -n ${maxCommits} --pretty=format:%h %s`, {
-            cwd,
+        const out = execFileSync('git', ['-C', startDir, 'rev-parse', '--show-toplevel'], {
             encoding: 'utf8',
-            maxBuffer: 256 * 1024,
+            maxBuffer: 64 * 1024,
             stdio: ['ignore', 'pipe', 'ignore'],
         });
+        return out.trim();
+    } catch {
+        return '';
+    }
+}
+
+/** When deploy scripts omit `-Changes`, use recent commits from this repo. */
+function changesFromGit(scriptDir, maxCommits = 12) {
+    const root = gitTopLevel(scriptDir);
+    if (!root) {
+        return [];
+    }
+    try {
+        const out = execFileSync(
+            'git',
+            ['-C', root, 'log', `-${maxCommits}`, '--pretty=format:%h %s'],
+            {
+                encoding: 'utf8',
+                maxBuffer: 256 * 1024,
+                stdio: ['ignore', 'pipe', 'ignore'],
+            }
+        );
         return out
             .trim()
             .split(/\r?\n/)
