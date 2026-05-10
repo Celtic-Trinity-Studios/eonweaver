@@ -152,6 +152,7 @@ try {
             user_id INT NOT NULL,
             feature_key VARCHAR(64) NOT NULL,
             tokens BIGINT NOT NULL DEFAULT 0,
+            cost_usd DECIMAL(16,8) NOT NULL DEFAULT 0,
             calls INT NOT NULL DEFAULT 0,
             UNIQUE KEY uniq_day_user_feature (day, user_id, feature_key),
             KEY idx_ai_day_feature (day, feature_key)
@@ -159,6 +160,12 @@ try {
         $results[] = '✅ metrics_ai_calls table';
     } catch (Exception $e) {
         $results[] = '⚠️ metrics_ai_calls: ' . htmlspecialchars($e->getMessage());
+    }
+
+    try {
+        $pdo->exec('ALTER TABLE metrics_ai_calls ADD COLUMN cost_usd DECIMAL(16,8) NOT NULL DEFAULT 0 AFTER tokens');
+        $results[] = '✅ Added cost_usd to metrics_ai_calls';
+    } catch (Exception $e) { /* already exists */
     }
 
     // Migration: add npc_xp_speed column
@@ -553,6 +560,7 @@ try {
         `year_month`    VARCHAR(7) NOT NULL,
         feature_key     VARCHAR(100) DEFAULT 'global',
         tokens_used     BIGINT DEFAULT 0,
+        cost_usd        DECIMAL(16,8) NOT NULL DEFAULT 0,
         call_count      INT DEFAULT 0,
         updated_at      DATETIME DEFAULT NOW(),
         UNIQUE KEY unique_user_month_feature (user_id, `year_month`, feature_key),
@@ -560,6 +568,12 @@ try {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $results[] = '✅ user_token_usage table';
+
+    try {
+        $pdo->exec('ALTER TABLE user_token_usage ADD COLUMN cost_usd DECIMAL(16,8) NOT NULL DEFAULT 0 AFTER tokens_used');
+        $results[] = '✅ Added cost_usd to user_token_usage';
+    } catch (Exception $e) { /* already exists */
+    }
 
     // Migration: add feature_key
     try {

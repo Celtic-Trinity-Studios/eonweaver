@@ -253,6 +253,53 @@ function recalcCharStats($charId, $uid)
 }
 
 /**
+ * USD total OpenRouter reports on the completion `usage` object (when present).
+ */
+function ew_openrouter_usage_cost_usd(array $usage): float
+{
+    if (!array_key_exists('cost', $usage)) {
+        return 0.0;
+    }
+    $c = $usage['cost'];
+    if (is_string($c)) {
+        $c = trim($c);
+    }
+    if (!is_numeric($c)) {
+        return 0.0;
+    }
+    $f = (float) $c;
+    return $f > 0 ? $f : 0.0;
+}
+
+/**
+ * Ensures analytics tables have cost_usd (OpenRouter-reported spend). Safe to call repeatedly.
+ */
+function ew_ensure_ai_usage_cost_columns(): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+    try {
+        execute(
+            'ALTER TABLE user_token_usage ADD COLUMN cost_usd DECIMAL(16,8) NOT NULL DEFAULT 0 AFTER tokens_used',
+            [],
+            0
+        );
+    } catch (Throwable $e) { /* column exists */
+    }
+    try {
+        execute(
+            'ALTER TABLE metrics_ai_calls ADD COLUMN cost_usd DECIMAL(16,8) NOT NULL DEFAULT 0 AFTER tokens',
+            [],
+            0
+        );
+    } catch (Throwable $e) { /* column exists */
+    }
+}
+
+/**
  * Track AI token usage for a user.
  * Deducts RAW LLM tokens from credit_balance (same units as OpenRouter usage).
  * Sidebar/UI converts to "Eon Credits" via TOKENS_PER_CREDIT (default 200000) to match the cost modal.
@@ -276,25 +323,29 @@ function trackTokenUsage($userId, $usage, $featureKey = null)
     }
     if ($totalTokens <= 0) return;
 
+    $costUsd = ew_openrouter_usage_cost_usd($usage);
     $yearMonth = date('Y-m'); // e.g. "2026-03"
 
     try {
+        ew_ensure_ai_usage_cost_columns();
+
         // 1. Log to analytics table (keeps monthly breakdown for admin)
         execute(
-            "INSERT INTO user_token_usage (user_id, `year_month`, feature_key, tokens_used, call_count, updated_at)
-             VALUES (?, ?, ?, ?, 1, NOW())
+            "INSERT INTO user_token_usage (user_id, `year_month`, feature_key, tokens_used, cost_usd, call_count, updated_at)
+             VALUES (?, ?, ?, ?, ?, 1, NOW())
              ON DUPLICATE KEY UPDATE
                 tokens_used = tokens_used + VALUES(tokens_used),
+                cost_usd = cost_usd + VALUES(cost_usd),
                 call_count = call_count + 1,
                 updated_at = NOW()",
-            [$userId, $yearMonth, $featureKey, $totalTokens],
+            [$userId, $yearMonth, $featureKey, $totalTokens, $costUsd],
             0 // shared DB
         );
 
         // 1b. Daily roll-up for admin charts (server-side metrics)
         if (file_exists(__DIR__ . '/metrics_lib.php')) {
             require_once __DIR__ . '/metrics_lib.php';
-            ew_record_ai_usage_daily($userId, $featureKey, $totalTokens);
+            ew_record_ai_usage_daily($userId, $featureKey, $totalTokens, $costUsd);
         }
 
         // 2. BYOK (Settings key): user pays OpenRouter — do not deduct platform wallet

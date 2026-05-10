@@ -130,7 +130,7 @@ export default function AdminDashboardView(container) {
           ${statCard('🧠', formatTokens(data.monthly_tokens), 'Tokens This Month')}
           ${statCard('📡', data.monthly_calls, 'AI Calls This Month')}
           ${statCard('🟢', data.active_users, `Active Users (${data.month})`)}
-          ${statCard('💰', '$' + estimateCost(data.monthly_tokens), 'Est. Cost This Month')}
+          ${statCard('💰', formatMonthlyCostCard(data.monthly_cost_usd, data.monthly_tokens), monthlyCostLabel(data.monthly_cost_usd, data.monthly_tokens))}
         </div>
         `;
     }
@@ -174,15 +174,33 @@ export default function AdminDashboardView(container) {
             return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
         };
 
-        const sparkline = (data, color) => {
+        const formatUsdAxis = (v) => {
+            const n = Number(v) || 0;
+            if (n === 0) return '$0';
+            if (Math.abs(n) < 0.000001) return `$${n.toExponential(1)}`;
+            if (Math.abs(n) < 0.01) return `$${n.toFixed(6).replace(/\.?0+$/, '')}`;
+            if (Math.abs(n) < 1) return `$${n.toFixed(4).replace(/\.?0+$/, '')}`;
+            return `$${n.toFixed(2).replace(/\.?0+$/, '')}`;
+        };
+
+        /** @param {'tokens'|'usd'} yMode */
+        const sparkline = (data, color, yMode = 'tokens') => {
             if (!data || !data.length) return '<div class="metric-empty">No data yet.</div>';
             const w = 640, h = 180;
-            const pad = { top: 14, right: 14, bottom: 30, left: 48 };
+            const pad = { top: 14, right: 14, bottom: 30, left: 56 };
             const plotW = w - pad.left - pad.right;
             const plotH = h - pad.top - pad.bottom;
 
-            const values = data.map(d => d.value);
-            const dataMax = Math.max(1, ...values);
+            const values = data.map(d => Number(d.value) || 0);
+            const posMax = values.reduce((a, b) => Math.max(a, b), 0);
+            const dataMax = yMode === 'usd'
+                ? (posMax > 0 ? posMax : 1e-9)
+                : Math.max(1, ...values);
+            const fmtY = yMode === 'usd' ? formatUsdAxis : compactNum;
+            const fmtMeta = yMode === 'usd'
+                ? formatUsdAxis
+                : (x) => Number(x).toLocaleString();
+
             const { ticks, niceMin, niceMax } = niceTicks(0, dataMax, 5);
             const span = niceMax - niceMin || 1;
             const yScale = v => pad.top + plotH - ((v - niceMin) / span) * plotH;
@@ -196,7 +214,7 @@ export default function AdminDashboardView(container) {
                 const y = yScale(t).toFixed(1);
                 return `
                     <line x1="${pad.left}" x2="${pad.left + plotW}" y1="${y}" y2="${y}" class="metric-gridline"/>
-                    <text x="${pad.left - 6}" y="${y}" class="metric-axis-label metric-axis-y">${compactNum(t)}</text>
+                    <text x="${pad.left - 6}" y="${y}" class="metric-axis-label metric-axis-y">${fmtY(t)}</text>
                 `;
             }).join('');
 
@@ -210,10 +228,12 @@ export default function AdminDashboardView(container) {
                 return `<text x="${x}" y="${(pad.top + plotH + 18).toFixed(1)}" class="metric-axis-label metric-axis-x">${formatDateShort(data[i].day)}</text>`;
             }).join('');
 
-            const peakIdx = values.indexOf(dataMax);
+            const peakIdx = values.length
+                ? values.reduce((bestIdx, v, i, arr) => v > arr[bestIdx] ? i : bestIdx, 0)
+                : 0;
             const lastIdx = data.length - 1;
             const dot = (i) => `<circle cx="${xScale(i).toFixed(1)}" cy="${yScale(values[i]).toFixed(1)}" r="3.5" fill="${color}" stroke="rgba(0,0,0,.4)" stroke-width="1"/>`;
-            const peakLabel = `<text x="${xScale(peakIdx).toFixed(1)}" y="${(yScale(values[peakIdx]) - 7).toFixed(1)}" class="metric-axis-label metric-point-label" text-anchor="middle">${compactNum(values[peakIdx])}</text>`;
+            const peakLabel = `<text x="${xScale(peakIdx).toFixed(1)}" y="${(yScale(values[peakIdx]) - 7).toFixed(1)}" class="metric-axis-label metric-point-label" text-anchor="middle">${fmtY(values[peakIdx])}</text>`;
 
             const lastVal = values[lastIdx];
             const total = values.reduce((a, b) => a + b, 0);
@@ -229,9 +249,9 @@ export default function AdminDashboardView(container) {
                 ${xLabels}
               </svg>
               <div class="metric-spark-meta">
-                <span>peak ${dataMax.toLocaleString()}</span>
-                <span>today ${lastVal.toLocaleString()}</span>
-                <span>total ${total.toLocaleString()}</span>
+                <span>peak ${fmtMeta(dataMax)}</span>
+                <span>today ${fmtMeta(lastVal)}</span>
+                <span>total ${fmtMeta(total)}</span>
               </div>
             `;
         };
@@ -273,13 +293,20 @@ export default function AdminDashboardView(container) {
           <tr><td><code>${a.outcome}</code></td><td>${(+a.c).toLocaleString()}</td></tr>
         `).join('') || '<tr><td colspan="2" class="metric-empty">Quiet — no rejected attempts in last 7 days.</td></tr>';
 
-        const featureRows = (m.feature_usage || []).slice(0, 12).map(f => `
+        const featureRows = (m.feature_usage || []).slice(0, 12).map(f => {
+            const tracked = parseFloat(f.cost_usd);
+            const tok = +f.tokens;
+            const costCell = Number.isFinite(tracked) && tracked > 0
+                ? `$${formatUsdTrim(tracked)}`
+                : `$${estimateCost(tok)} <span class="muted">(est.)</span>`;
+            return `
           <tr>
             <td><code>${f.feature_key || 'global'}</code></td>
             <td>${(+f.calls).toLocaleString()}</td>
-            <td>${formatTokens(+f.tokens)}</td>
-          </tr>
-        `).join('') || '<tr><td colspan="3" class="metric-empty">No AI calls this month.</td></tr>';
+            <td>${formatTokens(tok)}</td>
+            <td>${costCell}</td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="4" class="metric-empty">No AI calls this month.</td></tr>';
 
         const cohortRows = (m.retention_cohorts || []).map(c => {
             const cell = (val) => {
@@ -326,7 +353,12 @@ export default function AdminDashboardView(container) {
 
             <div class="metric-card metric-card-wide">
               <div class="metric-title">Daily AI tokens burned</div>
-              ${sparkline(m.daily_tokens, '#f59e0b')}
+              ${sparkline(m.daily_tokens, '#f59e0b', 'tokens')}
+            </div>
+
+            <div class="metric-card metric-card-wide">
+              <div class="metric-title">Daily OpenRouter cost (USD)</div>
+              ${sparkline(m.daily_cost_usd || [], '#22c55e', 'usd')}
             </div>
 
             <div class="metric-card">
@@ -355,7 +387,7 @@ export default function AdminDashboardView(container) {
             <div class="metric-card">
               <div class="metric-title">Top features (this month)</div>
               <table class="metric-table">
-                <thead><tr><th>Feature</th><th>Calls</th><th>Tokens</th></tr></thead>
+                <thead><tr><th>Feature</th><th>Calls</th><th>Tokens</th><th>Cost (USD)</th></tr></thead>
                 <tbody>${featureRows}</tbody>
               </table>
             </div>
@@ -1712,6 +1744,7 @@ export default function AdminDashboardView(container) {
         for (const [month, users] of Object.entries(byMonth)) {
             let totalMonthTokens = 0;
             let totalMonthCalls = 0;
+            let totalMonthCostUsd = 0;
             let usersHtml = '';
 
             const FEATURE_MAP = {
@@ -1731,23 +1764,27 @@ export default function AdminDashboardView(container) {
             };
 
             for (const [username, featureRows] of Object.entries(users)) {
-                const userTokens = featureRows.reduce((sum, r) => sum + parseInt(r.tokens_used || 0), 0);
-                const userCalls = featureRows.reduce((sum, r) => sum + parseInt(r.call_count || 0), 0);
+                const userTokens = featureRows.reduce((sum, r) => sum + parseInt(r.tokens_used || 0, 10), 0);
+                const userCalls = featureRows.reduce((sum, r) => sum + parseInt(r.call_count || 0, 10), 0);
+                const userCostUsd = featureRows.reduce((sum, r) => sum + (parseFloat(r.cost_usd) || 0), 0);
                 totalMonthTokens += userTokens;
                 totalMonthCalls += userCalls;
+                totalMonthCostUsd += userCostUsd;
 
                 const usageByKey = {};
                 featureRows.forEach(r => {
                     const key = r.feature_key || 'global';
+                    const prev = usageByKey[key] || { tokens: 0, calls: 0, cost_usd: 0 };
                     usageByKey[key] = {
-                        tokens: parseInt(r.tokens_used || 0),
-                        calls: parseInt(r.call_count || 0)
+                        tokens: prev.tokens + parseInt(r.tokens_used || 0, 10),
+                        calls: prev.calls + parseInt(r.call_count || 0, 10),
+                        cost_usd: prev.cost_usd + (parseFloat(r.cost_usd) || 0),
                     };
                 });
 
                 let expandedRowsHtml = '';
                 for (const [fKey, label] of Object.entries(FEATURE_MAP)) {
-                    const used = usageByKey[fKey] || { tokens: 0, calls: 0 };
+                    const used = usageByKey[fKey] || { tokens: 0, calls: 0, cost_usd: 0 };
                     // Optionally hide global if it's 0 to keep the list purely feature-focused for new data
                     if (fKey === 'global' && used.tokens === 0) continue;
                     
@@ -1756,7 +1793,7 @@ export default function AdminDashboardView(container) {
                             <td><span class="card-badge" style="display:inline-block; min-width: 220px;">${esc(label)}</span></td>
                             <td style="${used.tokens === 0 ? 'opacity:0.3;' : ''}">${formatTokens(used.tokens)}</td>
                             <td style="${used.calls === 0 ? 'opacity:0.3;' : ''}">${used.calls}</td>
-                            <td style="${used.tokens === 0 ? 'opacity:0.3;' : ''}">$${estimateCost(used.tokens)}</td>
+                            <td style="${used.tokens === 0 ? 'opacity:0.3;' : ''}">${formatUsageCostCell(used)}</td>
                         </tr>
                     `;
                 }
@@ -1770,7 +1807,7 @@ export default function AdminDashboardView(container) {
                                 <td><span class="card-badge" style="display:inline-block; min-width: 220px;">Unknown: ${esc(k)}</span></td>
                                 <td>${formatTokens(used.tokens)}</td>
                                 <td>${used.calls}</td>
-                                <td>$${estimateCost(used.tokens)}</td>
+                                <td>${formatUsageCostCell(used)}</td>
                             </tr>
                         `;
                     }
@@ -1782,12 +1819,12 @@ export default function AdminDashboardView(container) {
                     <td><strong>${esc(username)}</strong> <span style="font-size: 0.8em; opacity: 0.7; margin-left: 8px;">(Click to expand)</span></td>
                     <td>${formatTokens(userTokens)}</td>
                     <td>${userCalls}</td>
-                    <td>$${estimateCost(userTokens)}</td>
+                    <td>${formatUsageCostCell({ tokens: userTokens, cost_usd: userCostUsd })}</td>
                   </tr>
                   <tr class="usage-features-row" style="display: none; background: rgba(0,0,0,0.2);">
                     <td colspan="4" style="padding: 10px 40px; border-left: 3px solid var(--accent);">
                         <table class="admin-table compact" style="margin: 0; background: transparent;">
-                            <thead><tr><th style="min-width: 220px;">Feature</th><th>Tokens</th><th>Calls</th><th>Est. Cost</th></tr></thead>
+                            <thead><tr><th style="min-width: 220px;">Feature</th><th>Tokens</th><th>Calls</th><th>Cost (USD)</th></tr></thead>
                             <tbody>
                                 ${expandedRowsHtml}
                             </tbody>
@@ -1801,11 +1838,11 @@ export default function AdminDashboardView(container) {
             <div class="usage-month-block">
               <div class="usage-month-header">
                 <h3>📅 ${month}</h3>
-                <span class="usage-month-total">${formatTokens(totalMonthTokens)} tokens · ${totalMonthCalls} calls · ~$${estimateCost(totalMonthTokens)}</span>
+                <span class="usage-month-total">${formatTokens(totalMonthTokens)} tokens · ${totalMonthCalls} calls · ${formatUsageMonthTotal(totalMonthCostUsd, totalMonthTokens)}</span>
               </div>
               <table class="admin-table compact">
                 <thead>
-                  <tr><th>User</th><th>Total Tokens</th><th>Total Calls</th><th>Est. Cost</th></tr>
+                  <tr><th>User</th><th>Total Tokens</th><th>Total Calls</th><th>Cost (USD)</th></tr>
                 </thead>
                 <tbody>
                   ${usersHtml}
@@ -2044,9 +2081,47 @@ export default function AdminDashboardView(container) {
         return n.toString();
     }
 
+    /** Trim trailing zeros from a positive USD amount for display. */
+    function formatUsdTrim(n) {
+        const x = Number(n);
+        if (!Number.isFinite(x) || x <= 0) return '0';
+        const s = x.toFixed(8).replace(/\.?0+$/, '');
+        return s || '0';
+    }
+
     function estimateCost(tokens) {
         const avgPerMillion = 0.80;
         return ((parseInt(tokens) || 0) / 1000000 * avgPerMillion).toFixed(4);
+    }
+
+    function monthlyCostLabel(trackedUsd, tokens) {
+        const t = Number(trackedUsd);
+        const tok = parseInt(tokens, 10) || 0;
+        if (Number.isFinite(t) && t > 0) return 'OpenRouter cost (month)';
+        if (tok <= 0) return 'Cost this month';
+        return 'Est. cost (legacy rows)';
+    }
+
+    function formatMonthlyCostCard(trackedUsd, tokens) {
+        const t = Number(trackedUsd);
+        const tok = parseInt(tokens, 10) || 0;
+        if (Number.isFinite(t) && t > 0) return '$' + formatUsdTrim(t);
+        return '$' + estimateCost(tok);
+    }
+
+    /** @param {{ tokens: number, cost_usd?: number }} used */
+    function formatUsageCostCell(used) {
+        const tr = Number(used.cost_usd);
+        const tok = parseInt(String(used.tokens), 10) || 0;
+        if (Number.isFinite(tr) && tr > 0) return '$' + formatUsdTrim(tr);
+        return `$${estimateCost(tok)} <span class="muted">(est.)</span>`;
+    }
+
+    function formatUsageMonthTotal(totalCostUsd, totalTokens) {
+        const tr = Number(totalCostUsd);
+        const tok = parseInt(totalTokens, 10) || 0;
+        if (Number.isFinite(tr) && tr > 0) return '$' + formatUsdTrim(tr);
+        return `~$${estimateCost(tok)} <span class="muted">(est.)</span>`;
     }
 
     function esc(str) {

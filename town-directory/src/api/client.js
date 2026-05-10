@@ -77,12 +77,23 @@ export async function simFetch(action, body = {}) {
         body: JSON.stringify(body),
     });
     const text = await res.text();
+    const ct = res.headers.get('content-type') || '';
     let data;
     try {
         data = JSON.parse(text);
     } catch (e) {
+        const status = res.status;
+        const looksHtml = /<html[\s>]/i.test(text) || text.trimStart().startsWith('<!DOCTYPE');
+        // 502/504/524: proxy/CDN gave up before PHP returned JSON (common with long LLM calls).
+        if (looksHtml || !ct.includes('json')) {
+            if (status === 504 || status === 502 || status === 524) {
+                throw new Error(
+                    `Gateway timeout (${status}): The host or CDN stopped waiting before simulate.php finished, so the browser got an HTML error page instead of JSON. Raise nginx/Apache proxy or FastCGI timeouts above your longest OpenRouter call (often 120–180s+), or relax CDN limits for POSTs to simulate.php.`
+                );
+            }
+        }
         const preview = text.slice(0, 300) || '(empty response)';
-        throw new Error(`Sim parse error (HTTP ${res.status}, ${res.headers.get('content-type') || 'no content-type'}): ${preview}`);
+        throw new Error(`Sim parse error (HTTP ${status}, ${ct || 'no content-type'}): ${preview}`);
     }
     if (!res.ok || data.error) {
         throw new Error(data.error || `Sim error ${res.status}: ${text.slice(0, 200)}`);

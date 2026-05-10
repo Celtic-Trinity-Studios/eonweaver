@@ -79,6 +79,23 @@ try {
     );
 } catch (Exception $e) { /* already exists */ }
 
+try {
+    execute(
+        'ALTER TABLE user_token_usage ADD COLUMN cost_usd DECIMAL(16,8) NOT NULL DEFAULT 0 AFTER tokens_used',
+        [],
+        0
+    );
+} catch (Exception $e) { /* column exists */
+}
+try {
+    execute(
+        'ALTER TABLE metrics_ai_calls ADD COLUMN cost_usd DECIMAL(16,8) NOT NULL DEFAULT 0 AFTER tokens',
+        [],
+        0
+    );
+} catch (Exception $e) { /* column exists */
+}
+
 $action = $_GET['action'] ?? '';
 $input = null;
 
@@ -3321,7 +3338,8 @@ try {
             requireAdmin();
             try {
                 $rows = query(
-                    'SELECT u.username, t.user_id, t.`year_month`, t.feature_key, t.tokens_used, t.call_count
+                    'SELECT u.username, t.user_id, t.`year_month`, t.feature_key, t.tokens_used,
+                            COALESCE(t.cost_usd, 0) AS cost_usd, t.call_count
                      FROM user_token_usage t
                      JOIN users u ON u.id = t.user_id
                      ORDER BY t.`year_month` DESC, t.tokens_used DESC',
@@ -3735,6 +3753,30 @@ try {
                 $dailyTokens = $fillDays($tRows, 'c');
             } catch (Throwable $e) { $dailyTokens = []; }
 
+            // Daily OpenRouter-reported USD (same window as tokens)
+            try {
+                $costRows = query(
+                    "SELECT day, SUM(cost_usd) AS c
+                     FROM metrics_ai_calls
+                     WHERE day >= ?
+                     GROUP BY day",
+                    [$start], 0
+                );
+                $fillDaysUsd = function (array $rows, string $valueKey) use ($period) {
+                    $byDay = [];
+                    foreach ($rows as $r) {
+                        $byDay[$r['day']] = (float) $r[$valueKey];
+                    }
+                    $out = [];
+                    for ($i = $period - 1; $i >= 0; $i--) {
+                        $d = date('Y-m-d', strtotime("-{$i} days"));
+                        $out[] = ['day' => $d, 'value' => $byDay[$d] ?? 0.0];
+                    }
+                    return $out;
+                };
+                $dailyCostUsd = $fillDaysUsd($costRows, 'c');
+            } catch (Throwable $e) { $dailyCostUsd = []; }
+
             // Tier breakdown ----------------------------------------------------------
             $tiers = query(
                 "SELECT subscription_tier AS tier, COUNT(*) AS c FROM users GROUP BY subscription_tier",
@@ -3786,7 +3828,10 @@ try {
             // Feature usage (current month) ------------------------------------------
             $ym = date('Y-m');
             $featureUsage = query(
-                "SELECT feature_key, COALESCE(SUM(tokens_used),0) AS tokens, COALESCE(SUM(call_count),0) AS calls
+                "SELECT feature_key,
+                        COALESCE(SUM(tokens_used),0) AS tokens,
+                        COALESCE(SUM(cost_usd),0) AS cost_usd,
+                        COALESCE(SUM(call_count),0) AS calls
                  FROM user_token_usage
                  WHERE `year_month` = ?
                  GROUP BY feature_key
@@ -3841,6 +3886,7 @@ try {
                 'daily_visitors' => $dailyVisitors,
                 'daily_signups' => $dailySignups,
                 'daily_tokens' => $dailyTokens,
+                'daily_cost_usd' => $dailyCostUsd ?? [],
                 'tier_breakdown' => $tierBreakdown,
                 'verification_funnel' => $verificationFunnel,
                 'feature_usage' => $featureUsage,
@@ -3859,6 +3905,11 @@ try {
             $ym = date('Y-m');
             $monthlyTokens = query("SELECT COALESCE(SUM(tokens_used),0) as t FROM user_token_usage WHERE `year_month` = ?", [$ym], 0)[0]['t'] ?? 0;
             $monthlyCalls = query("SELECT COALESCE(SUM(call_count),0) as c FROM user_token_usage WHERE `year_month` = ?", [$ym], 0)[0]['c'] ?? 0;
+            $monthlyCostUsd = (float) (query(
+                "SELECT COALESCE(SUM(cost_usd),0) AS s FROM user_token_usage WHERE `year_month` = ?",
+                [$ym],
+                0
+            )[0]['s'] ?? 0);
             $activeUsers = query("SELECT COUNT(DISTINCT user_id) as c FROM user_token_usage WHERE `year_month` = ?", [$ym], 0)[0]['c'] ?? 0;
             respond([
                 'ok' => true,
@@ -3868,6 +3919,7 @@ try {
                 'total_campaigns' => (int) $totalCamps,
                 'monthly_tokens' => (int) $monthlyTokens,
                 'monthly_calls' => (int) $monthlyCalls,
+                'monthly_cost_usd' => round($monthlyCostUsd, 8),
                 'active_users' => (int) $activeUsers,
                 'month' => $ym,
             ]);
@@ -4085,19 +4137,6 @@ try {
             $vals[] = $campId;
             execute('UPDATE campaigns SET ' . implode(', ', $sets) . ' WHERE id = ?', $vals, 0);
             respond(['ok' => true]);
-            break;
-
-        case 'admin_token_usage':
-            requireAdmin();
-            $usage = query(
-                "SELECT u.username, t.user_id, t.year_month, t.feature_key, t.tokens_used, t.call_count
-                 FROM user_token_usage t
-                 JOIN users u ON u.id = t.user_id
-                 ORDER BY t.year_month DESC, t.tokens_used DESC",
-                [],
-                0
-            );
-            respond(['ok' => true, 'usage' => $usage]);
             break;
 
         case 'admin_site_settings':

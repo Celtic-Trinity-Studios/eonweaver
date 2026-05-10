@@ -522,7 +522,8 @@ export default function WorldSimulateView(container) {
           // Retry up to 2 times on ANY error with exponential backoff
           let retrySuccess = false;
           const maxRetries = 2;
-          const retryDelays = [5000, 10000];
+          const gatewayish = /Gateway timeout \(50[24]\)|Gateway timeout \(524\)|\bHTTP 504\b|\bHTTP 502\b|\bHTTP 524\b/i.test(String(err.message || ''));
+          const retryDelays = gatewayish ? [12000, 30000] : [5000, 10000];
           for (let attempt = 1; attempt <= maxRetries && !retrySuccess; attempt++) {
             const delay = retryDelays[attempt - 1] || 10000;
             if (statusEl) statusEl.innerHTML = `<span style="color:var(--warning);">🔄 Retry ${attempt}/${maxRetries} M${monthLabel}...</span>`;

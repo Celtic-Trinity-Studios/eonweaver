@@ -77,18 +77,23 @@ if (!function_exists('ew_record_pageview')) {
 if (!function_exists('ew_record_ai_usage_daily')) {
     /**
      * Daily aggregate alongside the existing month rollup so admin can chart spend over time.
+     *
+     * @param float $costUsd OpenRouter-reported USD for this call (from usage.cost), if any.
      */
-    function ew_record_ai_usage_daily(int $userId, string $featureKey, int $tokens): void
+    function ew_record_ai_usage_daily(int $userId, string $featureKey, int $tokens, float $costUsd = 0.0): void
     {
         if ($userId <= 0 || $tokens <= 0) {
             return;
         }
+        $costUsd = $costUsd > 0 ? $costUsd : 0.0;
         try {
             execute(
-                "INSERT INTO metrics_ai_calls (day, user_id, feature_key, tokens, calls)
-                 VALUES (CURDATE(), ?, ?, ?, 1)
-                 ON DUPLICATE KEY UPDATE tokens = tokens + VALUES(tokens), calls = calls + 1",
-                [$userId, $featureKey ?: 'global', $tokens],
+                "INSERT INTO metrics_ai_calls (day, user_id, feature_key, tokens, cost_usd, calls)
+                 VALUES (CURDATE(), ?, ?, ?, ?, 1)
+                 ON DUPLICATE KEY UPDATE tokens = tokens + VALUES(tokens),
+                   cost_usd = cost_usd + VALUES(cost_usd),
+                   calls = calls + 1",
+                [$userId, $featureKey ?: 'global', $tokens, $costUsd],
                 0
             );
         } catch (Throwable $e) { /* skip if table missing */ }

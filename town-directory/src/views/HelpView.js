@@ -32,7 +32,7 @@ export default function HelpView(container) {
             <span class="help-step-num">3</span>
             <div>
               <strong>Configure Town Settings</strong>
-              <p>Open your town, click <strong>⚙️ Settings</strong> to set the biome, demographics (race percentages), intake level, and generation rules <em>before</em> populating.</p>
+              <p>Open your town, click <strong>⚙️ Settings</strong> to set the biome, demographics (race percentages), <strong>local food supply</strong> for macro dynamics, intake level, and generation rules <em>before</em> populating.</p>
             </div>
           </div>
           <div class="help-step">
@@ -72,7 +72,7 @@ export default function HelpView(container) {
         
         <div class="help-feature">
           <strong>🏰 Town Cards</strong>
-          <p>Each town displays its name, subtitle, and living population count. Click the card to open the town roster.</p>
+          <p>Each town displays its name, subtitle, and living population count. When macro metrics exist for the campaign, a compact <strong>🌾 granary index</strong> appears beside the population — a campaign-scale snapshot of how full the abstract “larder” is (see <strong>Macro Dynamics & Food</strong>). Click the card to open the town roster.</p>
         </div>
         <div class="help-feature">
           <strong>➕ New Town</strong>
@@ -116,8 +116,12 @@ export default function HelpView(container) {
           <p>Click "History" to open the Town History modal — a timeline of everything that has happened. Click any month to see its detail view with stat breakdowns (arrivals, births, deaths, events) and tabbed content.</p>
         </div>
         <div class="help-feature">
+          <strong>🌾 Macro granary badge</strong>
+          <p>In the roster header you may see <strong>🌾</strong> with a number — the same macro granary index as on the Dashboard. Hover for a short reminder; full meaning is under <strong>Macro Dynamics & Food</strong>.</p>
+        </div>
+        <div class="help-feature">
           <strong>⚙️ Town Settings</strong>
-          <p>Configure biome, demographics, generation rules, and more. See the <strong>Town Settings</strong> topic for full details.</p>
+          <p>Configure biome, demographics, <strong>local food supply</strong>, generation rules, and more. See the <strong>Town Settings</strong> topic for full details.</p>
         </div>
         <div class="help-feature">
           <strong>📊 Town Statistics</strong>
@@ -139,7 +143,13 @@ export default function HelpView(container) {
         </div>
         <div class="help-feature">
           <strong>🌾 Local Food Supply (Macro)</strong>
-          <p><strong>Meager</strong>, <strong>Typical</strong>, or <strong>Bountiful</strong> sets how strongly your settlement converts macro surplus into granary stores in <strong>Macro Dynamics</strong>. When granaries are stressed, the AI is instructed to show the town reacting: hunting bands, foragers, fisherfolk, rationing friction, and starting or progressing food-related buildings (farmsteads, smokehouses, granaries, fisheries, etc.).</p>
+          <p>This is your settlement’s <strong>agrarian capacity</strong> in the abstract macro model — not a literal inventory count in the app, but how efficiently the town turns seasonal surplus into <strong>granary stores</strong> when the campaign macro layer ticks.</p>
+          <ul class="help-list">
+            <li><strong>Typical</strong> — baseline. Good default for most towns.</li>
+            <li><strong>Meager</strong> — harsh land, poor logistics, or chronic strain. Granaries gain stores more slowly when the macro month leaves you with net surplus.</li>
+            <li><strong>Bountiful</strong> — rich farms, fisheries, climate, or storage. Granaries rebound faster when times are good.</li>
+          </ul>
+          <p>Whatever you pick here, <strong>monthly simulation and planning prompts</strong> also receive macro food context (granary index, supply/demand, stability). When pressure is high, the AI is steered to show the town <em>acting</em>: hunts, foraging, rationing drama, and food-related construction. See <strong>Macro Dynamics & Food</strong> for the full picture.</p>
         </div>
 
         <h4>Demographics</h4>
@@ -188,6 +198,62 @@ export default function HelpView(container) {
         <div class="help-feature">
           <strong>👤 Age Distribution</strong>
           <p>Population age mix: Young, Prime, Full Range, or Elder-Heavy.</p>
+        </div>
+      `
+    },
+    {
+      id: 'macro-dynamics',
+      icon: '🟣',
+      title: 'Macro Dynamics & Food',
+      content: `
+        <p>Open <strong>🟣 Macro Dynamics</strong> in the sidebar for the campaign-scale layer that sits <em>behind</em> your narratives: seasons, trade routes, abstract supply and demand, granary stores, and stability. It is meant to give the world <strong>coherent economic weather</strong> so simulations do not treat every town as equally fed.</p>
+
+        <h4>What the numbers mean (tone, not census)</h4>
+        <p>Macro indices are <strong>normalized campaign signals</strong>. They are not headcounts of sacks of grain in the database; they are inputs the AI interprets as pressure, mood, and opportunity. The <strong>Food</strong> column (and the 🌾 badge on the Dashboard and town roster) is the <strong>granary index</strong>: how full the abstract “larder” feels before the next story month.</p>
+
+        <div class="help-feature">
+          <strong>📊 Town metrics table</strong>
+          <p><strong>Supply</strong> — seasonal and structural ability to produce or procure essentials.<br>
+          <strong>Demand</strong> — consumption pressure (population and activity implied by the model).<br>
+          <strong>Food</strong> — granary stores after the last macro steps.<br>
+          <strong>Stability</strong> — civic calm vs unrest; very low stability can mean hoarding or riots even when food is middling.<br>
+          <strong>Trade</strong> — trade posture for the tick.<br>
+          <strong>Hub</strong> — how strongly the town is tied to trade routes on average (better links modestly help supply).<br>
+          <strong>Weather Δ</strong> — seasonal bump from the macro weather pass.</p>
+        </div>
+
+        <h4>Routes, caravans, and redistribution</h4>
+        <p>When you define <strong>trade routes</strong> between towns, macro ticks move food along those roads in abstract “caravan” passes: surplus settlements bleed a little toward hungry neighbors. <strong>Stronger, safer routes</strong> move more than weak or risky ones. Well-connected hubs therefore soften famine-like dips for the whole region — or deepen surplus pockets — depending on how you draw the network.</p>
+
+        <h4>Local Food Supply (Town Settings)</h4>
+        <p>Each town’s <strong>Meager / Typical / Bountiful</strong> setting scales how aggressively that settlement converts <strong>net surplus</strong> into granary gains during macro math. Think of it as soil quality, traditions, and storage culture rolled into one dial:</p>
+        <ul class="help-list">
+          <li><strong>Typical</strong> — standard response (internal multiplier 1.0).</li>
+          <li><strong>Meager</strong> — slower store recovery (about 0.78×).</li>
+          <li><strong>Bountiful</strong> — faster store recovery when surplus exists (about 1.22×).</li>
+        </ul>
+        <p>This does not replace storytelling; it biases whether the macro month leaves the granary index <em>closer to feast or famine</em> before the AI reads it.</p>
+
+        <h4>How the AI “knows” the larder</h4>
+        <p>Whenever a compatible simulation or planner runs (world sim, single-town sim, chunked narrative, planning passes), the backend attaches:</p>
+        <ul class="help-list">
+          <li>A one-line <strong>MACRO FOOD / ECONOMY</strong> hint with granary index, supply, demand, stability, and a plain-language band such as stress vs surplus.</li>
+          <li>A <strong>TOWN FOOD AUTONOMY</strong> block that picks a <strong>pressure tier</strong> from those numbers (critical, stressed, moderate, comfortable, surplus) and tells the model how insistently citizens should act.</li>
+        </ul>
+
+        <div class="help-feature">
+          <strong>⚠️ Critical & stressed tiers (what you should see in fiction)</strong>
+          <p><strong>Critical</strong> — Survival organizing is mandatory flavor unless you explicitly forbid it in instructions. Named roster NPCs should lead or join hunting, trapping, fishing, or foraging runs (success, failure, or danger). Building proposals should lean into food security: farmsteads, smokehouses, fisheries, granaries, root cellars, mills, orchards, hunter’s lodges — whatever fits the biome. Expect rationing arguments, temple or faction friction, and sharp social memories.</p>
+          <p><strong>Stressed</strong> — Tighter stores: smaller bands, seasonal foraging, fence and tool repair, planting prep, hiring specialists. Often one modest food-related build when it fits.</p>
+          <p><strong>Comfortable / surplus</strong> — Light agricultural color, markets, modest feasts, trade of extras; the model is told not to invent famine.</p>
+          <p><strong>Moderate / mixed</strong> — Hunt-and-field work appears when events support it; very low stability can still trigger hoarding or riots.</p>
+        </div>
+
+        <h4>Running macro without advancing the whole story</h4>
+        <p>Use <strong>Run macro tick</strong> on this page to advance the macro framework by N months (with an optional operator note) without going through a full world simulation. Calendar-linked play still advances macro when time moves in the normal pipelines — both paths feed the same stored metrics the AI reads next.</p>
+
+        <div class="help-tip">
+          💡 <strong>Tip:</strong> Set a border fort to <strong>Meager</strong> and a river valley trading hub to <strong>Bountiful</strong>, then draw a trade route — watch caravan redistribution and autonomy text pull your frontier toward believable scarcity while the heartland stays resilient.
         </div>
       `
     },
@@ -302,6 +368,10 @@ export default function HelpView(container) {
             <li><strong>Events</strong> — Notable happenings</li>
             <li><strong>Movement</strong> — Characters who moved between towns</li>
           </ul>
+        </div>
+        <div class="help-feature">
+          <strong>🌾 Macro food & subsistence (automatic)</strong>
+          <p>Each town’s simulation sees a short <strong>macro food / economy</strong> readout (granary index, supply, demand, stability) plus <strong>town food autonomy</strong> instructions. The model is nudged to treat citizens as proactive: organized hunts, foraging, fisheries, rationing tension, and food-related building work when pressure is high — and lighter market or harvest color when times are easy. Multi-month runs also get planning guidance to weave subsistence beats across the arc.</p>
         </div>
         <div class="help-tip">
           💡 <strong>Tip:</strong> Results are applied automatically after each month. The narrative and results are saved to the town's history for reference later.
@@ -506,6 +576,10 @@ export default function HelpView(container) {
         <div class="help-feature">
           <strong>🌍 Biome Awareness</strong>
           <p>The AI only proposes buildings appropriate for the town's biome. A desert town won't get fishing docks, and a coastal settlement won't get a mine.</p>
+        </div>
+        <div class="help-feature">
+          <strong>🌾 Food pressure & construction</strong>
+          <p>When macro granaries are tight, simulation prompts explicitly steer the model toward <strong>food-security building work</strong> (farms, smokehouses, fisheries, granaries, and similar) and away from ignoring hunger. That complements ordinary needs-based construction — see <strong>Macro Dynamics & Food</strong>.</p>
         </div>
         <div class="help-feature">
           <strong>⚠️ Damage & Destruction</strong>
@@ -792,6 +866,7 @@ export default function HelpView(container) {
           <ul class="help-list">
             <li>Set the <strong>biome/terrain</strong> in Town Settings before generating characters</li>
             <li>Set <strong>demographic targets</strong> for the race mix you want</li>
+            <li>Set <strong>local food supply</strong> (Meager / Typical / Bountiful) if you care how hard macro seasons hit this settlement</li>
             <li>Configure <strong>intake level</strong> (0 = AI decides, or set a specific level)</li>
             <li>Write <strong>Campaign Description & House Rules</strong> in Settings for lore-consistent generation</li>
             <li>Generate initial settlers, then <strong>simulate several months</strong> to build up the town organically</li>
