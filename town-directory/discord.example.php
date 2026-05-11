@@ -13,9 +13,34 @@
  */
 
 // ── Discord Webhook URLs ─────────────────────────────────────
-// Create webhooks in Discord: Server Settings → Integrations → Webhooks
+// Create the **bugs** webhook on your bug-reports **forum** channel (channel gear → Integrations → Webhooks).
+// If the forum requires tags on new posts, set tag snowflake IDs (comma-separated) below.
 define('DISCORD_WEBHOOK_BUGS', 'https://discord.com/api/webhooks/YOUR_BUGS_WEBHOOK_ID/YOUR_BUGS_WEBHOOK_TOKEN');
 define('DISCORD_WEBHOOK_UPDATES', 'https://discord.com/api/webhooks/YOUR_UPDATES_WEBHOOK_ID/YOUR_UPDATES_WEBHOOK_TOKEN');
+define('DISCORD_BUG_FORUM_APPLIED_TAGS', ''); // e.g. '1234567890123456789' or 'id1,id2'
+define('DISCORD_BUG_WEBHOOK_USERNAME', 'Eon Weaver'); // visible name (overrides “Spidy Bot” style webhook default)
+define('DISCORD_BUG_WEBHOOK_AVATAR_URL', ''); // optional https URL to PNG/JPG; empty = APP_PUBLIC_URL + /eon-weaver-spider.png
+
+function ew_discord_bug_default_avatar_url(): string
+{
+    $base = defined('APP_PUBLIC_URL') ? rtrim((string) APP_PUBLIC_URL, '/') : 'https://eonscribe.com';
+    return $base . '/eon-weaver-spider.png';
+}
+
+function ew_discord_apply_branded_webhook_profile(array &$payload): void
+{
+    $showName = trim((string) DISCORD_BUG_WEBHOOK_USERNAME);
+    if ($showName !== '') {
+        $payload['username'] = mb_substr($showName, 0, 80);
+    }
+    $avatarUrl = trim((string) DISCORD_BUG_WEBHOOK_AVATAR_URL);
+    if ($avatarUrl === '') {
+        $avatarUrl = ew_discord_bug_default_avatar_url();
+    }
+    if (filter_var($avatarUrl, FILTER_VALIDATE_URL)) {
+        $payload['avatar_url'] = mb_substr($avatarUrl, 0, 2048);
+    }
+}
 
 /**
  * Send a raw embed to a Discord webhook.
@@ -140,7 +165,18 @@ function sendDiscordBugReport(
         ],
     ];
 
-    return sendDiscordWebhook(DISCORD_WEBHOOK_BUGS, $payload);
+    ew_discord_apply_branded_webhook_profile($payload);
+
+    $tagRaw = trim((string) DISCORD_BUG_FORUM_APPLIED_TAGS);
+    if ($tagRaw !== '') {
+        $tagIds = array_values(array_filter(array_map('trim', explode(',', $tagRaw))));
+        if ($tagIds !== []) {
+            $payload['applied_tags'] = $tagIds;
+        }
+    }
+
+    $url = DISCORD_WEBHOOK_BUGS . (strpos(DISCORD_WEBHOOK_BUGS, '?') !== false ? '&' : '?') . 'wait=true';
+    return sendDiscordWebhook($url, $payload);
 }
 
 /**
@@ -196,6 +232,8 @@ function sendDiscordUpdate(string $title, string $description, array $changes = 
             ]
         ],
     ];
+
+    ew_discord_apply_branded_webhook_profile($payload);
 
     return sendDiscordWebhook(DISCORD_WEBHOOK_UPDATES, $payload);
 }

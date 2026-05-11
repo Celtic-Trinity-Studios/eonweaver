@@ -159,6 +159,12 @@ foreach ($rootFile in @("robots.txt", "sitemap.xml", "favicon.svg")) {
         FtpUpload $rf $rootFile
     }
 }
+foreach ($liveRootAsset in @("eon-weaver-spider.svg", "eon-weaver-spider.png")) {
+    $lf = Join-Path $localRoot "live\$liveRootAsset"
+    if (Test-Path $lf) {
+        FtpUpload $lf $liveRootAsset
+    }
+}
 
 # 3. Upload live/assets/ to root assets/
 Write-Host "`n[3/6] Uploading assets/ (JS/CSS bundles)..." -ForegroundColor Yellow

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Eon Weaver spider">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2a1f4a"/>
+      <stop offset="100%" stop-color="#120c28"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <!-- cephalothorax -->
+  <ellipse cx="64" cy="58" rx="22" ry="18" fill="#c57b3e"/>
+  <!-- abdomen -->
+  <ellipse cx="64" cy="92" rx="16" ry="22" fill="#a86430"/>
+  <!-- eyes -->
+  <circle cx="54" cy="52" r="5" fill="#1a1028"/>
+  <circle cx="74" cy="52" r="5" fill="#1a1028"/>
+  <circle cx="55" cy="51" r="1.5" fill="#f4e6d4"/>
+  <circle cx="75" cy="51" r="1.5" fill="#f4e6d4"/>
+  <!-- legs L -->
+  <path d="M44 48 Q22 38 10 18" stroke="#e8c49a" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <path d="M46 58 Q24 58 12 48" stroke="#e8c49a" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <path d="M48 68 Q28 78 16 88" stroke="#e8c49a" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <path d="M52 78 Q36 92 26 108" stroke="#e8c49a" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <!-- legs R -->
+  <path d="M84 48 Q106 38 118 18" stroke="#e8c49a" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <path d="M82 58 Q104 58 116 48" stroke="#e8c49a" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <path d="M80 68 Q100 78 112 88" stroke="#e8c49a" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <path d="M76 78 Q92 92 102 108" stroke="#e8c49a" stroke-width="5" fill="none" stroke-linecap="round"/>
+  <!-- small fangs -->
+  <path d="M58 62 L56 72 M70 62 L72 72" stroke="#1a1028" stroke-width="3" stroke-linecap="round"/>
+</svg>

@@ -150,5 +150,15 @@ define(
     '{"free":"","apprentice":"","adventurer":"","guild_master":"","world_builder":""}'
 );
 
+// In-app “Report Bug” → Discord webhook (defaults are in discord.php; override here if needed).
+// If bug-reports is a **forum** and posts must have a tag: Server Settings → Forums → bug-reports → Tags,
+// right‑click tag → Copy ID, then:
+// define('DISCORD_BUG_FORUM_APPLIED_TAGS', 'PASTE_TAG_SNOWFLAKE_HERE');
+// New webhook URL after you move integrations to the forum channel:
+// define('DISCORD_WEBHOOK_BUGS', 'https://discord.com/api/webhooks/…');
+// Optional: override webhook display (defaults in discord.php: “Eon Weaver”):
+// define('DISCORD_BUG_WEBHOOK_USERNAME', 'Eon Scribe');
+// define('DISCORD_BUG_WEBHOOK_AVATAR_URL', 'https://…/custom.png'); // https only; omit to use APP_PUBLIC_URL + /eon-weaver-spider.png
+
 // Deploy Discord pings: use **local** `node discord_deploy_notify.mjs` after FTP (see `.env.discord.example`).
 // Server `config.php` does not need deploy channel IDs for that flow.
