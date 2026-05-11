@@ -112,6 +112,15 @@ function handleRoute() {
         el.classList.toggle('active', el.dataset.route === path);
     });
 
+    // Expand the nav group that contains the active item (grouped sidebar)
+    document.querySelectorAll('.sidebar-nav-group').forEach((group) => {
+        const hasActive = group.querySelector('.nav-item.active');
+        if (!hasActive) return;
+        group.classList.remove('is-collapsed');
+        const toggle = group.querySelector('.nav-group-toggle');
+        if (toggle) toggle.setAttribute('aria-expanded', 'true');
+    });
+
     // Anonymous pageview ping (server-side metrics, deduped per session)
     pingVisit(path);
 }

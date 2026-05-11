@@ -12,6 +12,7 @@
         "preview:dev": "node ./node_modules/vite/bin/vite.js preview"
     },
     "devDependencies": {
+        "sharp": "^0.34.5",
         "sql.js": "^1.14.0",
         "vite": "^6.0.0"
     },

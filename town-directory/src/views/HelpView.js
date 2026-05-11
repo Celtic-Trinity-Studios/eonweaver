@@ -885,23 +885,100 @@ export default function HelpView(container) {
     }
   ];
 
+  function escapeAttr(s) {
+    return String(s)
+      .replace(/&/g, '&amp;')
+      .replace(/"/g, '&quot;')
+      .replace(/</g, '&lt;');
+  }
+
+  /** Collapsible groups — each section id appears exactly once. */
+  const HELP_GROUPS = [
+    { id: 'g-start', label: 'Getting started', sectionIds: ['getting-started', 'dashboard', 'tips'] },
+    { id: 'g-towns', label: 'Towns & characters', sectionIds: ['town-roster', 'town-settings', 'ai-intake', 'character-import', 'character-sheet', 'level-up', 'social-system', 'buildings', 'pdf-export'] },
+    { id: 'g-world', label: 'World & simulation', sectionIds: ['macro-dynamics', 'world-simulate', 'world-map', 'town-history', 'calendar'] },
+    { id: 'g-table', label: 'Table & sessions', sectionIds: ['party', 'encounters', 'ai-scribe'] },
+    { id: 'g-library', label: 'Library & rules', sectionIds: ['content-library', 'srd-browser', 'homebrew'] },
+    { id: 'g-account', label: 'Campaign & settings', sectionIds: ['campaigns', 'settings'] },
+  ];
+
+  /** Short native tooltips on key topics (hover the row). */
+  const SECTION_HINTS = {
+    'getting-started': 'Step-by-step: campaign, town, intake, simulate.',
+    'dashboard': 'Town cards, quick simulate, and stats entry points.',
+    'world-simulate': 'Pick towns and months; AI applies events and roster changes.',
+    'macro-dynamics': 'Campaign food, seasons, granary index — context for narration.',
+    'town-roster': 'Sort/filter NPCs, open sheets, graveyard, town history.',
+    'town-settings': 'Biome, demographics, food supply, intake rules, generation knobs.',
+    'ai-intake': 'Generate new fully statted settlers (procedural; not LLM-heavy).',
+    'settings': 'House rules, campaign blurb, simulation speeds, credits.',
+    'calendar': 'Custom months and weekdays; advances with world simulation.',
+    'ai-scribe': 'Lore, quests, dungeons — uses campaign context; may use EC.',
+    'tips': 'Shortcuts, refresh, checklist, bug reports.',
+  };
+
+  const sectionById = Object.fromEntries(sections.map((s) => [s.id, s]));
+
   let activeTab = sections[0].id;
+
+  function helpNavGroupsHtml(currentId) {
+    return HELP_GROUPS.map((group) => {
+      const hasActive = group.sectionIds.includes(currentId);
+      const collapsedClass = hasActive ? '' : ' is-collapsed';
+      const expanded = hasActive ? 'true' : 'false';
+      const items = group.sectionIds
+        .map((sid) => {
+          const s = sectionById[sid];
+          if (!s) return '';
+          const hint = SECTION_HINTS[sid];
+          const titleAttr = hint ? ` title="${escapeAttr(hint)}"` : '';
+          return `
+            <button type="button" class="help-tab-btn${s.id === currentId ? ' active' : ''}" data-tab="${escapeAttr(s.id)}"${titleAttr}>
+              <span class="help-tab-icon">${s.icon}</span>
+              <span class="help-tab-label">${escapeAttr(s.title)}</span>
+            </button>
+          `;
+        })
+        .join('');
+      return `
+        <div class="help-nav-group${collapsedClass}" data-help-group="${escapeAttr(group.id)}">
+          <button type="button" class="help-group-toggle" aria-expanded="${expanded}" aria-controls="help-topics-${group.id}" title="Show or hide topics in this section">
+            <span class="help-group-chevron" aria-hidden="true">▾</span>
+            <span class="help-group-label">${escapeAttr(group.label)}</span>
+          </button>
+          <div class="help-group-topics" id="help-topics-${group.id}" role="group">
+            ${items}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function showHelpSection(section) {
+    const contentEl = container.querySelector('#help-tab-content');
+    if (!contentEl || !section) return;
+    contentEl.innerHTML = `
+        <div class="help-content-header">
+          <span class="help-content-icon">${section.icon}</span>
+          <h2 class="help-content-title">${section.title}</h2>
+        </div>
+        <div class="help-content-body">
+          ${section.content}
+        </div>
+      `;
+    contentEl.scrollTop = 0;
+  }
 
   container.innerHTML = `
     <div class="view-help">
       <div class="help-header">
         <h1 class="help-title">📚 Eon Weaver Guide</h1>
-        <p class="help-subtitle">Select a topic to learn more</p>
+        <p class="help-subtitle">Open a section below, then pick a topic. Hover some rows for a quick summary.</p>
       </div>
       
       <div class="help-tabbed-layout">
-        <div class="help-tab-list" id="help-tab-list">
-          ${sections.map(s => `
-            <button class="help-tab-btn${s.id === activeTab ? ' active' : ''}" data-tab="${s.id}">
-              <span class="help-tab-icon">${s.icon}</span>
-              <span class="help-tab-label">${s.title}</span>
-            </button>
-          `).join('')}
+        <div class="help-tab-list" id="help-tab-list" role="navigation" aria-label="Help topics">
+          ${helpNavGroupsHtml(activeTab)}
         </div>
         <div class="help-tab-content" id="help-tab-content">
           <div class="help-content-header">
@@ -916,29 +993,34 @@ export default function HelpView(container) {
     </div>
   `;
 
+  container.querySelectorAll('.help-group-toggle').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const group = btn.closest('.help-nav-group');
+      if (!group) return;
+      group.classList.toggle('is-collapsed');
+      const collapsed = group.classList.contains('is-collapsed');
+      btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    });
+  });
+
   // Wire tab clicks
-  container.querySelectorAll('.help-tab-btn').forEach(btn => {
+  container.querySelectorAll('.help-tab-btn').forEach((btn) => {
     btn.addEventListener('click', () => {
       const tabId = btn.dataset.tab;
-      const section = sections.find(s => s.id === tabId);
+      const section = sectionById[tabId];
       if (!section) return;
 
-      // Update active tab
-      container.querySelectorAll('.help-tab-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
+      const parent = btn.closest('.help-nav-group');
+      if (parent) {
+        parent.classList.remove('is-collapsed');
+        parent.querySelector('.help-group-toggle')?.setAttribute('aria-expanded', 'true');
+      }
 
-      // Update content
-      const contentEl = container.querySelector('#help-tab-content');
-      contentEl.innerHTML = `
-        <div class="help-content-header">
-          <span class="help-content-icon">${section.icon}</span>
-          <h2 class="help-content-title">${section.title}</h2>
-        </div>
-        <div class="help-content-body">
-          ${section.content}
-        </div>
-      `;
-      contentEl.scrollTop = 0;
+      container.querySelectorAll('.help-tab-btn').forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      activeTab = tabId;
+      showHelpSection(section);
     });
   });
 }

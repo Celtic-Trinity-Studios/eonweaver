@@ -3839,24 +3839,88 @@
 /* Tabbed Layout */
 .help-tabbed-layout {
     display: grid;
-    grid-template-columns: 200px 1fr;
+    grid-template-columns: minmax(220px, 260px) 1fr;
     gap: 1rem;
     min-height: 500px;
 }
 
-/* Tab List (left sidebar) */
+/* Tab List (left sidebar) — grouped topics */
 .help-tab-list {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 0;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    padding: .4rem;
+    padding: .35rem .4rem .5rem;
     overflow-y: auto;
     max-height: calc(100vh - 220px);
     position: sticky;
     top: 1rem;
+}
+
+.help-nav-group {
+    border-bottom: 1px solid var(--border);
+}
+
+.help-nav-group:last-child {
+    border-bottom: none;
+}
+
+.help-group-toggle {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    width: 100%;
+    padding: .4rem .45rem;
+    margin: 0;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    font-size: .65rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    text-align: left;
+    cursor: pointer;
+    transition: background .15s, color .15s;
+}
+
+.help-group-toggle:hover {
+    color: var(--text-secondary);
+    background: var(--bg-hover);
+}
+
+.help-group-chevron {
+    font-size: .5rem;
+    width: .7rem;
+    flex-shrink: 0;
+    opacity: .85;
+    transition: transform .15s ease;
+}
+
+.help-nav-group.is-collapsed .help-group-chevron {
+    transform: rotate(-90deg);
+}
+
+.help-group-label {
+    flex: 1;
+}
+
+.help-group-topics {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 0 0 .35rem .15rem;
+}
+
+.help-nav-group.is-collapsed .help-group-topics {
+    display: none;
+}
+
+.help-group-topics .help-tab-btn {
+    padding-left: .5rem;
 }
 
 .help-tab-btn {
@@ -4110,11 +4174,10 @@
     }
 
     .help-tab-list {
-        flex-direction: row;
-        flex-wrap: wrap;
+        flex-direction: column;
         position: static;
-        max-height: none;
-        gap: 3px;
+        max-height: min(42vh, 320px);
+        gap: 0;
     }
 
     .help-tab-btn {

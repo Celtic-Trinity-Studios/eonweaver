@@ -1,6 +1,6 @@
 /**
  * Eon Weaver — Sidebar Navigation Component
- * Includes campaign selector and navigation.
+ * Includes campaign selector and grouped navigation with hover hints.
  */
 import { navigate } from '../router.js';
 import { getState, setState, subscribe } from '../stores/appState.js';
@@ -10,27 +10,125 @@ import { apiSwitchCampaign, apiGetCampaigns } from '../api/campaigns.js';
 import { setCurrentEdition, clearSrdCache } from '../api/srd.js';
 import { openBugReportModal } from './BugReportModal.js';
 
-const NAV_ITEMS = [
-  { route: 'dashboard', icon: '🏠', label: 'Dashboard' },
-  { route: 'town', icon: '🏰', label: 'Town Roster' },
-  { route: 'world-simulate', icon: '🌍', label: 'World Simulate' },
-  { route: 'macro-sim', icon: '🟣', label: 'Macro Dynamics' },
-  { route: 'world-map', icon: '🗺️', label: 'World Map' },
-  { route: 'wiki', icon: '🔵', label: 'Wiki & Lore' },
-  { route: 'player-portal', icon: '🔶', label: 'Player Portal' },
-  { route: 'vtt-export', icon: '📦', label: 'VTT Export' },
-  { route: 'integrations', icon: '🤖', label: 'Integrations' },
-  { route: 'party', icon: '🛡️', label: 'Party' },
-  { route: 'encounters', icon: '⚔️', label: 'Encounters' },
-  { route: 'scribe', icon: '✍️', label: 'AI Scribe' },
-  { route: 'srd', icon: '📖', label: 'SRD Browser' },
-  { route: 'homebrew', icon: '🧪', label: 'Homebrew' },
-  { route: 'content-library', icon: '📁', label: 'Content Library' },
-  { route: 'calendar', icon: '📅', label: 'Calendar' },
-  { route: 'help', icon: '❓', label: 'Help & Guide' },
-  { route: 'subscription', icon: '💎', label: 'Plans' },
-  { route: 'settings', icon: '⚙️', label: 'Settings' },
+/** Escape text for use inside an HTML double-quoted attribute. */
+function escapeAttr(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
+}
+
+/**
+ * Grouped nav: DM workflow order — overview, settlement, world time, prep, table, reference, account.
+ * `hint` is shown as the native tooltip on hover.
+ */
+const NAV_GROUPS = [
+  {
+    id: 'overview',
+    label: 'Overview',
+    items: [
+      { route: 'dashboard', icon: '🏠', label: 'Dashboard', hint: 'Your campaign home: town cards, quick simulate, and stats links.' },
+    ],
+  },
+  {
+    id: 'settlement',
+    label: 'Settlement',
+    items: [
+      { route: 'town', icon: '🏰', label: 'Town Roster', hint: 'Living roster, character sheets, AI intake, town settings, and history.' },
+    ],
+  },
+  {
+    id: 'world',
+    label: 'World & time',
+    items: [
+      { route: 'world-simulate', icon: '🌍', label: 'World Simulate', hint: 'Advance in-game months: events, relationships, births, deaths, construction.' },
+      { route: 'macro-sim', icon: '🟣', label: 'Macro Dynamics', hint: 'Campaign-scale seasons, food supply, granary pressure, and stability context.' },
+      { route: 'world-map', icon: '🗺️', label: 'World Map', hint: 'Campaign map, town pins, scale, and travel distances for simulation.' },
+      { route: 'calendar', icon: '📅', label: 'Calendar', hint: 'Custom in-world calendar; the sidebar date updates when you simulate time.' },
+    ],
+  },
+  {
+    id: 'prep',
+    label: 'Prep & lore',
+    items: [
+      { route: 'wiki', icon: '🔵', label: 'Wiki & Lore', hint: 'Campaign wiki pages for places, factions, and lore (markdown).' },
+      { route: 'scribe', icon: '✍️', label: 'AI Scribe', hint: 'Arcane Workshop: AI-generated lore, quests, dungeons, items, and traps.' },
+      { route: 'content-library', icon: '📁', label: 'Content Library', hint: 'Upload maps, handouts, PDFs, and other assets for your table.' },
+    ],
+  },
+  {
+    id: 'table',
+    label: 'Table & players',
+    items: [
+      { route: 'player-portal', icon: '🔶', label: 'Player Portal', hint: 'Player-facing portal and sharing for your campaign.' },
+      { route: 'party', icon: '🛡️', label: 'Party', hint: 'Mark PCs and view a cross-town party roster and overview.' },
+      { route: 'encounters', icon: '⚔️', label: 'Encounters', hint: 'Build encounters from SRD monsters, CR totals, and initiative tracking.' },
+      { route: 'vtt-export', icon: '📦', label: 'VTT Export', hint: 'Export towns and characters toward virtual tabletop tools.' },
+    ],
+  },
+  {
+    id: 'connect',
+    label: 'Connect',
+    items: [
+      { route: 'integrations', icon: '🤖', label: 'Integrations', hint: 'Discord webhooks and other external connections.' },
+    ],
+  },
+  {
+    id: 'rules',
+    label: 'Rules & homebrew',
+    items: [
+      { route: 'srd', icon: '📖', label: 'SRD Browser', hint: 'System Reference Document for your campaign edition (classes, spells, gear).' },
+      { route: 'homebrew', icon: '🧪', label: 'Homebrew', hint: 'Campaign-specific custom races, classes, feats, spells, gear, and monsters.' },
+    ],
+  },
+  {
+    id: 'account',
+    label: 'Help & account',
+    items: [
+      { route: 'help', icon: '❓', label: 'Help & Guide', hint: 'Full documentation: towns, simulation, settings, and tips.' },
+      { route: 'subscription', icon: '💎', label: 'Plans', hint: 'Subscription tier and Eon Credits (AI usage) for your account.' },
+      { route: 'settings', icon: '⚙️', label: 'Settings', hint: 'Campaign description, house rules, simulation knobs, and campaign switcher.' },
+    ],
+  },
 ];
+
+function navGroupsHtml(activeRoute) {
+  return NAV_GROUPS.map((group) => {
+    const hasActive = group.items.some((i) => i.route === activeRoute);
+    const collapsedClass = hasActive ? '' : ' is-collapsed';
+    const expanded = hasActive ? 'true' : 'false';
+    return `
+      <div class="sidebar-nav-group${collapsedClass}" data-nav-group="${escapeAttr(group.id)}">
+        <button type="button" class="nav-group-toggle" aria-expanded="${expanded}" aria-controls="nav-group-${group.id}" title="Show or hide this category">
+          <span class="nav-group-chevron" aria-hidden="true">▾</span>
+          <span class="nav-group-label">${escapeAttr(group.label)}</span>
+        </button>
+        <div class="nav-group-items" id="nav-group-${group.id}" role="group">
+          ${group.items.map((item) => `
+            <button type="button" class="nav-item nav-item--nested${activeRoute === item.route ? ' active' : ''}" data-route="${escapeAttr(item.route)}" title="${escapeAttr(item.hint)}">
+              <span class="nav-icon">${item.icon}</span>
+              <span class="nav-label">${escapeAttr(item.label)}</span>
+            </button>
+          `).join('')}
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
+function bindNavGroupToggles(container) {
+  container.querySelectorAll('.nav-group-toggle').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const group = btn.closest('.sidebar-nav-group');
+      if (!group) return;
+      group.classList.toggle('is-collapsed');
+      const nowCollapsed = group.classList.contains('is-collapsed');
+      btn.setAttribute('aria-expanded', nowCollapsed ? 'false' : 'true');
+    });
+  });
+}
 
 /**
  * Render the sidebar into the given container element.
@@ -42,6 +140,7 @@ export function renderSidebar(container) {
   const hasCampaign = !!campaign;
   const campaignName = campaign ? campaign.name : 'No Campaign';
   const editionLabel = campaign ? getEditionLabel(campaign.dnd_edition) : '';
+  const activeRoute = getCurrentActive();
 
   container.innerHTML = `
     <div class="sidebar">
@@ -64,23 +163,18 @@ export function renderSidebar(container) {
         <div class="campaign-dropdown" id="campaign-dropdown" style="display:none;">
           <div class="campaign-dropdown-list" id="campaign-dropdown-list">Loading...</div>
           <div class="campaign-dropdown-actions">
-            <button class="btn-sm btn-primary" id="campaign-manage-btn">⚙ Manage Campaigns</button>
+            <button class="btn-sm btn-primary" id="campaign-manage-btn" title="Open Settings to create, rename, or delete campaigns">⚙ Manage Campaigns</button>
           </div>
         </div>
       </div>
 
-      <div class="sidebar-calendar">
+      <div class="sidebar-calendar" title="In-world date; advances when you run World Simulate">
         <span class="calendar-icon">📅</span>
         <span class="calendar-text" id="sidebar-calendar-text">${calStr}</span>
       </div>
 
-      <nav class="sidebar-nav">
-        ${NAV_ITEMS.map(item => `
-          <button class="nav-item${getCurrentActive() === item.route ? ' active' : ''}" data-route="${item.route}">
-            <span class="nav-icon">${item.icon}</span>
-            <span class="nav-label">${item.label}</span>
-          </button>
-        `).join('')}
+      <nav class="sidebar-nav" aria-label="Main navigation">
+        ${navGroupsHtml(activeRoute)}
       </nav>
       ` : ''}
 
@@ -92,8 +186,8 @@ export function renderSidebar(container) {
         <div class="sidebar-user" id="sidebar-user-info">
           ${state.user ? `👤 ${state.user.username}` : ''}
         </div>
-        <button class="sidebar-bug-report" id="sidebar-bug-report-btn" title="Report a Bug">🐛 Report Bug</button>
-        <button class="sidebar-logout" id="sidebar-logout-btn" title="Sign Out">🚪 Sign Out</button>
+        <button type="button" class="sidebar-bug-report" id="sidebar-bug-report-btn" title="Send a bug report to the team (opens a short form)">🐛 Report Bug</button>
+        <button type="button" class="sidebar-logout" id="sidebar-logout-btn" title="Sign out of Eon Weaver">🚪 Sign Out</button>
       </div>
     </div>
   `;
@@ -103,9 +197,10 @@ export function renderSidebar(container) {
   mountSidebarFreeAds(container);
 
   // Bind navigation clicks
-  container.querySelectorAll('.nav-item').forEach(btn => {
+  container.querySelectorAll('.nav-item[data-route]').forEach((btn) => {
     btn.addEventListener('click', () => navigate(btn.dataset.route));
   });
+  bindNavGroupToggles(container);
 
   // Bug report button
   container.querySelector('#sidebar-bug-report-btn')?.addEventListener('click', () => {
@@ -269,14 +364,14 @@ async function loadSidebarUsage() {
     const balanceColor = balanceTc <= 0 ? '#ef4444' : balanceTc < 5 ? '#f59e0b' : '#22c55e';
     el.innerHTML = `
       <div class="sidebar-usage-row">
-        <span class="sidebar-tier-badge tier-${res.tier}">${tier_label}</span>
+        <span class="sidebar-tier-badge tier-${res.tier}" title="Your subscription tier">${tier_label}</span>
       </div>
-      <div class="sidebar-credits-display">
+      <div class="sidebar-credits-display" title="Eon Credits (EC) — used for AI-heavy actions like simulation and Scribe">
         <span class="sidebar-credits-icon">🪙</span>
         <span class="sidebar-credits-value" style="color:${balanceColor}">${formatWalletTc(balanceTc)}</span>
         <span class="sidebar-credits-label">Eon Credits</span>
       </div>
-      <div class="sidebar-usage-label">${formatMonthlyTcUsed(usedTc)} EC used this month</div>
+      <div class="sidebar-usage-label" title="Token-equivalent usage this calendar month">${formatMonthlyTcUsed(usedTc)} EC used this month</div>
     `;
   } catch (e) { /* silent */ }
 }

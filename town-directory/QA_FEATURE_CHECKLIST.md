@@ -32,6 +32,26 @@ Two different things get confused:
 
 Your **Labs → bug-reports** channel is a **Forum** (speech-bubble icon), not a classic `#` text channel.
 
+### Automated seed (one forum post per section)
+
+From `town-directory/`:
+
+```bash
+node scripts/post_qa_forum_threads.mjs --dry-run              # list only, no Discord calls
+node scripts/post_qa_forum_threads.mjs --purge-first          # bot deletes every thread in bug-reports forum, then seeds
+node scripts/post_qa_forum_threads.mjs                        # seed only (leaves existing posts)
+```
+
+`--purge-first` uses **Discord bot** credentials from `town-directory/.env.discord` (`DISCORD_TOKEN` or `DISCORD_BOT_TOKEN`) plus `DISCORD_GUILD_ID` (or a single-guild bot). Optional: `DISCORD_BUG_FORUM_CHANNEL_ID` if the forum is not named `bug-reports`. **Purges all threads in that forum** (including normal 🐛 bug reports), then creates the 33 QA posts.
+
+- Reads the **mapping table** below (same titles as manual posts). Thread titles are prefixed with **📋** so they are easy to tell from **🐛** in-app bug reports.
+- Each post includes **Discord embed fields**: one field per checklist row (**ID** as the field name; **feature**, **surface**, **Steps**, **Notes** in the body, truncated to Discord limits). Sections with more than 25 rows use multiple embeds (max 10 embeds per message).
+- Uses `discord.php` for webhook URL, forum tags, and webhook display name/avatar (or set `DISCORD_WEBHOOK_BUGS` in the environment if `discord.php` is not on disk).
+- **Re-running creates duplicate threads.** Delete old **📋 QA —** forum posts in Discord first, then run the script again, or only use `--dry-run`.
+- Optional: `APP_PUBLIC_URL` env (e.g. `https://worldscribe.online`) for the default spider avatar URL in the script.
+
+**Verify in-app bug reports still work:** open the staging or production site → sidebar **Report Bug** → submit a short test; you should see a **🐛** forum post and a success toast.
+
 ### Manual QA posts (organization)
 
 Each checklist **section** below = **one forum post** you create in **bug-reports**:
