@@ -68,6 +68,7 @@
 }
 
 .sidebar-tier-badge {
+    display: inline-block;
     padding: .1rem .45rem;
     border-radius: 10px;
     font-size: .6rem;
@@ -528,6 +529,54 @@
     border: 1px dashed var(--border);
     border-radius: 6px;
     line-height: 1.35;
+}
+
+/* Instant hover tips — use data-tip (native title delays ~0.5–1s in most browsers) */
+[data-tip] {
+    position: relative;
+}
+
+[data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: calc(100% + 4px);
+    z-index: 3000;
+    padding: .45rem .55rem;
+    font-size: .72rem;
+    font-weight: 400;
+    line-height: 1.35;
+    text-align: left;
+    white-space: normal;
+    word-break: break-word;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, .42);
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: none;
+}
+
+[data-tip]:hover,
+[data-tip]:focus-visible {
+    z-index: 3001;
+}
+
+[data-tip]:hover::after,
+[data-tip]:focus-visible::after {
+    opacity: 1;
+    visibility: visible;
+}
+
+.sidebar-tier-badge[data-tip]::after {
+    left: 0;
+    right: auto;
+    min-width: 10.5rem;
+    max-width: 14rem;
 }
 
 

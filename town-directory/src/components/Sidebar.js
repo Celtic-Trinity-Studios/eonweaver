@@ -99,13 +99,13 @@ function navGroupsHtml(activeRoute) {
     const expanded = hasActive ? 'true' : 'false';
     return `
       <div class="sidebar-nav-group${collapsedClass}" data-nav-group="${escapeAttr(group.id)}">
-        <button type="button" class="nav-group-toggle" aria-expanded="${expanded}" aria-controls="nav-group-${group.id}" title="Show or hide this category">
+        <button type="button" class="nav-group-toggle" aria-expanded="${expanded}" aria-controls="nav-group-${group.id}" data-tip="Show or hide this category">
           <span class="nav-group-chevron" aria-hidden="true">▾</span>
           <span class="nav-group-label">${escapeAttr(group.label)}</span>
         </button>
         <div class="nav-group-items" id="nav-group-${group.id}" role="group">
           ${group.items.map((item) => `
-            <button type="button" class="nav-item nav-item--nested${activeRoute === item.route ? ' active' : ''}" data-route="${escapeAttr(item.route)}" title="${escapeAttr(item.hint)}">
+            <button type="button" class="nav-item nav-item--nested${activeRoute === item.route ? ' active' : ''}" data-route="${escapeAttr(item.route)}" data-tip="${escapeAttr(item.hint)}">
               <span class="nav-icon">${item.icon}</span>
               <span class="nav-label">${escapeAttr(item.label)}</span>
             </button>
@@ -152,7 +152,7 @@ export function renderSidebar(container) {
 
       ${hasCampaign ? `
       <div class="sidebar-campaign" id="sidebar-campaign">
-        <div class="campaign-selector" id="campaign-selector" title="Click to switch campaigns">
+        <div class="campaign-selector" id="campaign-selector" data-tip="Click to switch campaigns">
           <span class="campaign-icon">📜</span>
           <div class="campaign-info">
             <span class="campaign-name" id="sidebar-campaign-name">${campaignName}</span>
@@ -163,12 +163,12 @@ export function renderSidebar(container) {
         <div class="campaign-dropdown" id="campaign-dropdown" style="display:none;">
           <div class="campaign-dropdown-list" id="campaign-dropdown-list">Loading...</div>
           <div class="campaign-dropdown-actions">
-            <button class="btn-sm btn-primary" id="campaign-manage-btn" title="Open Settings to create, rename, or delete campaigns">⚙ Manage Campaigns</button>
+            <button class="btn-sm btn-primary" id="campaign-manage-btn" data-tip="Open Settings to create, rename, or delete campaigns">⚙ Manage Campaigns</button>
           </div>
         </div>
       </div>
 
-      <div class="sidebar-calendar" title="In-world date; advances when you run World Simulate">
+      <div class="sidebar-calendar" data-tip="In-world date; advances when you run World Simulate">
         <span class="calendar-icon">📅</span>
         <span class="calendar-text" id="sidebar-calendar-text">${calStr}</span>
       </div>
@@ -186,8 +186,8 @@ export function renderSidebar(container) {
         <div class="sidebar-user" id="sidebar-user-info">
           ${state.user ? `👤 ${state.user.username}` : ''}
         </div>
-        <button type="button" class="sidebar-bug-report" id="sidebar-bug-report-btn" title="Send a bug report to the team (opens a short form)">🐛 Report Bug</button>
-        <button type="button" class="sidebar-logout" id="sidebar-logout-btn" title="Sign out of Eon Weaver">🚪 Sign Out</button>
+        <button type="button" class="sidebar-bug-report" id="sidebar-bug-report-btn" data-tip="Send a bug report to the team (opens a short form)">🐛 Report Bug</button>
+        <button type="button" class="sidebar-logout" id="sidebar-logout-btn" data-tip="Sign out of Eon Weaver">🚪 Sign Out</button>
       </div>
     </div>
   `;
@@ -364,14 +364,14 @@ async function loadSidebarUsage() {
     const balanceColor = balanceTc <= 0 ? '#ef4444' : balanceTc < 5 ? '#f59e0b' : '#22c55e';
     el.innerHTML = `
       <div class="sidebar-usage-row">
-        <span class="sidebar-tier-badge tier-${res.tier}" title="Your subscription tier">${tier_label}</span>
+        <span class="sidebar-tier-badge tier-${res.tier}" data-tip="Your subscription tier">${tier_label}</span>
       </div>
-      <div class="sidebar-credits-display" title="Eon Credits (EC) — used for AI-heavy actions like simulation and Scribe">
+      <div class="sidebar-credits-display" data-tip="Eon Credits (EC) — used for AI-heavy actions like simulation and Scribe">
         <span class="sidebar-credits-icon">🪙</span>
         <span class="sidebar-credits-value" style="color:${balanceColor}">${formatWalletTc(balanceTc)}</span>
         <span class="sidebar-credits-label">Eon Credits</span>
       </div>
-      <div class="sidebar-usage-label" title="Token-equivalent usage this calendar month">${formatMonthlyTcUsed(usedTc)} EC used this month</div>
+      <div class="sidebar-usage-label" data-tip="Token-equivalent usage this calendar month">${formatMonthlyTcUsed(usedTc)} EC used this month</div>
     `;
   } catch (e) { /* silent */ }
 }

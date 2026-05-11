@@ -931,9 +931,9 @@ export default function HelpView(container) {
           const s = sectionById[sid];
           if (!s) return '';
           const hint = SECTION_HINTS[sid];
-          const titleAttr = hint ? ` title="${escapeAttr(hint)}"` : '';
+          const tipAttr = hint ? ` data-tip="${escapeAttr(hint)}"` : '';
           return `
-            <button type="button" class="help-tab-btn${s.id === currentId ? ' active' : ''}" data-tab="${escapeAttr(s.id)}"${titleAttr}>
+            <button type="button" class="help-tab-btn${s.id === currentId ? ' active' : ''}" data-tab="${escapeAttr(s.id)}"${tipAttr}>
               <span class="help-tab-icon">${s.icon}</span>
               <span class="help-tab-label">${escapeAttr(s.title)}</span>
             </button>
@@ -942,7 +942,7 @@ export default function HelpView(container) {
         .join('');
       return `
         <div class="help-nav-group${collapsedClass}" data-help-group="${escapeAttr(group.id)}">
-          <button type="button" class="help-group-toggle" aria-expanded="${expanded}" aria-controls="help-topics-${group.id}" title="Show or hide topics in this section">
+          <button type="button" class="help-group-toggle" aria-expanded="${expanded}" aria-controls="help-topics-${group.id}" data-tip="Show or hide topics in this section">
             <span class="help-group-chevron" aria-hidden="true">▾</span>
             <span class="help-group-label">${escapeAttr(group.label)}</span>
           </button>
