@@ -19,6 +19,8 @@ One-time / rare DB setup: `setup_mysql.php?key=…` on the host you are initiali
 
 **Phases** (intake vs Scribe vs DB vs UI): see `town-directory/PROJECT_PHASES.md`.
 
+**QA “next step” in a new chat:** read `town-directory/QA_PROGRESS.md` (state + ordered IDs) with `town-directory/QA_FEATURE_CHECKLIST.md` (**Systematic pass**). Update **`Last completed ID`** when the user confirms **`done <ID>`**.
+
 ## Where the app lives
 
 - **Frontend + tooling:** `town-directory/`

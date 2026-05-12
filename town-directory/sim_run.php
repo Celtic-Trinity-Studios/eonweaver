@@ -573,7 +573,7 @@ SPROMPT;
                         . "\n1. EVERY new arrival MUST be one of the races listed above."
                         . "\n2. Match the PERCENTAGES. If 'Goblin Kin 75%' then AT LEAST 3 out of 4 new characters MUST be Goblin Kin."
                         . "\n3. Do NOT generate Human, Elf, Dwarf, Halfling, Gnome, Half-Elf, Half-Orc unless explicitly in the list."
-                        . "\n4. 'Other' means uncommon D&D monster races (Kobold, Bugbear, Lizardfolk, Kenku, Tiefling, etc)."
+                        . "\n4. 'Other' means playable PC races not explicitly named in the demographics list (same edition as the campaign — no monsters or beasts as 'Other')."
                         . "\n5. Violating these race rules makes your entire response INVALID."
                         . "\n";
                 }

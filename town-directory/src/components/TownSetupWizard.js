@@ -773,10 +773,10 @@ export function openTownSetupWizard(townId, onRefresh) {
             if (m) {
               const raceName = m[1].trim();
               const pct = parseInt(m[2]);
-              if (STANDARD_HUMANOID_REGEX.test(raceName)) {
+              if (STANDARD_HUMANOID_REGEX.test(raceName) || /^other$/i.test(raceName.trim())) {
                 humanoidPct += pct;
               } else {
-                // Anything not a standard humanoid gets treated as a creature
+                // Named non-humanoid rows (e.g. Goblin, Stirge) — SRD creature intake. "Other" is NOT a monster bucket.
                 creatureDemos.push({ name: raceName, pct });
               }
             }

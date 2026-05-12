@@ -533,6 +533,97 @@ function generateUniqueName(string $race, string $gender, array &$usedNames, arr
     return $fullName;
 }
 
+/**
+ * Parse town_meta.demographics (JSON array of {race,pct} or comma-separated "Race N%").
+ *
+ * @return array<int, array{race: string, pct: int}>
+ */
+function ew_parse_town_demographics_entries(string $demographics): array
+{
+    $demographics = trim($demographics);
+    if ($demographics === '') {
+        return [];
+    }
+    $decoded = json_decode($demographics, true);
+    if (json_last_error() === JSON_ERROR_NONE && is_array($decoded)) {
+        $out = [];
+        foreach ($decoded as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $race = trim((string) ($row['race'] ?? ''));
+            if ($race === '') {
+                continue;
+            }
+            $pct = (int) ($row['pct'] ?? 0);
+            $out[] = ['race' => $race, 'pct' => max(0, min(100, $pct))];
+        }
+        if (!empty($out)) {
+            return $out;
+        }
+    }
+    $out = [];
+    foreach (array_map('trim', explode(',', $demographics)) as $part) {
+        if ($part === '') {
+            continue;
+        }
+        if (preg_match('/^(.+?)\s+(\d+)%?$/', $part, $dm)) {
+            $out[] = ['race' => trim($dm[1]), 'pct' => (int) $dm[2]];
+        }
+    }
+    return $out;
+}
+
+/** PC-style races for the demographics "Other" bucket (SRD / PHB style). */
+function ew_player_race_other_bucket_candidates(string $dndEdition): array
+{
+    $core = ['Human', 'Elf', 'Dwarf', 'Halfling', 'Gnome', 'Half-Elf', 'Half-Orc'];
+    $e = strtolower(trim($dndEdition));
+    if ($e === '3.5e' || $e === '') {
+        return $core;
+    }
+    return array_merge($core, ['Tiefling', 'Dragonborn', 'Aasimar']);
+}
+
+/**
+ * Replace literal "Other" slots with random playable races not named in demographics.
+ *
+ * @param array<int, string> $raceSlots
+ * @return array<int, string>
+ */
+function ew_resolve_other_race_slots(array $raceSlots, string $demographics, string $dndEdition): array
+{
+    $entries = ew_parse_town_demographics_entries($demographics);
+    $explicit = [];
+    foreach ($entries as $e) {
+        $rn = trim($e['race'] ?? '');
+        if ($rn === '' || strcasecmp($rn, 'Other') === 0) {
+            continue;
+        }
+        $explicit[strtolower($rn)] = true;
+    }
+    $pool = ew_player_race_other_bucket_candidates($dndEdition);
+    $filtered = [];
+    foreach ($pool as $p) {
+        if (!isset($explicit[strtolower($p)])) {
+            $filtered[] = $p;
+        }
+    }
+    if (empty($filtered)) {
+        $filtered = $pool;
+    }
+    $out = [];
+    foreach ($raceSlots as $slot) {
+        $s = is_string($slot) ? trim($slot) : '';
+        if (strcasecmp($s, 'Other') === 0) {
+            $out[] = $filtered[array_rand($filtered)];
+        } else {
+            $out[] = $slot;
+        }
+    }
+    return $out;
+}
+
 
 // ═══════════════════════════════════════════════════════════
 // MAIN GENERATOR

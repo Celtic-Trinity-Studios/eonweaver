@@ -817,27 +817,20 @@ if ($action === 'intake_roster') {
 
     // Race enforcement list — filled by demographics computation, applied after AI returns
     $enforcedRaceList = [];
+    require_once $baseDir . '/roster_generator.php';
 
     // ═══════════════════════════════════════════════════════════
     // STANDARD NPC MODE — Procedural generation (NO AI credits)
     // Creature intakes skip this and fall through to the AI path below
     // ═══════════════════════════════════════════════════════════
     if (!$isCreatureIntake) {
-        require_once $baseDir . '/roster_generator.php';
-
         $existingCount = count($existingNames);
         $hasHistory = !empty($history);
         $isNewSettlement = ($existingCount === 0 && !$hasHistory);
 
         // Compute race enforcement list from demographics (if set)
         if ($demographics) {
-            $demoParts = array_map('trim', explode(',', $demographics));
-            $demoEntries = [];
-            foreach ($demoParts as $part) {
-                if (preg_match('/^(.+?)\s+(\d+)%?$/', trim($part), $dm)) {
-                    $demoEntries[] = ['race' => trim($dm[1]), 'pct' => (int) $dm[2]];
-                }
-            }
+            $demoEntries = ew_parse_town_demographics_entries($demographics);
 
             if (!empty($demoEntries)) {
                 $totalPct = array_sum(array_column($demoEntries, 'pct'));
@@ -870,6 +863,7 @@ if ($action === 'intake_roster') {
                     }
                 }
                 shuffle($enforcedRaceList);
+                $enforcedRaceList = ew_resolve_other_race_slots($enforcedRaceList, $demographics, $dndEdition);
             }
         }
 
@@ -965,16 +959,12 @@ For each creature provide ONLY: name, race, class, gender, age, role, alignment.
         $exampleRace = 'Human';
 
         if ($demographics) {
-            // Parse "Goblin Kin 75%, Insect 10%, Rodent 10%, Other 5%"
-            $demoParts = array_map('trim', explode(',', $demographics));
-            $demoEntries = [];
-            foreach ($demoParts as $part) {
-                if (preg_match('/^(.+?)\s+(\d+)%?$/', trim($part), $dm)) {
-                    $demoEntries[] = ['race' => trim($dm[1]), 'pct' => (int) $dm[2]];
-                    // Check if any race is non-standard
-                    if (!in_array(strtolower(trim($dm[1])), $standardRaces)) {
-                        $hasCustomDemographics = true;
-                    }
+            // Parse demographics (JSON array or comma-separated). "Other" = playable races not listed, not SRD monsters.
+            $demoEntries = ew_parse_town_demographics_entries($demographics);
+            foreach ($demoEntries as $de) {
+                $rn = strtolower(trim($de['race'] ?? ''));
+                if ($rn !== '' && $rn !== 'other' && !in_array($rn, $standardRaces, true)) {
+                    $hasCustomDemographics = true;
                 }
             }
 
@@ -1023,6 +1013,7 @@ For each creature provide ONLY: name, race, class, gender, age, role, alignment.
                     }
                 }
                 shuffle($enforcedRaceList); // randomize which slot gets which race
+                $enforcedRaceList = ew_resolve_other_race_slots($enforcedRaceList, $demographics, $dndEdition);
                 $raceRule = "- RACE DISTRIBUTION (set by the DM — follow these EXACT COUNTS, no exceptions): {$raceCountStr}. Total must be EXACTLY {$numArrivals}. Do NOT substitute, add, or remove any races. Every character's race MUST come from this list with these exact counts.";
                 $exampleRace = $demoEntries[0]['race'];
             }
