@@ -3,8 +3,7 @@
  * Campaign management + simulation settings.
  * Edition is set per-campaign, not globally.
  */
-import { apiGetSettings } from '../api/settings.js';
-import { apiGetUsage } from '../api/settings.js';
+import { apiGetSettings, apiGetUsage, apiSaveSetting } from '../api/settings.js';
 import { apiGetCampaigns, apiCreateCampaign, apiUpdateCampaign, apiDeleteCampaign, apiSwitchCampaign } from '../api/campaigns.js';
 import { showToast } from '../components/Toast.js';
 import { getState, setState } from '../stores/appState.js';
@@ -117,6 +116,28 @@ export default function SettingsView(container) {
           </p>
           <div id="campaigns-panel">Loading campaigns...</div>
           <div id="usage-meter-panel"></div>
+        </section>
+
+        <section class="settings-section-card">
+          <h3 class="settings-section">🤝 NPC sheet community pool</h3>
+          <p class="muted" style="margin:0 0 0.75rem;font-size:0.8rem;line-height:1.5;">
+            Optional cross-account reuse for <strong>town intake flesh</strong> only: donors opt in to share anonymized sheet text;
+            consumers who opt in may borrow a matching sheet from another account’s town (same edition and mechanical profile) before spending an AI flesh call.
+            Your town still gets a <strong>new character row</strong>; nothing in the UI marks it as a copy.
+          </p>
+          <div class="form-group" style="margin-bottom:0.5rem;">
+            <label class="settings-checkbox-label" style="display:flex;align-items:flex-start;gap:0.5rem;cursor:pointer;">
+              <input type="checkbox" id="s-npc-pool-opt-in" style="margin-top:0.15rem;" />
+              <span>Let other accounts borrow from my NPC sheets during their intake (opt-in donor pool).</span>
+            </label>
+          </div>
+          <div class="form-group">
+            <label class="settings-checkbox-label" style="display:flex;align-items:flex-start;gap:0.5rem;cursor:pointer;">
+              <input type="checkbox" id="s-use-community-npc-intake" style="margin-top:0.15rem;" />
+              <span>Allow my intakes to try the community pool after my own towns and before AI flesh (opt-in consumer).</span>
+            </label>
+          </div>
+          <small class="settings-hint" style="display:block;margin-top:0.5rem;">Saved with the main <strong>Save settings</strong> button below.</small>
         </section>
 
         <section class="settings-section-card">
@@ -1042,8 +1063,17 @@ async function loadUsageMeter(container) {
 }
 
 async function loadSettings(container) {
-  // User-level settings are now just dnd_edition, xp_speed, npc_xp_speed
-  // World sim settings load from campaign rules below
+  try {
+    const res = await apiGetSettings();
+    if (res?.ok && res.settings) {
+      const pool = container.querySelector('#s-npc-pool-opt-in');
+      const use = container.querySelector('#s-use-community-npc-intake');
+      if (pool) pool.checked = Number(res.settings.npc_sheet_pool_opt_in) === 1;
+      if (use) use.checked = Number(res.settings.use_community_npc_intake) === 1;
+    }
+  } catch (e) {
+    console.error('Failed to load user settings:', e);
+  }
 }
 
 async function loadCampaignRules(container) {
@@ -1085,6 +1115,11 @@ async function loadCampaignRules(container) {
 
 async function saveSettings(container) {
   try {
+    const poolOpt = container.querySelector('#s-npc-pool-opt-in');
+    const useComm = container.querySelector('#s-use-community-npc-intake');
+    if (poolOpt) await apiSaveSetting('npc_sheet_pool_opt_in', poolOpt.checked);
+    if (useComm) await apiSaveSetting('use_community_npc_intake', useComm.checked);
+
     // Save campaign rules, description, homebrew, AND world sim settings together (all campaign-scoped)
     const campDesc = container.querySelector('#s-campaign-desc').value.trim();
     const houseRules = container.querySelector('#s-house-rules').value.trim();

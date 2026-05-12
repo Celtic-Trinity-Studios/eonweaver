@@ -1256,6 +1256,18 @@ elseif ($action === 'intake_flesh') {
     }
     $seedFlavorPool = filter_var($input['seed_master_npc_pool'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
+    $useCommunityIntake = false;
+    try {
+        $uIntakeRow = query('SELECT COALESCE(use_community_npc_intake, 0) AS uc FROM users WHERE id = ?', [$userId], 0);
+        if (!empty($uIntakeRow[0]['uc'])) {
+            $useCommunityIntake = true;
+        }
+    } catch (Throwable $e) {
+    }
+    if (array_key_exists('use_community_npc_pool', $input)) {
+        $useCommunityIntake = $useCommunityIntake || filter_var($input['use_community_npc_pool'], FILTER_VALIDATE_BOOLEAN);
+    }
+
     require_once __DIR__ . '/npc_flavor_pool.php';
     $townBorrowBlocks = ew_npc_flavor_town_borrow_blocklists($townId, $uid);
     $usedFlavorHashes = $townBorrowBlocks['text_hashes'];
@@ -1297,6 +1309,22 @@ elseif ($action === 'intake_flesh') {
                     if ($borrowed) {
                         $resolved[$li] = $borrowed;
                         continue;
+                    }
+                    if ($useCommunityIntake) {
+                        $borrowed = ew_npc_flavor_community_character_try_borrow(
+                            $userId,
+                            $townId,
+                            $uid,
+                            $dndEdition,
+                            $list[$li],
+                            $usedFlavorHashes,
+                            $usedCharacterDonorIds,
+                            $usedFullHashes
+                        );
+                        if ($borrowed) {
+                            $resolved[$li] = $borrowed;
+                            continue;
+                        }
                     }
                     $borrowed = ew_npc_flavor_pool_try_borrow($userId, $townId, $uid, $dndEdition, $list[$li], $usedFlavorHashes, $usedPoolIds, $usedFullHashes);
                     if ($borrowed) {
@@ -1363,7 +1391,7 @@ elseif ($action === 'intake_flesh') {
         ew_npc_flavor_pool_seed_from_flesh($userId, $dndEdition, $fleshedChars);
     }
     foreach ($fleshedChars as &$fcRow) {
-        unset($fcRow['_from_flavor_pool'], $fcRow['_flavor_pool_id'], $fcRow['_from_town_character_db'], $fcRow['_source_character_id'], $fcRow['_from_town_exact_match']);
+        unset($fcRow['_from_flavor_pool'], $fcRow['_flavor_pool_id'], $fcRow['_from_town_character_db'], $fcRow['_from_town_exact_match'], $fcRow['_from_community_character_db']);
     }
     unset($fcRow);
 

@@ -182,6 +182,18 @@ try {
     } catch (Exception $e) { /* already exists */
     }
 
+    // Migration: community NPC sheet pool (cross-account intake donors + consumers)
+    try {
+        $pdo->exec("ALTER TABLE users ADD COLUMN npc_sheet_pool_opt_in TINYINT(1) NOT NULL DEFAULT 0");
+        $results[] = '✅ Added npc_sheet_pool_opt_in column';
+    } catch (Exception $e) { /* already exists */
+    }
+    try {
+        $pdo->exec("ALTER TABLE users ADD COLUMN use_community_npc_intake TINYINT(1) NOT NULL DEFAULT 0");
+        $results[] = '✅ Added use_community_npc_intake column';
+    } catch (Exception $e) { /* already exists */
+    }
+
     // ── Campaigns table ──
     $pdo->exec("CREATE TABLE IF NOT EXISTS campaigns (
         id              INT AUTO_INCREMENT PRIMARY KEY,
@@ -315,6 +327,21 @@ try {
         if (strpos($e->getMessage(), 'Duplicate column') !== false) {
             $results[] = '⏭️ months_in_town column already exists';
         }
+    }
+
+    // Lineage when intake merged a sheet from another characters.id (same or other account)
+    try {
+        $pdo->exec('ALTER TABLE characters ADD COLUMN sheet_source_character_id INT UNSIGNED NULL DEFAULT NULL');
+        $results[] = '✅ Added sheet_source_character_id column';
+    } catch (Exception $e) {
+        if (strpos($e->getMessage(), 'Duplicate column') !== false) {
+            $results[] = '⏭️ sheet_source_character_id column already exists';
+        }
+    }
+    try {
+        $pdo->exec('CREATE INDEX idx_chars_sheet_source ON characters (sheet_source_character_id)');
+        $results[] = '✅ Index idx_chars_sheet_source';
+    } catch (Exception $e) { /* exists or unsupported */
     }
 
     // Add domains column (Cleric domain selections, e.g. "War, Healing")

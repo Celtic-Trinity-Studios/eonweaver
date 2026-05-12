@@ -402,6 +402,121 @@ function ew_npc_flavor_character_db_try_borrow(
 }
 
 /**
+ * Same as ew_npc_flavor_character_db_try_borrow but donors are other accounts who opted in
+ * (`users.npc_sheet_pool_opt_in`). Still matches edition + profile hash; stub keeps roster name/role.
+ *
+ * @param array<string, bool> $usedFlavorHashes
+ * @param array<int, bool>     $usedCharacterDonorIds
+ * @param array<string, bool>  $usedFullHashes
+ * @return array<string, mixed>|null
+ */
+function ew_npc_flavor_community_character_try_borrow(
+    int $consumerUserId,
+    int $townId,
+    int $uid,
+    string $dndEdition,
+    array $stub,
+    array &$usedFlavorHashes,
+    array &$usedCharacterDonorIds,
+    array &$usedFullHashes
+): ?array {
+    if (!empty($stub['is_creature'])) {
+        return null;
+    }
+    $stubNameNorm = strtolower(trim((string) ($stub['name'] ?? '')));
+    if ($stubNameNorm === '') {
+        return null;
+    }
+    $profile = ew_npc_flavor_stub_profile($stub);
+    $ph = ew_npc_flavor_profile_hash($dndEdition, $profile);
+    $dndNorm = strtolower(trim($dndEdition));
+
+    try {
+        $candidates = query(
+            'SELECT c.*, COALESCE(camp.dnd_edition, \'3.5e\') AS _campaign_dnd_edition
+             FROM characters c
+             INNER JOIN towns t ON t.id = c.town_id
+             INNER JOIN users u ON u.id = t.user_id
+             LEFT JOIN campaigns camp ON camp.id = t.campaign_id
+             WHERE u.npc_sheet_pool_opt_in = 1
+               AND t.user_id <> ?
+               AND COALESCE(TRIM(c.status), \'\') <> ?
+               AND NOT (c.town_id = ? AND LOWER(TRIM(c.name)) = ?)
+               AND CHAR_LENGTH(TRIM(COALESCE(c.history, \'\'))) >= 12
+             ORDER BY RAND() LIMIT 48',
+            [$consumerUserId, 'Deceased', $townId, $stubNameNorm],
+            $uid
+        );
+    } catch (Throwable $e) {
+        return null;
+    }
+    if (empty($candidates)) {
+        return null;
+    }
+
+    foreach ($candidates as $row) {
+        $cid = (int) ($row['id'] ?? 0);
+        if ($cid <= 0 || !empty($usedCharacterDonorIds[$cid])) {
+            continue;
+        }
+        $rowEdition = strtolower(trim((string) ($row['_campaign_dnd_edition'] ?? '3.5e')));
+        if ($rowEdition !== $dndNorm) {
+            continue;
+        }
+        $cls = trim((string) ($row['class'] ?? 'Commoner'));
+        $lv = (int) ($row['level'] ?? 1);
+        if ($lv > 0 && $cls !== '' && !preg_match('/\d+\s*$/', $cls)) {
+            $cls = trim($cls . ' ' . $lv);
+        }
+        if ($cls === '') {
+            $cls = 'Commoner 1';
+        }
+        $donorStubLike = [
+            'race' => $row['race'] ?? 'Human',
+            'class' => $cls,
+            'gender' => $row['gender'] ?? 'M',
+            'role' => $row['role'] ?? '',
+            'alignment' => $row['alignment'] ?? 'TN',
+            'is_creature' => false,
+        ];
+        if (ew_npc_flavor_profile_hash($dndEdition, ew_npc_flavor_stub_profile($donorStubLike)) !== $ph) {
+            continue;
+        }
+
+        $sheet = ew_npc_flavor_character_row_to_sheet($row);
+        $hist = trim((string) ($sheet['history'] ?? ''));
+        $sk = trim((string) ($sheet['skills_feats'] ?? ''));
+        $ft = trim((string) ($sheet['feats'] ?? ''));
+        if ($hist === '') {
+            continue;
+        }
+        $fh = ew_npc_flavor_text_hash($hist, $sk, $ft);
+        if (!empty($usedFlavorHashes[$fh])) {
+            continue;
+        }
+        $fp = ew_npc_flavor_fp_full_sheet($sheet);
+        if (!empty($usedFullHashes[$fp])) {
+            continue;
+        }
+        $merged = ew_npc_flavor_merge_stub_with_sheet($stub, $sheet);
+        $fp2 = ew_npc_flavor_fp_full_sheet($merged);
+        if (!empty($usedFullHashes[$fp2])) {
+            continue;
+        }
+        $usedCharacterDonorIds[$cid] = true;
+        $usedFlavorHashes[$fh] = true;
+        $usedFullHashes[$fp2] = true;
+
+        return array_merge($merged, [
+            '_from_community_character_db' => true,
+            '_source_character_id' => $cid,
+        ]);
+    }
+
+    return null;
+}
+
+/**
  * Try to borrow a full or partial NPC row for one stub.
  *
  * @param array<string, bool> $usedFlavorHashes  flavor text hashes (town + in-batch)
@@ -531,7 +646,7 @@ function ew_npc_flavor_pool_seed_from_flesh(int $userId, string $dndEdition, arr
         if (!empty($row['is_creature'])) {
             continue;
         }
-        if (!empty($row['_from_flavor_pool']) || !empty($row['_from_town_character_db']) || !empty($row['_from_town_exact_match'])) {
+        if (!empty($row['_from_flavor_pool']) || !empty($row['_from_town_character_db']) || !empty($row['_from_town_exact_match']) || !empty($row['_from_community_character_db'])) {
             continue;
         }
         $stubLike = [

@@ -286,12 +286,17 @@
                     $charInserted = false;
                     try {
                         $historyText = trim($nc['reason'] ?? $nc['history'] ?? '');
+                        $sheetSourceId = null;
+                        if (!empty($nc['_source_character_id'])) {
+                            $sid = (int) $nc['_source_character_id'];
+                            $sheetSourceId = $sid > 0 ? $sid : null;
+                        }
                         execute('INSERT INTO characters (town_id, name, race, class, level, gender, age, status, alignment,
                             hp, hd, ac, init, spd, grapple, atk, saves,
                             str, dex, con, int_, wis, cha,
                             spouse, spouse_label, role, skills_feats, feats, gear,
-                            languages, xp, cr, history, ai_data)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+                            languages, xp, cr, history, sheet_source_character_id, ai_data)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
                             $townId, $charName, $race, $className, $level,
                             $nc['gender'] ?? '', (int) ($nc['age'] ?? 0),
                             $nc['status'] ?? 'Alive', $nc['alignment'] ?? '',
@@ -302,13 +307,13 @@
                             is_array($nc['skills_feats'] ?? '') ? implode(', ', $nc['skills_feats']) : ($nc['skills_feats'] ?? ''),
                             is_array($nc['feats'] ?? '') ? implode(', ', $nc['feats']) : ($nc['feats'] ?? ''),
                             is_array($nc['gear'] ?? '') ? implode(', ', $nc['gear']) : ($nc['gear'] ?? ''),
-                            $languages, 0, $cr, $historyText, $aiRawData
+                            $languages, 0, $cr, $historyText, $sheetSourceId, $aiRawData
                         ], $uid);
                         $charInserted = true;
                     } catch (Exception $e) {
                         try {
-                            execute('INSERT INTO characters (town_id, name, race, class, level, gender, age, status, alignment, hp, ac, str, dex, con, int_, wis, cha, spouse, spouse_label, role, skills_feats, feats, gear, ai_data)
-                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+                            execute('INSERT INTO characters (town_id, name, race, class, level, gender, age, status, alignment, hp, ac, str, dex, con, int_, wis, cha, spouse, spouse_label, role, skills_feats, feats, gear, sheet_source_character_id, ai_data)
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
                                 $townId, $charName, $race, $className, $level,
                                 $nc['gender'] ?? '', (int) ($nc['age'] ?? 0),
                                 $nc['status'] ?? 'Alive', $nc['alignment'] ?? '',
@@ -318,6 +323,7 @@
                                 is_array($nc['skills_feats'] ?? '') ? implode(', ', $nc['skills_feats']) : ($nc['skills_feats'] ?? ''),
                                 is_array($nc['feats'] ?? '') ? implode(', ', $nc['feats']) : ($nc['feats'] ?? ''),
                                 is_array($nc['gear'] ?? '') ? implode(', ', $nc['gear']) : ($nc['gear'] ?? ''),
+                                $sheetSourceId,
                                 $aiRawData
                             ], $uid);
                             $charInserted = true;

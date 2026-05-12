@@ -1581,7 +1581,10 @@ try {
             $user = requireAuth();
             $uid = (int) $user['id'];
             $rows = query(
-                'SELECT dnd_edition, xp_speed, npc_xp_speed FROM users WHERE id = ?',
+                'SELECT dnd_edition, xp_speed, npc_xp_speed,
+                        COALESCE(npc_sheet_pool_opt_in, 0) AS npc_sheet_pool_opt_in,
+                        COALESCE(use_community_npc_intake, 0) AS use_community_npc_intake
+                 FROM users WHERE id = ?',
                 [$uid],
                 0
             );
@@ -1591,6 +1594,8 @@ try {
                     'dnd_edition' => $rows[0]['dnd_edition'] ?? '3.5e',
                     'xp_speed' => $rows[0]['xp_speed'] ?? 'normal',
                     'npc_xp_speed' => $rows[0]['npc_xp_speed'] ?? 'normal',
+                    'npc_sheet_pool_opt_in' => (int) ($rows[0]['npc_sheet_pool_opt_in'] ?? 0),
+                    'use_community_npc_intake' => (int) ($rows[0]['use_community_npc_intake'] ?? 0),
                 ]
             ]);
             break;
@@ -1600,9 +1605,12 @@ try {
             $uid = (int) $user['id'];
             $settingKey = $input['key'] ?? '';
             $value = $input['value'] ?? '';
-            $allowed = ['dnd_edition', 'xp_speed', 'npc_xp_speed'];
+            $allowed = ['dnd_edition', 'xp_speed', 'npc_xp_speed', 'npc_sheet_pool_opt_in', 'use_community_npc_intake'];
             if (!in_array($settingKey, $allowed))
                 throw new Exception("Invalid setting: $settingKey");
+            if (in_array($settingKey, ['npc_sheet_pool_opt_in', 'use_community_npc_intake'], true)) {
+                $value = filter_var($value, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+            }
             execute("UPDATE users SET {$settingKey} = ? WHERE id = ?", [$value, $uid], 0);
             respond(['ok' => true]);
             break;
