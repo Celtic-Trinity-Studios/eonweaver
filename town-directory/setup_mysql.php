@@ -1654,6 +1654,14 @@ try {
     } catch (Exception $e) {
         $results[] = '⚠️ npc_flavor_pool: ' . htmlspecialchars($e->getMessage());
     }
+    try {
+        $pdo->exec('ALTER TABLE npc_flavor_pool ADD COLUMN full_sheet_json MEDIUMTEXT NULL');
+        $results[] = '✅ npc_flavor_pool.full_sheet_json column';
+    } catch (Exception $e) {
+        if (strpos($e->getMessage(), 'Duplicate column') !== false) {
+            $results[] = '⏭️ npc_flavor_pool.full_sheet_json already exists';
+        }
+    }
 
     // -- Create admin account (CelticTrinityStudios) --
     try {

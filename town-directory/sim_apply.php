@@ -1,5 +1,6 @@
 <?php
             require_once __DIR__ . '/sim_prompt_lib.php';
+            require_once __DIR__ . '/npc_flavor_pool.php';
 
             $townId = (int) ($input['town_id'] ?? 0);
             $changes = $input['changes'] ?? [];
@@ -326,6 +327,35 @@
                     }
                     if ($charInserted) {
                         $applied['new_characters']++;
+                        if (!$isCreature) {
+                            $editionPool = ew_npc_flavor_dnd_edition_for_town($townId, $uid);
+                            ew_npc_flavor_pool_absorb_after_sim_apply(
+                                $userId,
+                                $editionPool,
+                                $nc,
+                                $charName,
+                                $race,
+                                $className,
+                                $level,
+                                $str,
+                                $dex,
+                                $con,
+                                $int_,
+                                $wis,
+                                $cha,
+                                $hp,
+                                $hd,
+                                $ac,
+                                $init,
+                                $spd,
+                                $grappleStr,
+                                $atk,
+                                $saves,
+                                $languages,
+                                $cr,
+                                $historyText
+                            );
+                        }
 
                         // ── Auto-add Birth to Family Tree ──
                         // If this is a birth (age 0 or reason mentions born/birth),

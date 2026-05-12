@@ -129,6 +129,11 @@ export function apiAdminAdjustCredits(userId, amount, mode = 'add') {
     return apiFetch('admin_adjust_credits', { method: 'POST', body: { user_id: userId, amount, mode } });
 }
 
+/** Admin: single NPC flavor pool row (includes full_sheet_json when present). */
+export function apiAdminNpcFlavorPoolRow(rowId) {
+    return apiFetch('admin_npc_flavor_pool', { params: { row_id: rowId } });
+}
+
 /** Admin: NPC flavor pool (intake reuse DB). Pass `{ stats: 1 }` for aggregates only. */
 export function apiAdminNpcFlavorPool(params = {}) {
     return apiFetch('admin_npc_flavor_pool', { params });

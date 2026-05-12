@@ -4301,6 +4301,20 @@ try {
         case 'admin_npc_flavor_pool':
             requireAdmin();
             try {
+                $detailId = (int) ($_GET['row_id'] ?? 0);
+                if ($detailId > 0) {
+                    $one = query(
+                        'SELECT p.id, p.user_id, u.username, p.dnd_edition, p.profile_hash, p.flavor_hash, p.is_creature, p.skills_feats, p.feats, p.reason, p.full_sheet_json, p.created_at
+                         FROM npc_flavor_pool p LEFT JOIN users u ON u.id = p.user_id WHERE p.id = ? LIMIT 1',
+                        [$detailId],
+                        0
+                    );
+                    if (empty($one)) {
+                        throw new Exception('Pool row not found');
+                    }
+                    respond(['ok' => true, 'row' => $one[0]]);
+                    break;
+                }
                 $statsOnly = isset($_GET['stats']) && (string) $_GET['stats'] === '1';
                 if ($statsOnly) {
                     $totalRow = query('SELECT COUNT(*) AS c FROM npc_flavor_pool', [], 0);

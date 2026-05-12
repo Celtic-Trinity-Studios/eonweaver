@@ -1266,7 +1266,9 @@ elseif ($action === 'intake_flesh') {
     $seedFlavorPool = filter_var($input['seed_master_npc_pool'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
     require_once __DIR__ . '/npc_flavor_pool.php';
-    $usedFlavorHashes = ew_npc_flavor_town_history_hashes($townId, $uid);
+    $townBorrowBlocks = ew_npc_flavor_town_borrow_blocklists($townId, $uid);
+    $usedFlavorHashes = $townBorrowBlocks['text_hashes'];
+    $usedFullHashes = $townBorrowBlocks['full_hashes'];
     $usedPoolIds = [];
 
     $startTime = time();
@@ -1284,7 +1286,7 @@ elseif ($action === 'intake_flesh') {
 
         if (!$creature && $useFlavorPool) {
             for ($li = 0; $li < $nList; $li++) {
-                $borrowed = ew_npc_flavor_pool_try_borrow($userId, $townId, $uid, $dndEdition, $list[$li], $usedFlavorHashes, $usedPoolIds);
+                $borrowed = ew_npc_flavor_pool_try_borrow($userId, $townId, $uid, $dndEdition, $list[$li], $usedFlavorHashes, $usedPoolIds, $usedFullHashes);
                 if ($borrowed) {
                     $resolved[$li] = $borrowed;
                 }

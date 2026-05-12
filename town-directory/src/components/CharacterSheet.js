@@ -176,7 +176,9 @@ function wireTooltips(el) {
 }
 
 /* ── Main Export ─────────────────────────────────────────── */
-export function renderCharacterSheet(el, c, { onListRefresh, onDelete, containerRef }) {
+export function renderCharacterSheet(el, c, options = {}) {
+  const { onListRefresh, onDelete, containerRef, previewMode } = options;
+  const isPreview = !!previewMode;
   if (!el || !c) return;
 
   const className = c.class || '';
@@ -300,6 +302,19 @@ export function renderCharacterSheet(el, c, { onListRefresh, onDelete, container
       <div class="cs-roll-log" id="cs-roll-log"></div>
     </div>
   </div>`;
+
+  if (isPreview) {
+    el.classList.add('cs-sheet-preview');
+    ['cs-edit-btn', 'cs-delete-btn', 'cs-levelup-btn', 'cs-ai-levelup-btn'].forEach((bid) => {
+      el.querySelector(`#${bid}`)?.remove();
+    });
+    el.querySelector('.cs-portrait-overlay')?.remove();
+    const pwrap = el.querySelector('#cs-portrait-click');
+    if (pwrap) {
+      pwrap.style.cursor = 'default';
+      pwrap.removeAttribute('title');
+    }
+  }
 
   // ── Wire tab switching ─────────────────────────────
   let equipLoaded = false;
@@ -428,6 +443,7 @@ export function renderCharacterSheet(el, c, { onListRefresh, onDelete, container
     });
   });
 
+  if (!isPreview) {
   // ── Wire HP adjuster ───────────────────────────────
   el.querySelector('#cs-hp-display')?.addEventListener('click', async () => {
     const maxHp = parseInt(c.hp) || 1;
@@ -479,7 +495,7 @@ export function renderCharacterSheet(el, c, { onListRefresh, onDelete, container
         c.portrait_url = url;
         await apiSaveCharacter(getState().currentTownId || c.town_id, { id: c.id, portrait_url: url }).catch(() => { });
         const ch = getState().currentTown?.characters?.find(x => x.id === c.id); if (ch) ch.portrait_url = url;
-        renderCharacterSheet(el, c, { onListRefresh, onDelete, containerRef });
+        renderCharacterSheet(el, c, { onListRefresh, onDelete, containerRef, previewMode: isPreview });
       };
       img.src = ev.target.result;
     };
@@ -508,12 +524,13 @@ export function renderCharacterSheet(el, c, { onListRefresh, onDelete, container
           c.portrait_url = url;
           await apiSaveCharacter(getState().currentTownId || c.town_id, { id: c.id, portrait_url: url }).catch(() => { });
           const ch = getState().currentTown?.characters?.find(x => x.id === c.id); if (ch) ch.portrait_url = url;
-          renderCharacterSheet(el, c, { onListRefresh, onDelete, containerRef });
+          renderCharacterSheet(el, c, { onListRefresh, onDelete, containerRef, previewMode: isPreview });
         };
         img.src = ev.target.result;
       };
       reader.readAsDataURL(file);
     });
+  }
   }
 
   // ── Wire Edit/Delete/LevelUp ───────────────────────
@@ -534,17 +551,17 @@ export function renderCharacterSheet(el, c, { onListRefresh, onDelete, container
             const idx = stateChars.findIndex(ch => ch.id == c.id);
             if (idx >= 0) stateChars[idx] = norm;
             if (onListRefresh) onListRefresh();
-            renderCharacterSheet(el, norm, { onListRefresh, onDelete, containerRef });
+            renderCharacterSheet(el, norm, { onListRefresh, onDelete, containerRef, previewMode: isPreview });
           } else {
-            renderCharacterSheet(el, c, { onListRefresh, onDelete, containerRef });
+            renderCharacterSheet(el, c, { onListRefresh, onDelete, containerRef, previewMode: isPreview });
           }
-        } catch { renderCharacterSheet(el, c, { onListRefresh, onDelete, containerRef }); }
+        } catch { renderCharacterSheet(el, c, { onListRefresh, onDelete, containerRef, previewMode: isPreview }); }
       };
 
       await initCreatorFromCharacter(c, {
         townId,
         onComplete: restoreSheet,
-        onCancel: () => renderCharacterSheet(el, c, { onListRefresh, onDelete, containerRef }),
+        onCancel: () => renderCharacterSheet(el, c, { onListRefresh, onDelete, containerRef, previewMode: isPreview }),
       });
       renderCreator(el);
     } catch (err) {
@@ -588,7 +605,7 @@ export function renderCharacterSheet(el, c, { onListRefresh, onDelete, container
             const idx = stateChars.findIndex(ch => ch.id == c.id);
             if (idx >= 0) stateChars[idx] = norm;
             if (onListRefresh) onListRefresh();
-            renderCharacterSheet(el, norm, { onListRefresh, onDelete, containerRef });
+            renderCharacterSheet(el, norm, { onListRefresh, onDelete, containerRef, previewMode: isPreview });
             addToLog('hp', 'LEVEL UP', `<strong>Leveled up to ${state.selectedClass} (Level ${state.newTotalLevel})</strong>`);
           }
         } catch (e) { console.error('Failed to refresh after level up:', e); }
@@ -667,7 +684,7 @@ export function renderCharacterSheet(el, c, { onListRefresh, onDelete, container
             const idx = stateChars.findIndex(ch => ch.id == c.id);
             if (idx >= 0) stateChars[idx] = norm;
             if (onListRefresh) onListRefresh();
-            renderCharacterSheet(el, norm, { onListRefresh, onDelete, containerRef });
+            renderCharacterSheet(el, norm, { onListRefresh, onDelete, containerRef, previewMode: isPreview });
           }
         } catch (e) { console.error('Refresh failed:', e); }
       });

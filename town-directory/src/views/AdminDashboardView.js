@@ -17,7 +17,7 @@ import {
     apiAdminAllTowns, apiAdminAllCampaigns,
     apiAdminUpdateMeta, apiAdminDeleteMeta,
     apiAdminAdjustCredits,
-    apiAdminNpcFlavorPool, apiAdminNpcFlavorDelete,
+    apiAdminNpcFlavorPool, apiAdminNpcFlavorPoolRow, apiAdminNpcFlavorDelete,
 } from '../api/admin.js';
 import {
     TOKENS_PER_CREDIT,
@@ -25,6 +25,9 @@ import {
     formatWalletTc,
     formatMonthlyTcUsed,
 } from '../constants/credits.js';
+import { showModal } from '../components/Modal.js';
+import { renderCharacterSheet } from '../components/CharacterSheet.js';
+import { normalizeCharacter } from '../api/characters.js';
 
 export default function AdminDashboardView(container) {
     let activeTab = 'overview';
@@ -1731,6 +1734,27 @@ export default function AdminDashboardView(container) {
     const NPC_POOL_PAGE = 40;
     let npcPoolState = { offset: 0, userId: '' };
 
+    function npcPoolRowToPreviewChar(row) {
+        let raw = null;
+        try {
+            raw = row.full_sheet_json ? JSON.parse(row.full_sheet_json) : null;
+        } catch (_) {
+            raw = null;
+        }
+        if (raw && typeof raw === 'object') {
+            const h = raw.history || raw.reason || '';
+            return normalizeCharacter({ ...raw, id: null, dbId: null, history: h });
+        }
+        return normalizeCharacter({
+            name: `Pool #${row.id} (text only)`,
+            race: '—',
+            class: 'Commoner 1',
+            history: row.reason || '',
+            skills_feats: row.skills_feats || '',
+            feats: row.feats || '',
+        });
+    }
+
     async function renderNpcFlavorPool() {
         npcPoolState = { offset: 0, userId: '' };
         await refreshNpcFlavorPoolView();
@@ -1763,6 +1787,7 @@ export default function AdminDashboardView(container) {
                   <td title="${esc(r.profile_hash || '')}"><code>${esc((r.profile_hash || '').slice(0, 8))}…</code></td>
                   <td class="npc-reason-preview">${esc(r.reason_preview || '')}${(r.reason_len || 0) > 240 ? '…' : ''}</td>
                   <td><small>${esc(r.created_at || '')}</small></td>
+                  <td><button type="button" class="admin-btn admin-btn-small" data-action="npc-sheet" data-id="${r.id}">Sheet</button></td>
                   <td><button type="button" class="admin-btn admin-btn-danger admin-btn-small" data-action="npc-del" data-id="${r.id}">Delete</button></td>
                 </tr>
             `).join('');
@@ -1773,7 +1798,7 @@ export default function AdminDashboardView(container) {
             contentEl.innerHTML = `
               <div class="admin-section-header">
                 <h2>NPC flavor pool</h2>
-                <p class="admin-subtle">Reusable backstory snippets from intake (profile-matched). Used to cut duplicate LLM work.</p>
+                <p class="admin-subtle">Reusable NPCs: flavor text is always stored; <strong>full stats</strong> are saved to each row after a character with that flavor is applied to a town (via sim_apply). Click <strong>Sheet</strong> to preview. Intake borrow skips rows that match living residents (backstory + mechanical fingerprint).</p>
               </div>
               <div class="admin-stats-grid" style="margin-bottom:1.5rem">
                 <div class="admin-stat-card"><div class="admin-stat-value">${st.total}</div><div class="admin-stat-label">Total rows</div></div>
@@ -1798,8 +1823,8 @@ export default function AdminDashboardView(container) {
               </div>
               <div class="admin-table-wrap">
                 <table class="admin-table" id="npc-pool-table">
-                  <thead><tr><th>ID</th><th>User</th><th>Username</th><th>Edition</th><th>Profile</th><th>Reason preview</th><th>Created</th><th></th></tr></thead>
-                  <tbody>${tableRows || '<tr><td colspan="8">No rows</td></tr>'}</tbody>
+                  <thead><tr><th>ID</th><th>User</th><th>Username</th><th>Edition</th><th>Profile</th><th>Reason preview</th><th>Created</th><th></th><th></th></tr></thead>
+                  <tbody>${tableRows || '<tr><td colspan="9">No rows</td></tr>'}</tbody>
                 </table>
               </div>
             `;
@@ -1822,6 +1847,32 @@ export default function AdminDashboardView(container) {
             contentEl.querySelector('#npc-pool-next')?.addEventListener('click', () => {
                 if (nextOff !== npcPoolState.offset) npcPoolState.offset = nextOff;
                 refreshNpcFlavorPoolView();
+            });
+            contentEl.querySelectorAll('[data-action="npc-sheet"]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = parseInt(btn.dataset.id, 10);
+                    if (!id) return;
+                    try {
+                        const rowRes = await apiAdminNpcFlavorPoolRow(id);
+                        const row = rowRes.row;
+                        if (!row) {
+                            alert('Row not found');
+                            return;
+                        }
+                        const char = npcPoolRowToPreviewChar(row);
+                        const { el: modalEl } = showModal({
+                            title: `NPC pool #${row.id} — ${esc(char.name || 'Preview')}`,
+                            width: 'wide',
+                            content: '<div id="npc-pool-sheet-host" style="max-height:82vh;overflow:auto;padding:0.25rem"></div>',
+                        });
+                        const host = modalEl.querySelector('#npc-pool-sheet-host');
+                        if (host) {
+                            renderCharacterSheet(host, char, { previewMode: true });
+                        }
+                    } catch (e) {
+                        alert(e.message || String(e));
+                    }
+                });
             });
             contentEl.querySelectorAll('[data-action="npc-del"]').forEach(btn => {
                 btn.addEventListener('click', async () => {
