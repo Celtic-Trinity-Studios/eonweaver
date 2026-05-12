@@ -5,6 +5,8 @@
  *
  * - npc_flavor_pool: deduped borrow pool (profile + flavor hash + full_sheet_json).
  * - npc_reuse_generated: append-only row per qualifying applied NPC (full_sheet_json + town/character ids).
+ * - characters table: first-choice donors for intake flesh when (town_id, stub name) does not already
+ *   identify an existing resident (see ew_npc_flavor_character_db_try_borrow).
  */
 
 /**
@@ -138,6 +140,61 @@ function ew_npc_flavor_town_history_hashes(int $townId, int $uid): array
 }
 
 /**
+ * Map a `characters` row to a sheet-shaped array for ew_npc_flavor_merge_stub_with_sheet().
+ *
+ * @param array<string, mixed> $row
+ * @return array<string, mixed>
+ */
+function ew_npc_flavor_character_row_to_sheet(array $row): array
+{
+    $hist = trim((string) ($row['history'] ?? ''));
+    $cls = trim((string) ($row['class'] ?? 'Commoner'));
+    $lv = (int) ($row['level'] ?? 1);
+    if ($lv > 0 && $cls !== '' && !preg_match('/\d+\s*$/', $cls)) {
+        $cls = trim($cls . ' ' . $lv);
+    }
+    if ($cls === '') {
+        $cls = 'Commoner 1';
+    }
+
+    return [
+        'name' => trim((string) ($row['name'] ?? '')),
+        'race' => trim((string) ($row['race'] ?? '')),
+        'class' => $cls,
+        'level' => (int) ($row['level'] ?? 1),
+        'gender' => $row['gender'] ?? 'M',
+        'age' => (int) ($row['age'] ?? 0),
+        'status' => (string) ($row['status'] ?? 'Alive'),
+        'alignment' => trim((string) ($row['alignment'] ?? '')),
+        'role' => trim((string) ($row['role'] ?? '')),
+        'str' => $row['str'] ?? '',
+        'dex' => $row['dex'] ?? '',
+        'con' => $row['con'] ?? '',
+        'int_' => $row['int_'] ?? '',
+        'int' => $row['int_'] ?? '',
+        'wis' => $row['wis'] ?? '',
+        'cha' => $row['cha'] ?? '',
+        'hp' => (string) ($row['hp'] ?? ''),
+        'ac' => (string) ($row['ac'] ?? ''),
+        'init' => (string) ($row['init'] ?? ''),
+        'spd' => (string) ($row['spd'] ?? ''),
+        'grapple' => (string) ($row['grapple'] ?? ''),
+        'atk' => (string) ($row['atk'] ?? ''),
+        'saves' => (string) ($row['saves'] ?? ''),
+        'hd' => (string) ($row['hd'] ?? ''),
+        'cr' => (string) ($row['cr'] ?? ''),
+        'languages' => (string) ($row['languages'] ?? ''),
+        'skills_feats' => trim((string) ($row['skills_feats'] ?? '')),
+        'feats' => trim((string) ($row['feats'] ?? '')),
+        'gear' => trim((string) ($row['gear'] ?? '')),
+        'spouse' => (string) ($row['spouse'] ?? 'None'),
+        'spouse_label' => (string) ($row['spouse_label'] ?? ''),
+        'history' => $hist,
+        'reason' => $hist,
+    ];
+}
+
+/**
  * Merge a stored sheet snapshot with the current intake stub (name/race/class from roster).
  *
  * @param array<string, mixed> $stub
@@ -171,6 +228,120 @@ function ew_npc_flavor_merge_stub_with_sheet(array $stub, array $sheet): array
     }
 
     return $out;
+}
+
+/**
+ * Try to reuse an existing character row from this user's towns as a sheet donor.
+ * Skips rows where (town_id, name) matches the intake target town + stub name so we never
+ * treat the same resident row as a template for "themselves".
+ *
+ * @param array<string, bool> $usedFlavorHashes
+ * @param array<int, bool>     $usedCharacterDonorIds donor character ids already used this batch
+ * @param array<string, bool>  $usedFullHashes
+ * @return array<string, mixed>|null
+ */
+function ew_npc_flavor_character_db_try_borrow(
+    int $userId,
+    int $townId,
+    int $uid,
+    string $dndEdition,
+    array $stub,
+    array &$usedFlavorHashes,
+    array &$usedCharacterDonorIds,
+    array &$usedFullHashes
+): ?array {
+    if (!empty($stub['is_creature'])) {
+        return null;
+    }
+    $stubNameNorm = strtolower(trim((string) ($stub['name'] ?? '')));
+    if ($stubNameNorm === '') {
+        return null;
+    }
+    $profile = ew_npc_flavor_stub_profile($stub);
+    $ph = ew_npc_flavor_profile_hash($dndEdition, $profile);
+    $dndNorm = strtolower(trim($dndEdition));
+
+    try {
+        $candidates = query(
+            'SELECT c.*, COALESCE(camp.dnd_edition, \'3.5e\') AS _campaign_dnd_edition
+             FROM characters c
+             INNER JOIN towns t ON t.id = c.town_id
+             LEFT JOIN campaigns camp ON camp.id = t.campaign_id
+             WHERE t.user_id = ?
+               AND COALESCE(TRIM(c.status), \'\') <> ?
+               AND NOT (c.town_id = ? AND LOWER(TRIM(c.name)) = ?)
+               AND CHAR_LENGTH(TRIM(COALESCE(c.history, \'\'))) >= 12
+             ORDER BY RAND() LIMIT 48',
+            [$userId, 'Deceased', $townId, $stubNameNorm],
+            $uid
+        );
+    } catch (Throwable $e) {
+        return null;
+    }
+    if (empty($candidates)) {
+        return null;
+    }
+
+    foreach ($candidates as $row) {
+        $cid = (int) ($row['id'] ?? 0);
+        if ($cid <= 0 || !empty($usedCharacterDonorIds[$cid])) {
+            continue;
+        }
+        $rowEdition = strtolower(trim((string) ($row['_campaign_dnd_edition'] ?? '3.5e')));
+        if ($rowEdition !== $dndNorm) {
+            continue;
+        }
+        $cls = trim((string) ($row['class'] ?? 'Commoner'));
+        $lv = (int) ($row['level'] ?? 1);
+        if ($lv > 0 && $cls !== '' && !preg_match('/\d+\s*$/', $cls)) {
+            $cls = trim($cls . ' ' . $lv);
+        }
+        if ($cls === '') {
+            $cls = 'Commoner 1';
+        }
+        $donorStubLike = [
+            'race' => $row['race'] ?? 'Human',
+            'class' => $cls,
+            'gender' => $row['gender'] ?? 'M',
+            'role' => $row['role'] ?? '',
+            'alignment' => $row['alignment'] ?? 'TN',
+            'is_creature' => false,
+        ];
+        if (ew_npc_flavor_profile_hash($dndEdition, ew_npc_flavor_stub_profile($donorStubLike)) !== $ph) {
+            continue;
+        }
+
+        $sheet = ew_npc_flavor_character_row_to_sheet($row);
+        $hist = trim((string) ($sheet['history'] ?? ''));
+        $sk = trim((string) ($sheet['skills_feats'] ?? ''));
+        $ft = trim((string) ($sheet['feats'] ?? ''));
+        if ($hist === '') {
+            continue;
+        }
+        $fh = ew_npc_flavor_text_hash($hist, $sk, $ft);
+        if (!empty($usedFlavorHashes[$fh])) {
+            continue;
+        }
+        $fp = ew_npc_flavor_fp_full_sheet($sheet);
+        if (!empty($usedFullHashes[$fp])) {
+            continue;
+        }
+        $merged = ew_npc_flavor_merge_stub_with_sheet($stub, $sheet);
+        $fp2 = ew_npc_flavor_fp_full_sheet($merged);
+        if (!empty($usedFullHashes[$fp2])) {
+            continue;
+        }
+        $usedCharacterDonorIds[$cid] = true;
+        $usedFlavorHashes[$fh] = true;
+        $usedFullHashes[$fp2] = true;
+
+        return array_merge($merged, [
+            '_from_town_character_db' => true,
+            '_source_character_id' => $cid,
+        ]);
+    }
+
+    return null;
 }
 
 /**
@@ -303,7 +474,7 @@ function ew_npc_flavor_pool_seed_from_flesh(int $userId, string $dndEdition, arr
         if (!empty($row['is_creature'])) {
             continue;
         }
-        if (!empty($row['_from_flavor_pool'])) {
+        if (!empty($row['_from_flavor_pool']) || !empty($row['_from_town_character_db'])) {
             continue;
         }
         $stubLike = [

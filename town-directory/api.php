@@ -4399,9 +4399,10 @@ try {
                 $userFilter = (int) ($_GET['user_id'] ?? 0);
                 if ($userFilter > 0) {
                     $rows = query(
-                        'SELECT g.id, g.user_id, COALESCE(u.username, CONCAT(\'user#\', g.user_id)) AS username, g.town_id, g.character_id, g.dnd_edition, g.profile_hash, g.flavor_hash, g.created_at
+                        'SELECT g.id, g.user_id, COALESCE(u.username, CONCAT(\'user#\', g.user_id)) AS username, g.town_id, g.character_id, g.dnd_edition, g.profile_hash, g.flavor_hash, g.created_at, g.full_sheet_json, t.name AS town_name
                          FROM npc_reuse_generated g
                          LEFT JOIN users u ON u.id = g.user_id
+                         LEFT JOIN towns t ON t.id = g.town_id
                          WHERE g.user_id = ?
                          ORDER BY g.id DESC
                          LIMIT ? OFFSET ?',
@@ -4411,9 +4412,10 @@ try {
                     $cntRow = query('SELECT COUNT(*) AS c FROM npc_reuse_generated WHERE user_id = ?', [$userFilter], 0);
                 } else {
                     $rows = query(
-                        'SELECT g.id, g.user_id, COALESCE(u.username, CONCAT(\'user#\', g.user_id)) AS username, g.town_id, g.character_id, g.dnd_edition, g.profile_hash, g.flavor_hash, g.created_at
+                        'SELECT g.id, g.user_id, COALESCE(u.username, CONCAT(\'user#\', g.user_id)) AS username, g.town_id, g.character_id, g.dnd_edition, g.profile_hash, g.flavor_hash, g.created_at, g.full_sheet_json, t.name AS town_name
                          FROM npc_reuse_generated g
                          LEFT JOIN users u ON u.id = g.user_id
+                         LEFT JOIN towns t ON t.id = g.town_id
                          ORDER BY g.id DESC
                          LIMIT ? OFFSET ?',
                         [$limit, $offset],
@@ -4422,10 +4424,46 @@ try {
                     $cntRow = query('SELECT COUNT(*) AS c FROM npc_reuse_generated', [], 0);
                 }
                 $fullCount = (int) ($cntRow[0]['c'] ?? 0);
+                foreach ($rows ?: [] as &$r) {
+                    $j = json_decode($r['full_sheet_json'] ?? '', true);
+                    if (!is_array($j)) {
+                        $j = [];
+                    }
+                    $r['sheet_name'] = (string) ($j['name'] ?? '');
+                    $r['sheet_race'] = (string) ($j['race'] ?? '');
+                    $r['sheet_class'] = (string) ($j['class'] ?? '');
+                    $lv = isset($j['level']) ? (int) $j['level'] : 0;
+                    if ($lv <= 0 && !empty($r['sheet_class']) && preg_match('/(\d+)\s*$/', $r['sheet_class'], $m)) {
+                        $lv = (int) $m[1];
+                    }
+                    $r['sheet_level'] = $lv;
+                    $r['sheet_hp'] = (string) ($j['hp'] ?? '');
+                    $r['sheet_status'] = (string) ($j['status'] ?? 'Alive');
+                    $r['sheet_alignment'] = (string) ($j['alignment'] ?? '');
+                    $r['sheet_role'] = (string) ($j['role'] ?? '');
+                    $hist = trim((string) ($j['history'] ?? $j['reason'] ?? ''));
+                    if (function_exists('mb_strlen') && function_exists('mb_substr')) {
+                        $r['history_preview'] = mb_strlen($hist) > 220 ? mb_substr($hist, 0, 220) . '…' : $hist;
+                    } else {
+                        $r['history_preview'] = strlen($hist) > 220 ? substr($hist, 0, 220) . '...' : $hist;
+                    }
+                    unset($r['full_sheet_json']);
+                }
+                unset($r);
                 respond(['ok' => true, 'rows' => $rows ?: [], 'total_matching' => $fullCount, 'limit' => $limit, 'offset' => $offset]);
             } catch (Exception $e) {
                 throw new Exception('npc_reuse_generated: ' . $e->getMessage() . ' (Run setup_mysql.php if the table is missing.)');
             }
+            break;
+
+        case 'admin_npc_reuse_generated_delete':
+            requireAdmin();
+            $rid = (int) ($input['id'] ?? 0);
+            if ($rid <= 0) {
+                throw new Exception('Missing id');
+            }
+            execute('DELETE FROM npc_reuse_generated WHERE id = ?', [$rid], 0);
+            respond(['ok' => true, 'deleted_id' => $rid]);
             break;
 
         /* ═══════════════════════════════════════════════════

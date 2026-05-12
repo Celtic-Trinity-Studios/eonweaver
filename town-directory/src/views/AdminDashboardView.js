@@ -18,7 +18,7 @@ import {
     apiAdminUpdateMeta, apiAdminDeleteMeta,
     apiAdminAdjustCredits,
     apiAdminNpcFlavorPool, apiAdminNpcFlavorPoolRow, apiAdminNpcFlavorDelete,
-    apiAdminNpcReuseGenerated,
+    apiAdminNpcReuseGenerated, apiAdminNpcReuseGeneratedDelete,
 } from '../api/admin.js';
 import {
     TOKENS_PER_CREDIT,
@@ -1734,6 +1734,7 @@ export default function AdminDashboardView(container) {
     // ═══════════════════════════════════════
     const NPC_POOL_PAGE = 40;
     let npcPoolState = { offset: 0, userId: '' };
+    let reuseArchiveState = { offset: 0 };
 
     function npcPoolRowToPreviewChar(row) {
         let raw = null;
@@ -1758,6 +1759,7 @@ export default function AdminDashboardView(container) {
 
     async function renderNpcFlavorPool() {
         npcPoolState = { offset: 0, userId: '' };
+        reuseArchiveState = { offset: 0 };
         await refreshNpcFlavorPoolView();
     }
 
@@ -1771,7 +1773,7 @@ export default function AdminDashboardView(container) {
             const rows = listRes.rows || [];
             const total = listRes.total_matching ?? 0;
 
-            const archParams = { limit: 25, offset: 0 };
+            const archParams = { limit: NPC_POOL_PAGE, offset: reuseArchiveState.offset };
             if (npcPoolState.userId) archParams.user_id = npcPoolState.userId;
             let archRes = { rows: [], total_matching: 0 };
             try {
@@ -1780,7 +1782,9 @@ export default function AdminDashboardView(container) {
                 /* table may not exist until setup_mysql */
             }
             const archRows = archRes.rows || [];
-            const archTotal = archRes.total_matching ?? st.reuse_archive_total ?? 0;
+            const reuseTotal = archRes.total_matching ?? st.reuse_archive_total ?? 0;
+            const reusePrevOff = Math.max(0, reuseArchiveState.offset - NPC_POOL_PAGE);
+            const reuseNextOff = reuseArchiveState.offset + NPC_POOL_PAGE < reuseTotal ? reuseArchiveState.offset + NPC_POOL_PAGE : reuseArchiveState.offset;
 
             const editionRows = (st.by_edition || []).map(r =>
                 `<tr><td>${esc(r.dnd_edition || '')}</td><td>${r.cnt}</td></tr>`
@@ -1804,18 +1808,38 @@ export default function AdminDashboardView(container) {
                 </tr>
             `).join('');
 
-            const archTableRows = archRows.map(r => `
+            const archTableRows = archRows.map((r) => {
+                const tid = r.town_id;
+                const tnm = (r.town_name && String(r.town_name).trim()) ? esc(r.town_name) : '';
+                const tlabel = tnm ? `${tnm} <small>(${tid})</small>` : String(tid);
+                const st = (r.sheet_status || 'Alive').toLowerCase().replace(/\s+/g, '-');
+                const cid = r.character_id != null ? r.character_id : '—';
+                const ph = (r.profile_hash || '').slice(0, 8);
+                return `
                 <tr>
-                  <td>${r.id}</td>
+                  <td class="cell-id">${cid}</td>
+                  <td class="member-name clickable" data-action="reuse-sheet" data-id="${r.id}" title="Snapshot log #${r.id}">${esc(r.sheet_name || '—')}</td>
+                  <td>${esc(r.sheet_race || '—')}</td>
+                  <td>${esc(r.sheet_class || '—')}</td>
+                  <td>${r.sheet_level || '—'}</td>
+                  <td>${esc(r.sheet_hp || '—')}</td>
+                  <td><span class="status-badge status-${st}">${esc(r.sheet_status || 'Alive')}</span></td>
+                  <td>${esc(r.sheet_alignment || '—')}</td>
+                  <td class="cell-truncate">${esc(r.sheet_role || '—')}</td>
+                  <td class="cell-truncate">${tlabel}</td>
+                  <td class="cell-id" title="Snapshot PK">${r.id}</td>
+                  <td title="${esc(r.profile_hash || '')}"><code>${esc(ph)}…</code></td>
+                  <td class="npc-reason-preview">${esc(r.history_preview || '')}</td>
                   <td>${r.user_id}</td>
                   <td>${esc(r.username || '')}</td>
-                  <td>${r.town_id}</td>
-                  <td>${r.character_id}</td>
                   <td>${esc(r.dnd_edition || '')}</td>
                   <td><small>${esc(r.created_at || '')}</small></td>
-                  <td><button type="button" class="admin-btn admin-btn-small" data-action="reuse-sheet" data-id="${r.id}">Sheet</button></td>
-                </tr>
-            `).join('');
+                  <td>
+                    <button type="button" class="admin-btn admin-btn-small" data-action="reuse-sheet" data-id="${r.id}">Sheet</button>
+                    <button type="button" class="admin-btn admin-btn-danger admin-btn-small" data-action="reuse-del" data-id="${r.id}">Delete</button>
+                  </td>
+                </tr>`;
+            }).join('');
 
             const prevOff = Math.max(0, npcPoolState.offset - NPC_POOL_PAGE);
             const nextOff = npcPoolState.offset + NPC_POOL_PAGE < total ? npcPoolState.offset + NPC_POOL_PAGE : npcPoolState.offset;
@@ -1857,13 +1881,28 @@ export default function AdminDashboardView(container) {
                   <tbody>${tableRows || '<tr><td colspan="9">No rows</td></tr>'}</tbody>
                 </table>
               </div>
-              <h3 style="margin-top:1.75rem">npc_reuse_generated</h3>
-              <p class="admin-subtle">Append-only MySQL log of applied NPCs (full sheet JSON). Showing ${archRows.length} of ${archTotal}.</p>
-              <div class="admin-table-wrap" style="margin-bottom:1rem">
-                <table class="admin-table" id="npc-reuse-archive-table">
-                  <thead><tr><th>ID</th><th>User</th><th>Username</th><th>Town</th><th>Character</th><th>Edition</th><th>Created</th><th></th></tr></thead>
-                  <tbody>${archTableRows || '<tr><td colspan="8">No rows yet — run setup_mysql, then add NPCs via intake + apply.</td></tr>'}</tbody>
-                </table>
+              <div class="admin-drill-section" style="margin-top:1.75rem">
+                <h3>npc_reuse_generated</h3>
+                <p class="admin-subtle">Append-only MySQL log of applied NPCs (full sheet JSON). Same filter as the pool above; roster columns match town character tables.</p>
+                <div class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin:0.75rem 0">
+                  <label>Filter user ID <input type="number" id="npc-reuse-user" class="admin-input" value="${esc(npcPoolState.userId)}" min="0" style="width:7rem"></label>
+                  <button type="button" class="admin-btn admin-btn-primary" id="npc-reuse-apply">Apply</button>
+                  <button type="button" class="admin-btn" id="npc-reuse-clear">Clear filter</button>
+                  <span class="admin-subtle">Showing ${archRows.length} of ${reuseTotal}</span>
+                  <button type="button" class="admin-btn" id="npc-reuse-prev" ${reuseArchiveState.offset <= 0 ? 'disabled' : ''}>Previous</button>
+                  <button type="button" class="admin-btn" id="npc-reuse-next" ${reuseNextOff === reuseArchiveState.offset ? 'disabled' : ''}>Next</button>
+                </div>
+                <div class="admin-table-wrap" style="margin-bottom:0.5rem">
+                  <table class="admin-table compact" id="npc-reuse-archive-table">
+                    <thead>
+                      <tr>
+                        <th>ID</th><th>Name</th><th>Race</th><th>Class</th><th>Lvl</th><th>HP</th><th>Status</th><th>Alignment</th><th>Role</th>
+                        <th>Town</th><th>Log</th><th>Profile</th><th>History</th><th>User</th><th>Username</th><th>Edition</th><th>Created</th><th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>${archTableRows || '<tr><td colspan="18">No rows yet — run setup_mysql, then add NPCs via intake + apply.</td></tr>'}</tbody>
+                  </table>
+                </div>
               </div>
             `;
 
@@ -1871,11 +1910,13 @@ export default function AdminDashboardView(container) {
                 const v = contentEl.querySelector('#npc-pool-user')?.value?.trim() || '';
                 npcPoolState.userId = v;
                 npcPoolState.offset = 0;
+                reuseArchiveState.offset = 0;
                 refreshNpcFlavorPoolView();
             });
             contentEl.querySelector('#npc-pool-clear')?.addEventListener('click', () => {
                 npcPoolState.userId = '';
                 npcPoolState.offset = 0;
+                reuseArchiveState.offset = 0;
                 refreshNpcFlavorPoolView();
             });
             contentEl.querySelector('#npc-pool-prev')?.addEventListener('click', () => {
@@ -1884,6 +1925,27 @@ export default function AdminDashboardView(container) {
             });
             contentEl.querySelector('#npc-pool-next')?.addEventListener('click', () => {
                 if (nextOff !== npcPoolState.offset) npcPoolState.offset = nextOff;
+                refreshNpcFlavorPoolView();
+            });
+            contentEl.querySelector('#npc-reuse-apply')?.addEventListener('click', () => {
+                const v = contentEl.querySelector('#npc-reuse-user')?.value?.trim() || '';
+                npcPoolState.userId = v;
+                npcPoolState.offset = 0;
+                reuseArchiveState.offset = 0;
+                refreshNpcFlavorPoolView();
+            });
+            contentEl.querySelector('#npc-reuse-clear')?.addEventListener('click', () => {
+                npcPoolState.userId = '';
+                npcPoolState.offset = 0;
+                reuseArchiveState.offset = 0;
+                refreshNpcFlavorPoolView();
+            });
+            contentEl.querySelector('#npc-reuse-prev')?.addEventListener('click', () => {
+                reuseArchiveState.offset = reusePrevOff;
+                refreshNpcFlavorPoolView();
+            });
+            contentEl.querySelector('#npc-reuse-next')?.addEventListener('click', () => {
+                if (reuseNextOff !== reuseArchiveState.offset) reuseArchiveState.offset = reuseNextOff;
                 refreshNpcFlavorPoolView();
             });
             contentEl.querySelectorAll('[data-action="npc-sheet"]').forEach(btn => {
@@ -1947,6 +2009,18 @@ export default function AdminDashboardView(container) {
                         await refreshNpcFlavorPoolView();
                     } catch (e) {
                         alert(e.message);
+                    }
+                });
+            });
+            contentEl.querySelectorAll('[data-action="reuse-del"]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = parseInt(btn.dataset.id, 10);
+                    if (!id || !confirm(`Delete reuse log row ${id}? This removes the archive entry only, not the live character.`)) return;
+                    try {
+                        await apiAdminNpcReuseGeneratedDelete(id);
+                        await refreshNpcFlavorPoolView();
+                    } catch (e) {
+                        alert(e.message || String(e));
                     }
                 });
             });

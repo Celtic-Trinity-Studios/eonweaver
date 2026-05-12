@@ -147,3 +147,7 @@ export function apiAdminNpcFlavorDelete(id) {
 export function apiAdminNpcReuseGenerated(params = {}) {
     return apiFetch('admin_npc_reuse_generated', { params });
 }
+
+export function apiAdminNpcReuseGeneratedDelete(id) {
+    return apiFetch('admin_npc_reuse_generated_delete', { method: 'DELETE', body: { id } });
+}
