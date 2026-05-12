@@ -1,7 +1,10 @@
 <?php
 /**
- * Per-user reusable NPC rows (skills, feats, backstory + optional full sheet snapshot).
- * Seeded from intake; full_sheet_json filled when characters are applied via sim_apply.
+ * NPC reuse — stored only in MySQL (this file + tables npc_flavor_pool, npc_reuse_generated).
+ * NOT written to llm_training.jsonl (that file is for optional OpenRouter training export only).
+ *
+ * - npc_flavor_pool: deduped borrow pool (profile + flavor hash + full_sheet_json).
+ * - npc_reuse_generated: append-only row per qualifying applied NPC (full_sheet_json + town/character ids).
  */
 
 /**
@@ -333,10 +336,12 @@ function ew_npc_flavor_pool_seed_from_flesh(int $userId, string $dndEdition, arr
 }
 
 /**
- * After sim_apply inserts an NPC, attach a full sheet snapshot to the flavor pool row (same user + flavor hash).
+ * After sim_apply inserts an NPC, upsert flavor pool + append npc_reuse_generated (MySQL archive).
  */
 function ew_npc_flavor_pool_absorb_after_sim_apply(
     int $ownerUserId,
+    int $townId,
+    int $uid,
     string $dndEdition,
     array $nc,
     string $charName,
@@ -439,5 +444,24 @@ function ew_npc_flavor_pool_absorb_after_sim_apply(
             0
         );
     } catch (Throwable $e) {
+    }
+
+    try {
+        $idRows = query(
+            'SELECT id FROM characters WHERE town_id = ? AND name = ? ORDER BY id DESC LIMIT 1',
+            [$townId, $charName],
+            $uid
+        );
+        $cid = !empty($idRows) ? (int) ($idRows[0]['id'] ?? 0) : 0;
+        if ($cid > 0) {
+            execute(
+                'INSERT INTO npc_reuse_generated (user_id, town_id, character_id, dnd_edition, profile_hash, flavor_hash, full_sheet_json)
+                 VALUES (?,?,?,?,?,?,?)',
+                [$ownerUserId, $townId, $cid, $dndEdition, $ph, $fh, $json],
+                0
+            );
+        }
+    } catch (Throwable $e) {
+        // Table may not exist until setup_mysql is run once.
     }
 }

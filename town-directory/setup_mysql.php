@@ -1663,6 +1663,28 @@ try {
         }
     }
 
+    // -- Append-only log: every applied generated NPC snapshot (MySQL — NOT llm_training JSONL) --
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS npc_reuse_generated (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            user_id INT UNSIGNED NOT NULL,
+            town_id INT UNSIGNED NOT NULL,
+            character_id INT UNSIGNED NOT NULL,
+            dnd_edition VARCHAR(16) NOT NULL DEFAULT '3.5e',
+            profile_hash CHAR(32) NOT NULL,
+            flavor_hash CHAR(32) NOT NULL,
+            full_sheet_json MEDIUMTEXT NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_nrg_user_created (user_id, created_at),
+            KEY idx_nrg_town (town_id),
+            KEY idx_nrg_character (character_id),
+            KEY idx_nrg_flavor (user_id, flavor_hash)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $results[] = '✅ npc_reuse_generated table';
+    } catch (Exception $e) {
+        $results[] = '⚠️ npc_reuse_generated: ' . htmlspecialchars($e->getMessage());
+    }
+
     // -- Create admin account (CelticTrinityStudios) --
     try {
         $adminExists = $pdo->query("SELECT id FROM users WHERE username = 'CelticTrinityStudios'")->fetch();

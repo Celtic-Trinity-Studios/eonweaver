@@ -142,3 +142,8 @@ export function apiAdminNpcFlavorPool(params = {}) {
 export function apiAdminNpcFlavorDelete(id) {
     return apiFetch('admin_npc_flavor_delete', { method: 'DELETE', body: { id } });
 }
+
+/** Admin: append-only MySQL log of applied generated NPCs (`npc_reuse_generated`). Pass `{ id }` for one row + full_sheet_json. */
+export function apiAdminNpcReuseGenerated(params = {}) {
+    return apiFetch('admin_npc_reuse_generated', { params });
+}

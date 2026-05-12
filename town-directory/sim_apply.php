@@ -331,6 +331,8 @@
                             $editionPool = ew_npc_flavor_dnd_edition_for_town($townId, $uid);
                             ew_npc_flavor_pool_absorb_after_sim_apply(
                                 $userId,
+                                $townId,
+                                $uid,
                                 $editionPool,
                                 $nc,
                                 $charName,

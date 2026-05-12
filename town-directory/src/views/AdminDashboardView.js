@@ -18,6 +18,7 @@ import {
     apiAdminUpdateMeta, apiAdminDeleteMeta,
     apiAdminAdjustCredits,
     apiAdminNpcFlavorPool, apiAdminNpcFlavorPoolRow, apiAdminNpcFlavorDelete,
+    apiAdminNpcReuseGenerated,
 } from '../api/admin.js';
 import {
     TOKENS_PER_CREDIT,
@@ -48,7 +49,7 @@ export default function AdminDashboardView(container) {
         <button class="admin-tab" data-tab="campaigns">📜 Campaigns</button>
         <button class="admin-tab" data-tab="towns">🏰 Towns</button>
         <button class="admin-tab" data-tab="usage">📈 Token Usage</button>
-        <button class="admin-tab" data-tab="npc-pool">🧬 NPC Flavor Pool</button>
+        <button class="admin-tab" data-tab="npc-pool">🧬 NPC reuse (MySQL)</button>
         <button class="admin-tab" data-tab="settings">⚙️ Site Settings</button>
       </div>
 
@@ -1763,12 +1764,23 @@ export default function AdminDashboardView(container) {
     async function refreshNpcFlavorPoolView() {
         try {
             const statsRes = await apiAdminNpcFlavorPool({ stats: 1 });
-            const st = statsRes.stats || { total: 0, by_edition: [], top_users: [] };
+            const st = statsRes.stats || { total: 0, reuse_archive_total: 0, by_edition: [], top_users: [] };
             const params = { limit: NPC_POOL_PAGE, offset: npcPoolState.offset };
             if (npcPoolState.userId) params.user_id = npcPoolState.userId;
             const listRes = await apiAdminNpcFlavorPool(params);
             const rows = listRes.rows || [];
             const total = listRes.total_matching ?? 0;
+
+            const archParams = { limit: 25, offset: 0 };
+            if (npcPoolState.userId) archParams.user_id = npcPoolState.userId;
+            let archRes = { rows: [], total_matching: 0 };
+            try {
+                archRes = await apiAdminNpcReuseGenerated(archParams);
+            } catch (_) {
+                /* table may not exist until setup_mysql */
+            }
+            const archRows = archRes.rows || [];
+            const archTotal = archRes.total_matching ?? st.reuse_archive_total ?? 0;
 
             const editionRows = (st.by_edition || []).map(r =>
                 `<tr><td>${esc(r.dnd_edition || '')}</td><td>${r.cnt}</td></tr>`
@@ -1792,16 +1804,30 @@ export default function AdminDashboardView(container) {
                 </tr>
             `).join('');
 
+            const archTableRows = archRows.map(r => `
+                <tr>
+                  <td>${r.id}</td>
+                  <td>${r.user_id}</td>
+                  <td>${esc(r.username || '')}</td>
+                  <td>${r.town_id}</td>
+                  <td>${r.character_id}</td>
+                  <td>${esc(r.dnd_edition || '')}</td>
+                  <td><small>${esc(r.created_at || '')}</small></td>
+                  <td><button type="button" class="admin-btn admin-btn-small" data-action="reuse-sheet" data-id="${r.id}">Sheet</button></td>
+                </tr>
+            `).join('');
+
             const prevOff = Math.max(0, npcPoolState.offset - NPC_POOL_PAGE);
             const nextOff = npcPoolState.offset + NPC_POOL_PAGE < total ? npcPoolState.offset + NPC_POOL_PAGE : npcPoolState.offset;
 
             contentEl.innerHTML = `
               <div class="admin-section-header">
-                <h2>NPC flavor pool</h2>
-                <p class="admin-subtle">Reusable NPCs: flavor text is always stored; <strong>full stats</strong> are saved to each row after a character with that flavor is applied to a town (via sim_apply). Click <strong>Sheet</strong> to preview. Intake borrow skips rows that match living residents (backstory + mechanical fingerprint).</p>
+                <h2>NPC reuse (MySQL)</h2>
+                <p class="admin-subtle"><strong>Not training data.</strong> Reuse lives in two tables: <code>npc_flavor_pool</code> (deduped borrow pool) and <code>npc_reuse_generated</code> (append-only log of every qualifying applied NPC). OpenRouter training export is separate (<code>private_data/llm_training.jsonl</code>).</p>
               </div>
               <div class="admin-stats-grid" style="margin-bottom:1.5rem">
-                <div class="admin-stat-card"><div class="admin-stat-value">${st.total}</div><div class="admin-stat-label">Total rows</div></div>
+                <div class="admin-stat-card"><div class="admin-stat-value">${st.total}</div><div class="admin-stat-label">npc_flavor_pool rows</div></div>
+                <div class="admin-stat-card"><div class="admin-stat-value">${st.reuse_archive_total ?? 0}</div><div class="admin-stat-label">npc_reuse_generated rows</div></div>
               </div>
               <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem" class="admin-npc-pool-grid">
                 <div>
@@ -1812,6 +1838,10 @@ export default function AdminDashboardView(container) {
                   <h3>Top accounts</h3>
                   <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>User</th><th>ID</th><th>Rows</th></tr></thead><tbody>${topUserRows || '<tr><td colspan="3">No data</td></tr>'}</tbody></table></div>
                 </div>
+              </div>
+              <div class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-bottom:0.5rem">
+                <strong>npc_flavor_pool</strong>
+                <span class="admin-subtle">Deduped borrow rows — Sheet previews stored flavor / sheet.</span>
               </div>
               <div class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-bottom:1rem">
                 <label>Filter user ID <input type="number" id="npc-pool-user" class="admin-input" value="${esc(npcPoolState.userId)}" min="0" style="width:7rem"></label>
@@ -1825,6 +1855,14 @@ export default function AdminDashboardView(container) {
                 <table class="admin-table" id="npc-pool-table">
                   <thead><tr><th>ID</th><th>User</th><th>Username</th><th>Edition</th><th>Profile</th><th>Reason preview</th><th>Created</th><th></th><th></th></tr></thead>
                   <tbody>${tableRows || '<tr><td colspan="9">No rows</td></tr>'}</tbody>
+                </table>
+              </div>
+              <h3 style="margin-top:1.75rem">npc_reuse_generated</h3>
+              <p class="admin-subtle">Append-only MySQL log of applied NPCs (full sheet JSON). Showing ${archRows.length} of ${archTotal}.</p>
+              <div class="admin-table-wrap" style="margin-bottom:1rem">
+                <table class="admin-table" id="npc-reuse-archive-table">
+                  <thead><tr><th>ID</th><th>User</th><th>Username</th><th>Town</th><th>Character</th><th>Edition</th><th>Created</th><th></th></tr></thead>
+                  <tbody>${archTableRows || '<tr><td colspan="8">No rows yet — run setup_mysql, then add NPCs via intake + apply.</td></tr>'}</tbody>
                 </table>
               </div>
             `;
@@ -1866,6 +1904,32 @@ export default function AdminDashboardView(container) {
                             content: '<div id="npc-pool-sheet-host" style="max-height:82vh;overflow:auto;padding:0.25rem"></div>',
                         });
                         const host = modalEl.querySelector('#npc-pool-sheet-host');
+                        if (host) {
+                            renderCharacterSheet(host, char, { previewMode: true });
+                        }
+                    } catch (e) {
+                        alert(e.message || String(e));
+                    }
+                });
+            });
+            contentEl.querySelectorAll('[data-action="reuse-sheet"]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = parseInt(btn.dataset.id, 10);
+                    if (!id) return;
+                    try {
+                        const rowRes = await apiAdminNpcReuseGenerated({ id });
+                        const row = rowRes.row;
+                        if (!row) {
+                            alert('Row not found');
+                            return;
+                        }
+                        const char = npcPoolRowToPreviewChar(row);
+                        const { el: modalEl } = showModal({
+                            title: `Reuse log #${row.id} — ${esc(char.name || 'Preview')}`,
+                            width: 'wide',
+                            content: '<div id="npc-reuse-sheet-host" style="max-height:82vh;overflow:auto;padding:0.25rem"></div>',
+                        });
+                        const host = modalEl.querySelector('#npc-reuse-sheet-host');
                         if (host) {
                             renderCharacterSheet(host, char, { previewMode: true });
                         }

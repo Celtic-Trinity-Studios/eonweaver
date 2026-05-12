@@ -292,7 +292,7 @@ function showAdminApp() {
         </button>
         <button class="nav-item" data-admin-tab="npc-pool">
           <span class="nav-icon">🧬</span>
-          <span class="nav-label">NPC Pool</span>
+          <span class="nav-label">NPC reuse (DB)</span>
         </button>
         <button class="nav-item" data-admin-tab="settings">
           <span class="nav-icon">⚙️</span>

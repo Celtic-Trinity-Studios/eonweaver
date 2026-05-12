@@ -4319,13 +4319,19 @@ try {
                 if ($statsOnly) {
                     $totalRow = query('SELECT COUNT(*) AS c FROM npc_flavor_pool', [], 0);
                     $total = (int) ($totalRow[0]['c'] ?? 0);
+                    $reuseArchiveTotal = 0;
+                    try {
+                        $ar = query('SELECT COUNT(*) AS c FROM npc_reuse_generated', [], 0);
+                        $reuseArchiveTotal = (int) ($ar[0]['c'] ?? 0);
+                    } catch (Exception $e) {
+                    }
                     $byEdition = query('SELECT dnd_edition, COUNT(*) AS cnt FROM npc_flavor_pool GROUP BY dnd_edition ORDER BY cnt DESC', [], 0);
                     $topUsers = query(
                         'SELECT p.user_id, COALESCE(u.username, CONCAT(\'user#\', p.user_id)) AS username, COUNT(*) AS cnt FROM npc_flavor_pool p LEFT JOIN users u ON u.id = p.user_id GROUP BY p.user_id, u.username ORDER BY cnt DESC LIMIT 30',
                         [],
                         0
                     );
-                    respond(['ok' => true, 'stats' => ['total' => $total, 'by_edition' => $byEdition, 'top_users' => $topUsers]]);
+                    respond(['ok' => true, 'stats' => ['total' => $total, 'reuse_archive_total' => $reuseArchiveTotal, 'by_edition' => $byEdition, 'top_users' => $topUsers]]);
                     break;
                 }
                 $limit = min(200, max(1, (int) ($_GET['limit'] ?? 50)));
@@ -4370,6 +4376,56 @@ try {
             }
             execute('DELETE FROM npc_flavor_pool WHERE id = ?', [$delId], 0);
             respond(['ok' => true, 'deleted_id' => $delId]);
+            break;
+
+        case 'admin_npc_reuse_generated':
+            requireAdmin();
+            try {
+                $oneId = (int) ($_GET['id'] ?? 0);
+                if ($oneId > 0) {
+                    $one = query(
+                        'SELECT g.*, COALESCE(u.username, CONCAT(\'user#\', g.user_id)) AS username FROM npc_reuse_generated g LEFT JOIN users u ON u.id = g.user_id WHERE g.id = ? LIMIT 1',
+                        [$oneId],
+                        0
+                    );
+                    if (empty($one)) {
+                        throw new Exception('Reuse archive row not found');
+                    }
+                    respond(['ok' => true, 'row' => $one[0]]);
+                    break;
+                }
+                $limit = min(200, max(1, (int) ($_GET['limit'] ?? 40)));
+                $offset = max(0, (int) ($_GET['offset'] ?? 0));
+                $userFilter = (int) ($_GET['user_id'] ?? 0);
+                if ($userFilter > 0) {
+                    $rows = query(
+                        'SELECT g.id, g.user_id, COALESCE(u.username, CONCAT(\'user#\', g.user_id)) AS username, g.town_id, g.character_id, g.dnd_edition, g.profile_hash, g.flavor_hash, g.created_at
+                         FROM npc_reuse_generated g
+                         LEFT JOIN users u ON u.id = g.user_id
+                         WHERE g.user_id = ?
+                         ORDER BY g.id DESC
+                         LIMIT ? OFFSET ?',
+                        [$userFilter, $limit, $offset],
+                        0
+                    );
+                    $cntRow = query('SELECT COUNT(*) AS c FROM npc_reuse_generated WHERE user_id = ?', [$userFilter], 0);
+                } else {
+                    $rows = query(
+                        'SELECT g.id, g.user_id, COALESCE(u.username, CONCAT(\'user#\', g.user_id)) AS username, g.town_id, g.character_id, g.dnd_edition, g.profile_hash, g.flavor_hash, g.created_at
+                         FROM npc_reuse_generated g
+                         LEFT JOIN users u ON u.id = g.user_id
+                         ORDER BY g.id DESC
+                         LIMIT ? OFFSET ?',
+                        [$limit, $offset],
+                        0
+                    );
+                    $cntRow = query('SELECT COUNT(*) AS c FROM npc_reuse_generated', [], 0);
+                }
+                $fullCount = (int) ($cntRow[0]['c'] ?? 0);
+                respond(['ok' => true, 'rows' => $rows ?: [], 'total_matching' => $fullCount, 'limit' => $limit, 'offset' => $offset]);
+            } catch (Exception $e) {
+                throw new Exception('npc_reuse_generated: ' . $e->getMessage() . ' (Run setup_mysql.php if the table is missing.)');
+            }
             break;
 
         /* ═══════════════════════════════════════════════════
