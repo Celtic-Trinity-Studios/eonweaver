@@ -4,7 +4,7 @@
  * Shows progress, preview of changes, and allows apply/reject.
  */
 import { getState, setState } from '../stores/appState.js';
-import { navigate } from '../router.js';
+import { navigate, appHref } from '../router.js';
 import { apiGetCharacters, normalizeCharacter } from '../api/characters.js';
 import { apiGetTowns, apiGetTownMeta } from '../api/towns.js';
 import {
@@ -26,7 +26,7 @@ export default function SimulationView(container) {
         <header class="view-header"><h1>⏩ AI Simulation</h1></header>
         <div class="dash-card" style="margin-top:1rem; text-align:center; padding:2rem;">
           <h2 style="color:var(--text-muted)">🏰 No Town Selected</h2>
-          <p>Select a town from the <a href="/dev/dashboard">Dashboard</a> first.</p>
+          <p>Select a town from the <a href="${appHref('dashboard')}">Dashboard</a> first.</p>
         </div>
       </div>`;
     return;
@@ -74,7 +74,7 @@ export default function SimulationView(container) {
           <label>📝 Additional Instructions</label>
           <textarea id="sim-instructions" class="form-input" rows="3"
             placeholder="Any specific instructions for this simulation...&#10;e.g., 'A traveling merchant caravan arrives' or 'Keep deaths low'"></textarea>
-          <small class="settings-hint" style="margin-top:0.25rem;display:block;">📜 Campaign description & house rules are loaded automatically from <a href="/dev/settings" style="color:var(--accent)">⚙️ Settings</a>.</small>
+          <small class="settings-hint" style="margin-top:0.25rem;display:block;">📜 Campaign description & house rules are loaded automatically from <a href="${appHref('settings')}" style="color:var(--accent)">⚙️ Settings</a>.</small>
         </div>
 
         <div class="sim-actions">

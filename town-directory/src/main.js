@@ -1,4 +1,4 @@
-import { initRouter, registerRoute, navigate } from './router.js';
+import { initRouter, registerRoute, navigate, resetRegisteredRoutes } from './router.js';
 import { renderSidebar } from './components/Sidebar.js';
 import { getState, setState, resetState, subscribe } from './stores/appState.js';
 import { apiGetCurrentUser, apiLogin, apiRegister, apiLogout, apiResendVerification } from './api/auth.js';
@@ -199,6 +199,8 @@ function showApp() {
     // Bind logout
     document.getElementById('sidebar-logout-btn')?.addEventListener('click', async () => {
         await apiLogout();
+        resetRegisteredRoutes();
+        routesRegistered = false;
         resetState();
         showLanding();
     });
@@ -303,6 +305,8 @@ function showAdminApp() {
     // Logout
     sidebarEl.querySelector('#sidebar-logout-btn')?.addEventListener('click', async () => {
         await apiLogout();
+        resetRegisteredRoutes();
+        routesRegistered = false;
         resetState();
         showLanding();
     });

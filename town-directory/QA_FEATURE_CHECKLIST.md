@@ -13,6 +13,8 @@ Use this document as a **working todo**: check boxes when verified, note failure
 3. **Per row:** Complete **every** numbered step under **Test procedure** before marking done. Use **Notes** for anomalies, browser, and ticket links.
 4. **IDs:** Stable codes (e.g. `SIM-02`) so `WANT_NEED_BACKLOG.md` can reference them.
 
+**What counts as done:** Mark **`[x]`** only after **you** (or QA) has **executed** the procedure in the stated surface/environment—browser clicks, API smoke, DB step, deploy smoke, etc. Source-code review, grep, or assistant walkthroughs **do not** satisfy the checklist; those belong in implementation notes or PRs. **`[ ]`** means “not yet run” or “needs retest after a relevant change.”
+
 ---
 
 ## Discord: all QA in the `bug-reports` forum

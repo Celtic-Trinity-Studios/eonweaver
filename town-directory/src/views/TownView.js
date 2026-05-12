@@ -3,7 +3,7 @@
  * Reconstructed from production bundle (variable names minified)
  */
 import { getState as Z, setState as ee } from '../stores/appState.js';
-import { navigate as ge } from '../router.js';
+import { navigate as ge, appHref } from '../router.js';
 import { apiFetch as P } from '../api/client.js';
 import { simFetch as ze } from '../api/client.js';
 import { apiGetTowns as dt, apiGetTownMeta as Pt, apiSaveTownMeta as Qe, apiDeleteTown as Sa, apiPurgePopulation as $a, apiGetHistory as _a, apiCreateTown as $n } from '../api/towns.js';
@@ -48,7 +48,7 @@ function getClassIcon(cls){if(!cls)return"👤";const k=cls.toLowerCase().split(
 function Fi(e,t){const s=Z(),a=t.id?parseInt(t.id):s.currentTownId;if(!a){e.innerHTML=`
       <div class="view-empty">
         <h2> No Town Selected</h2>
-        <p>Select a town from the <a href="/dev/dashboard">Dashboard</a> or create a new one.</p>
+        <p>Select a town from the <a href="${appHref('dashboard')}">Dashboard</a> or create a new one.</p>
       </div>
     `;return}e.innerHTML=`
     <div class="view-town">
@@ -1368,7 +1368,7 @@ Type the town name to confirm:`);if(A&&A.trim().toLowerCase()===w.toLowerCase())
         <header class="view-header"><h1>⏩ AI Simulation</h1></header>
         <div class="dash-card" style="margin-top:1rem; text-align:center; padding:2rem;">
           <h2 style="color:var(--text-muted)">🏰 No Town Selected</h2>
-          <p>Select a town from the <a href="/dev/dashboard">Dashboard</a> first.</p>
+          <p>Select a town from the <a href="${appHref('dashboard')}">Dashboard</a> first.</p>
         </div>
       </div>`;return}e.innerHTML=`
     <div class="view-simulation">
@@ -1405,7 +1405,7 @@ Type the town name to confirm:`);if(A&&A.trim().toLowerCase()===w.toLowerCase())
           <label>📝 Additional Instructions</label>
           <textarea id="sim-instructions" class="form-input" rows="3"
             placeholder="Any specific instructions for this simulation...&#10;e.g., 'A traveling merchant caravan arrives' or 'Keep deaths low'"></textarea>
-          <small class="settings-hint" style="margin-top:0.25rem;display:block;">📜 Campaign description & house rules are loaded automatically from <a href="/dev/settings" style="color:var(--accent)">⚙️ Settings</a>.</small>
+          <small class="settings-hint" style="margin-top:0.25rem;display:block;">📜 Campaign description & house rules are loaded automatically from <a href="${appHref('settings')}" style="color:var(--accent)">⚙️ Settings</a>.</small>
         </div>
 
         <div class="sim-actions">
@@ -1568,7 +1568,7 @@ ${O.new_history_entry.content}`);try{const Q=await Ve(c,V,O.new_history_entry||n
     </div>
   `;let t=1;e.querySelector("#ws-back-btn").addEventListener("click",()=>ge("dashboard")),s(e);async function s(l){var i;try{const[r,p,o]=await Promise.all([dt(),Et().catch(()=>null),Ft().catch(()=>({}))]),c=Array.isArray(r)?r:r.towns||[],d=l.querySelector("#ws-months-group"),u=p==null?void 0:p.calendar,v=(u==null?void 0:u.months)||[];let m="";for(let g=1;g<=12;g++){const k=v[g-1]?` title="${v[g-1].name||v[g-1]}"`:"";m+=`<button class="sim-month-btn${g===1?" active":""}" data-months="${g}"${k}>${g}</button>`}d.innerHTML=m,d.querySelectorAll(".sim-month-btn").forEach(g=>{g.addEventListener("click",()=>{d.querySelectorAll(".sim-month-btn").forEach(k=>k.classList.remove("active")),g.classList.add("active"),t=parseInt(g.dataset.months)||1})});const b=l.querySelector("#ws-town-list");if(c.length===0){b.innerHTML=`<div class="dash-card" style="text-align:center;padding:2rem;">
           <h3 style="color:var(--text-muted)">No Towns</h3>
-          <p>Create towns from the <a href="/dev/dashboard">Dashboard</a> first.</p>
+          <p>Create towns from the <a href="${appHref('dashboard')}">Dashboard</a> first.</p>
         </div>`;return}const y=c.map(g=>Ee(g.id).catch(()=>({characters:[]}))),f=await Promise.all(y);b.innerHTML=`
         <div class="dash-card" style="padding:1rem;">
           <h3 style="margin-bottom:0.75rem;">🏰 Towns to Simulate</h3>

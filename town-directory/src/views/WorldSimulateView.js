@@ -4,7 +4,7 @@
  * Includes inter-town movement for characters with sufficient residency.
  */
 import { getState, setState } from '../stores/appState.js';
-import { navigate } from '../router.js';
+import { navigate, appHref } from '../router.js';
 import { apiGetTowns } from '../api/towns.js';
 import { apiGetCharacters, apiMoveCharacter } from '../api/characters.js';
 import {
@@ -66,7 +66,7 @@ export default function WorldSimulateView(container) {
           <label>📝 World-wide Instructions</label>
           <textarea id="ws-instructions" class="form-input" rows="3"
             placeholder="Instructions that apply to ALL towns...&#10;e.g., 'A harsh winter hits the land' or 'Trade routes are disrupted'"></textarea>
-          <small class="settings-hint" style="margin-top:0.25rem;display:block;">📜 Campaign rules are loaded automatically from <a href="/dev/settings" style="color:var(--accent)">⚙️ Settings</a>.</small>
+          <small class="settings-hint" style="margin-top:0.25rem;display:block;">📜 Campaign rules are loaded automatically from <a href="${appHref('settings')}" style="color:var(--accent)">⚙️ Settings</a>.</small>
         </div>
         <div class="sim-actions">
           <button class="btn-primary" id="ws-run-btn">🌍 Run World Simulation</button>
@@ -132,7 +132,7 @@ export default function WorldSimulateView(container) {
       if (towns.length === 0) {
         townListEl.innerHTML = `<div class="dash-card" style="text-align:center;padding:2rem;">
           <h3 style="color:var(--text-muted)">No Towns</h3>
-          <p>Create towns from the <a href="/dev/dashboard">Dashboard</a> first.</p>
+          <p>Create towns from the <a href="${appHref('dashboard')}">Dashboard</a> first.</p>
         </div>`;
         return;
       }

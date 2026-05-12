@@ -33,6 +33,7 @@ Use this file **while** you work through `QA_FEATURE_CHECKLIST.md`. When a test 
 
 | # | Resolved date | Checklist ID | Was Want/Need | Summary | How it was closed |
 |---|---------------|--------------|-----------------|---------|-------------------|
+| 1 | 2026-05-11 | N/A | — | Staging deploy **worldscribe.online** (live SPA + PHP) | `npm run build` then `.\deploy_worldscribe.ps1 -SkipGitCommit` (Discord deploy ping succeeded). URL: https://worldscribe.online/ . Git: **f2d3efa**. |
 | *(move rows here when done)* | | | | | |
 
 ---

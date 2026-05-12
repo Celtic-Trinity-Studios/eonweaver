@@ -21,10 +21,27 @@ function getBasePath() {
 }
 
 /**
+ * Build an absolute path for `<a href>` that respects `BASE_URL`
+ * (production `/` vs staging `/dev/`). Pass route without leading slash, e.g. `dashboard`, `town/42`.
+ */
+export function appHref(routePath) {
+    const base = getBasePath();
+    const clean = String(routePath || '').replace(/^\/+/, '');
+    if (!clean) return base || '/';
+    const joined = base ? `${base}/${clean}` : `/${clean}`;
+    return joined.replace(/\/+/g, '/');
+}
+
+/**
  * Register a route handler.
  */
 export function registerRoute(path, handler) {
     routes[path] = handler;
+}
+
+/** Clear route table so the next login can register player vs admin routes (SPA logout/login). */
+export function resetRegisteredRoutes() {
+    Object.keys(routes).forEach((k) => delete routes[k]);
 }
 
 /**

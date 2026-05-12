@@ -3,7 +3,7 @@
  * Shows demographics, buildings (from DB), role distribution, and other town data.
  */
 import { getState, setState } from '../stores/appState.js';
-import { navigate } from '../router.js';
+import { navigate, appHref } from '../router.js';
 import { apiGetCharacters, normalizeCharacter } from '../api/characters.js';
 import { apiGetTowns, apiGetHistory } from '../api/towns.js';
 
@@ -33,7 +33,7 @@ export default function TownStatsView(container, params) {
     const townId = params.id ? parseInt(params.id) : state.currentTownId;
 
     if (!townId) {
-        container.innerHTML = '<div class="view-empty"><h2>No Town Selected</h2><p>Select a town from the <a href="/dev/dashboard">Dashboard</a> first.</p></div>';
+        container.innerHTML = `<div class="view-empty"><h2>No Town Selected</h2><p>Select a town from the <a href="${appHref('dashboard')}">Dashboard</a> first.</p></div>`;
         return;
     }
 

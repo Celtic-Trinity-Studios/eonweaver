@@ -836,6 +836,82 @@ export default function HelpView(container) {
       `
     },
     {
+      id: 'monthly-simulation',
+      icon: '⏩',
+      title: 'Monthly Simulation (one town)',
+      content: `
+        <p>Open <strong>⏩ Monthly Simulation</strong> in the sidebar (Settlement) or jump from the Dashboard quick actions. This is the <strong>single-town</strong> pipeline: plan → run → preview JSON → apply changes. It uses the <strong>town you last opened</strong> (<code>current town</code>).</p>
+        <div class="help-feature">
+          <strong>vs World Simulate</strong>
+          <p><strong>World Simulate</strong> advances <em>every selected town</em> together with travel between settlements. <strong>Monthly Simulation</strong> focuses on <em>one</em> town’s month(s), with partial-day options and apply/reject before writing to the DB.</p>
+        </div>
+        <div class="help-feature">
+          <strong>Prerequisites</strong>
+          <p>Select a town from the <strong>Dashboard</strong> or <strong>Town Roster</strong> first. Without a current town, the page prompts you to pick one.</p>
+        </div>
+      `
+    },
+    {
+      id: 'town-stats',
+      icon: '📈',
+      title: 'Town Stats',
+      content: `
+        <p><strong>Town Stats</strong> summarizes population, demographics, roles, buildings, and recent history for the active town. Use it between simulations to spot drift in level mix, housing, or graveyard counts.</p>
+        <div class="help-feature">
+          <strong>Which town?</strong>
+          <p>The page uses the town in the URL (<code>/townstats/&lt;id&gt;</code>) if present; otherwise the <strong>last town you had open</strong>. Open a town from the Dashboard first if you see “No Town Selected.”</p>
+        </div>
+      `
+    },
+    {
+      id: 'wiki-lore',
+      icon: '🔵',
+      title: 'Wiki & Lore',
+      content: `
+        <p>Campaign wiki pages for places, factions, and lore — <strong>markdown</strong> articles scoped to your campaign. Use it as a player-facing or DM prep reference alongside <strong>AI Scribe</strong> output.</p>
+        <div class="help-feature">
+          <strong>Editing</strong>
+          <p>Create and edit articles from the Wiki view; search helps find pages as the library grows.</p>
+        </div>
+      `
+    },
+    {
+      id: 'player-portal',
+      icon: '🔶',
+      title: 'Player Portal',
+      content: `
+        <p>A <strong>player-facing</strong> surface for shared campaign content (read-focused views). DM-only actions stay in the main sidebar; use this when you want players to follow hooks without opening the full DM shell.</p>
+      `
+    },
+    {
+      id: 'vtt-export',
+      icon: '📦',
+      title: 'VTT Export',
+      content: `
+        <p>Export party or encounter data to structured formats for virtual tabletop tools. Pick targets from your campaign, download JSON or bundled exports, and import into your VTT workflow.</p>
+      `
+    },
+    {
+      id: 'integrations',
+      icon: '🤖',
+      title: 'Integrations',
+      content: `
+        <p>Connect external services — e.g. <strong>Discord webhooks</strong> for notifications. Save URLs and toggles here; secrets are not echoed back in the browser console in production builds.</p>
+      `
+    },
+    {
+      id: 'subscription-plans',
+      icon: '💎',
+      title: 'Plans & credits',
+      content: `
+        <p>Open <strong>💎 Plans</strong> for tier catalog, monthly <strong>Eon Credits</strong> allowances, and subscription context. Checkout may be manual today — tiers can still be adjusted by admins.</p>
+        <div class="help-feature">
+          <strong>Credits</strong>
+          <p>The sidebar shows balance (🪙) and usage. AI-heavy flows (scribe, simulation, some imports) consume credits; procedural roster intake does not.</p>
+        </div>
+      `
+    },
+    {
       id: 'tips',
       icon: '⌨️',
       title: 'Tips & Tricks',
@@ -895,11 +971,12 @@ export default function HelpView(container) {
   /** Collapsible groups — each section id appears exactly once. */
   const HELP_GROUPS = [
     { id: 'g-start', label: 'Getting started', sectionIds: ['getting-started', 'dashboard', 'tips'] },
-    { id: 'g-towns', label: 'Towns & characters', sectionIds: ['town-roster', 'town-settings', 'ai-intake', 'character-import', 'character-sheet', 'level-up', 'social-system', 'buildings', 'pdf-export'] },
-    { id: 'g-world', label: 'World & simulation', sectionIds: ['macro-dynamics', 'world-simulate', 'world-map', 'town-history', 'calendar'] },
-    { id: 'g-table', label: 'Table & sessions', sectionIds: ['party', 'encounters', 'ai-scribe'] },
-    { id: 'g-library', label: 'Library & rules', sectionIds: ['content-library', 'srd-browser', 'homebrew'] },
-    { id: 'g-account', label: 'Campaign & settings', sectionIds: ['campaigns', 'settings'] },
+    { id: 'g-towns', label: 'Towns & characters', sectionIds: ['town-roster', 'town-settings', 'town-stats', 'ai-intake', 'character-import', 'character-sheet', 'level-up', 'social-system', 'buildings', 'pdf-export'] },
+    { id: 'g-world', label: 'World & simulation', sectionIds: ['macro-dynamics', 'monthly-simulation', 'world-simulate', 'world-map', 'town-history', 'calendar'] },
+    { id: 'g-table', label: 'Table & sessions', sectionIds: ['party', 'player-portal', 'encounters', 'ai-scribe', 'vtt-export'] },
+    { id: 'g-library', label: 'Library & rules', sectionIds: ['content-library', 'wiki-lore', 'srd-browser', 'homebrew'] },
+    { id: 'g-connect', label: 'Integrations', sectionIds: ['integrations'] },
+    { id: 'g-account', label: 'Campaign & settings', sectionIds: ['campaigns', 'settings', 'subscription-plans'] },
   ];
 
   /** Short native tooltips on key topics (hover the row). */
@@ -907,13 +984,20 @@ export default function HelpView(container) {
     'getting-started': 'Step-by-step: campaign, town, intake, simulate.',
     'dashboard': 'Town cards, quick simulate, and stats entry points.',
     'world-simulate': 'Pick towns and months; AI applies events and roster changes.',
+    'monthly-simulation': 'Single-town month(s): plan, run, apply — one settlement.',
     'macro-dynamics': 'Campaign food, seasons, granary index — context for narration.',
     'town-roster': 'Sort/filter NPCs, open sheets, graveyard, town history.',
+    'town-stats': 'Demographics, buildings, roster aggregates for one town.',
     'town-settings': 'Biome, demographics, food supply, intake rules, generation knobs.',
     'ai-intake': 'Generate new fully statted settlers (procedural; not LLM-heavy).',
     'settings': 'House rules, campaign blurb, simulation speeds, credits.',
     'calendar': 'Custom months and weekdays; advances with world simulation.',
     'ai-scribe': 'Lore, quests, dungeons — uses campaign context; may use EC.',
+    'wiki-lore': 'Campaign markdown wiki — places, factions, lore.',
+    'player-portal': 'Player-facing read views for your table.',
+    'vtt-export': 'Export structures for virtual tabletop tools.',
+    'integrations': 'Discord webhooks and external hooks.',
+    'subscription-plans': 'Tiers, monthly AI credit allowances.',
     'tips': 'Shortcuts, refresh, checklist, bug reports.',
   };
 

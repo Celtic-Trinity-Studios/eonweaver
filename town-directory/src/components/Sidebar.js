@@ -35,6 +35,8 @@ const NAV_GROUPS = [
     label: 'Settlement',
     items: [
       { route: 'town', icon: '🏰', label: 'Town Roster', hint: 'Living roster, character sheets, AI intake, town settings, and history.' },
+      { route: 'townstats', icon: '📈', label: 'Town Stats', hint: 'Demographics, buildings, and aggregates for the active town (pick a town from the Dashboard first).' },
+      { route: 'simulation', icon: '⏩', label: 'Monthly Simulation', hint: 'Single-town AI month(s): plan, preview changes, apply — uses the town you last opened.' },
     ],
   },
   {
