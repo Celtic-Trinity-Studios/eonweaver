@@ -1285,25 +1285,32 @@ elseif ($action === 'intake_flesh') {
         $nList = count($list);
         $resolved = array_fill(0, $nList, null);
 
-        if (!$creature && $useFlavorPool) {
+        if (!$creature) {
             for ($li = 0; $li < $nList; $li++) {
-                $borrowed = ew_npc_flavor_character_db_try_borrow(
-                    $userId,
-                    $townId,
-                    $uid,
-                    $dndEdition,
-                    $list[$li],
-                    $usedFlavorHashes,
-                    $usedCharacterDonorIds,
-                    $usedFullHashes
-                );
-                if ($borrowed) {
-                    $resolved[$li] = $borrowed;
+                $exact = ew_intake_exact_town_character_to_flesh($townId, $uid, $list[$li], $usedFlavorHashes, $usedFullHashes);
+                if ($exact) {
+                    $resolved[$li] = $exact;
                     continue;
                 }
-                $borrowed = ew_npc_flavor_pool_try_borrow($userId, $townId, $uid, $dndEdition, $list[$li], $usedFlavorHashes, $usedPoolIds, $usedFullHashes);
-                if ($borrowed) {
-                    $resolved[$li] = $borrowed;
+                if ($useFlavorPool) {
+                    $borrowed = ew_npc_flavor_character_db_try_borrow(
+                        $userId,
+                        $townId,
+                        $uid,
+                        $dndEdition,
+                        $list[$li],
+                        $usedFlavorHashes,
+                        $usedCharacterDonorIds,
+                        $usedFullHashes
+                    );
+                    if ($borrowed) {
+                        $resolved[$li] = $borrowed;
+                        continue;
+                    }
+                    $borrowed = ew_npc_flavor_pool_try_borrow($userId, $townId, $uid, $dndEdition, $list[$li], $usedFlavorHashes, $usedPoolIds, $usedFullHashes);
+                    if ($borrowed) {
+                        $resolved[$li] = $borrowed;
+                    }
                 }
             }
         }
@@ -1365,7 +1372,7 @@ elseif ($action === 'intake_flesh') {
         ew_npc_flavor_pool_seed_from_flesh($userId, $dndEdition, $fleshedChars);
     }
     foreach ($fleshedChars as &$fcRow) {
-        unset($fcRow['_from_flavor_pool'], $fcRow['_flavor_pool_id'], $fcRow['_from_town_character_db'], $fcRow['_source_character_id']);
+        unset($fcRow['_from_flavor_pool'], $fcRow['_flavor_pool_id'], $fcRow['_from_town_character_db'], $fcRow['_source_character_id'], $fcRow['_from_town_exact_match']);
     }
     unset($fcRow);
 

@@ -156,3 +156,8 @@ export function apiAdminNpcReuseGeneratedDelete(id) {
 export function apiAdminLlmTrainingAnalyze(params = {}) {
     return apiFetch('admin_llm_training_analyze', { params });
 }
+
+/** Admin: paginated characters across all towns (town roster columns + owner + town). */
+export function apiAdminCharactersFull(params = {}) {
+    return apiFetch('admin_characters_full', { params });
+}

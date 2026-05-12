@@ -4668,6 +4668,46 @@ try {
             respond($out);
             break;
 
+        case 'admin_characters_full':
+            requireAdmin();
+            $limit = min(200, max(1, (int) ($_GET['limit'] ?? 40)));
+            $offset = max(0, (int) ($_GET['offset'] ?? 0));
+            $userFilter = (int) ($_GET['user_id'] ?? 0);
+            $q = trim((string) ($_GET['q'] ?? ''));
+            $where = '1=1';
+            $params = [];
+            if ($userFilter > 0) {
+                $where .= ' AND t.user_id = ?';
+                $params[] = $userFilter;
+            }
+            if ($q !== '') {
+                $where .= ' AND c.name LIKE ?';
+                $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q) . '%';
+                $params[] = $like;
+            }
+            $cntRow = query(
+                "SELECT COUNT(*) AS c FROM characters c INNER JOIN towns t ON t.id = c.town_id WHERE $where",
+                $params,
+                0
+            );
+            $fullCount = (int) ($cntRow[0]['c'] ?? 0);
+            $qparams = array_merge($params, [$limit, $offset]);
+            $rows = query(
+                "SELECT c.id, c.town_id, c.name, c.race, c.class, c.level, c.hp, c.status, c.alignment, c.role,
+                        t.name AS town_name, t.user_id AS owner_user_id,
+                        COALESCE(u.username, CONCAT('user#', t.user_id)) AS owner_username
+                 FROM characters c
+                 INNER JOIN towns t ON t.id = c.town_id
+                 INNER JOIN users u ON u.id = t.user_id
+                 WHERE $where
+                 ORDER BY c.id DESC
+                 LIMIT ? OFFSET ?",
+                $qparams,
+                0
+            );
+            respond(['ok' => true, 'rows' => $rows ?: [], 'total_matching' => $fullCount, 'limit' => $limit, 'offset' => $offset]);
+            break;
+
         /* ═══════════════════════════════════════════════════
            PHASE FRAMEWORK — Macro sim / player portal / wiki
            ═══════════════════════════════════════════════════ */

@@ -231,6 +231,63 @@ function ew_npc_flavor_merge_stub_with_sheet(array $stub, array $sheet): array
 }
 
 /**
+ * Same-town + same-name living character: reuse DB sheet for flesh (no AI).
+ * Does not reject when the resident's flavor hash is already in the town blocklist
+ * (that list includes this row); still dedupes merged full-fingerprint for the batch.
+ *
+ * @param array<string, bool> $usedFlavorHashes updated after success
+ * @param array<string, bool> $usedFullHashes
+ * @return array<string, mixed>|null
+ */
+function ew_intake_exact_town_character_to_flesh(
+    int $townId,
+    int $uid,
+    array $stub,
+    array &$usedFlavorHashes,
+    array &$usedFullHashes
+): ?array {
+    if (!empty($stub['is_creature'])) {
+        return null;
+    }
+    $name = trim((string) ($stub['name'] ?? ''));
+    if ($name === '') {
+        return null;
+    }
+    try {
+        $rows = query(
+            'SELECT * FROM characters WHERE town_id = ? AND LOWER(TRIM(name)) = LOWER(TRIM(?)) AND COALESCE(TRIM(status), \'\') <> ? LIMIT 1',
+            [$townId, $name, 'Deceased'],
+            $uid
+        );
+    } catch (Throwable $e) {
+        return null;
+    }
+    if (empty($rows)) {
+        return null;
+    }
+    $row = $rows[0];
+    $sheet = ew_npc_flavor_character_row_to_sheet($row);
+    $hist = trim((string) ($sheet['history'] ?? ''));
+    $sk = trim((string) ($sheet['skills_feats'] ?? ''));
+    $ft = trim((string) ($sheet['feats'] ?? ''));
+    if ($hist === '') {
+        return null;
+    }
+    $merged = ew_npc_flavor_merge_stub_with_sheet($stub, $sheet);
+    $fp2 = ew_npc_flavor_fp_full_sheet($merged);
+    if (!empty($usedFullHashes[$fp2])) {
+        return null;
+    }
+    $fh = ew_npc_flavor_text_hash($hist, $sk, $ft);
+    $usedFlavorHashes[$fh] = true;
+    $usedFullHashes[$fp2] = true;
+
+    return array_merge($merged, [
+        '_from_town_exact_match' => true,
+    ]);
+}
+
+/**
  * Try to reuse an existing character row from this user's towns as a sheet donor.
  * Skips rows where (town_id, name) matches the intake target town + stub name so we never
  * treat the same resident row as a template for "themselves".
@@ -474,7 +531,7 @@ function ew_npc_flavor_pool_seed_from_flesh(int $userId, string $dndEdition, arr
         if (!empty($row['is_creature'])) {
             continue;
         }
-        if (!empty($row['_from_flavor_pool']) || !empty($row['_from_town_character_db'])) {
+        if (!empty($row['_from_flavor_pool']) || !empty($row['_from_town_character_db']) || !empty($row['_from_town_exact_match'])) {
             continue;
         }
         $stubLike = [

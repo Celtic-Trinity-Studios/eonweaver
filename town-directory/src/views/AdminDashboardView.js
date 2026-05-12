@@ -17,8 +17,7 @@ import {
     apiAdminAllTowns, apiAdminAllCampaigns,
     apiAdminUpdateMeta, apiAdminDeleteMeta,
     apiAdminAdjustCredits,
-    apiAdminNpcFlavorPool, apiAdminNpcFlavorPoolRow, apiAdminNpcFlavorDelete,
-    apiAdminNpcReuseGenerated, apiAdminNpcReuseGeneratedDelete,
+    apiAdminCharactersFull,
     apiAdminLlmTrainingAnalyze,
 } from '../api/admin.js';
 import {
@@ -27,9 +26,6 @@ import {
     formatWalletTc,
     formatMonthlyTcUsed,
 } from '../constants/credits.js';
-import { showModal } from '../components/Modal.js';
-import { renderCharacterSheet } from '../components/CharacterSheet.js';
-import { normalizeCharacter } from '../api/characters.js';
 
 export default function AdminDashboardView(container) {
     let activeTab = 'overview';
@@ -50,7 +46,7 @@ export default function AdminDashboardView(container) {
         <button class="admin-tab" data-tab="campaigns">📜 Campaigns</button>
         <button class="admin-tab" data-tab="towns">🏰 Towns</button>
         <button class="admin-tab" data-tab="usage">📈 Token Usage</button>
-        <button class="admin-tab" data-tab="npc-pool">🧬 NPC reuse (MySQL)</button>
+        <button class="admin-tab" data-tab="characters-db">🧙 Characters (full DB)</button>
         <button class="admin-tab" data-tab="llm-training">📼 LLM training file</button>
         <button class="admin-tab" data-tab="settings">⚙️ Site Settings</button>
       </div>
@@ -87,7 +83,7 @@ export default function AdminDashboardView(container) {
             else if (tab === 'campaigns') await renderAllCampaigns();
             else if (tab === 'towns') await renderAllTowns();
             else if (tab === 'usage') await renderUsage();
-            else if (tab === 'npc-pool') await renderNpcFlavorPool();
+            else if (tab === 'characters-db') await renderCharactersDb();
             else if (tab === 'llm-training') await renderLlmTrainingAnalyze();
             else if (tab === 'settings') await renderSettings();
         } catch (err) {
@@ -1733,253 +1729,103 @@ export default function AdminDashboardView(container) {
     }
 
     // ═══════════════════════════════════════
-    // NPC FLAVOR POOL (intake master DB)
+    // CHARACTERS — full database (all towns)
     // ═══════════════════════════════════════
-    const NPC_POOL_PAGE = 40;
-    let npcPoolState = { offset: 0, userId: '' };
-    let reuseArchiveState = { offset: 0 };
+    const CHAR_DB_PAGE = 40;
+    let charDbState = { offset: 0, userId: '', nameQ: '' };
 
-    function npcPoolRowToPreviewChar(row) {
-        let raw = null;
-        try {
-            raw = row.full_sheet_json ? JSON.parse(row.full_sheet_json) : null;
-        } catch (_) {
-            raw = null;
-        }
-        if (raw && typeof raw === 'object') {
-            const h = raw.history || raw.reason || '';
-            return normalizeCharacter({ ...raw, id: null, dbId: null, history: h });
-        }
-        return normalizeCharacter({
-            name: `Pool #${row.id} (text only)`,
-            race: '—',
-            class: 'Commoner 1',
-            history: row.reason || '',
-            skills_feats: row.skills_feats || '',
-            feats: row.feats || '',
-        });
+    async function renderCharactersDb() {
+        charDbState = { offset: 0, userId: '', nameQ: '' };
+        await refreshCharactersDbView();
     }
 
-    async function renderNpcFlavorPool() {
-        npcPoolState = { offset: 0, userId: '' };
-        reuseArchiveState = { offset: 0 };
-        await refreshNpcFlavorPoolView();
-    }
-
-    async function refreshNpcFlavorPoolView() {
+    async function refreshCharactersDbView() {
         try {
-            const statsRes = await apiAdminNpcFlavorPool({ stats: 1 });
-            const st = statsRes.stats || { total: 0, reuse_archive_total: 0, by_edition: [], top_users: [] };
-            const params = { limit: NPC_POOL_PAGE, offset: npcPoolState.offset };
-            if (npcPoolState.userId) params.user_id = npcPoolState.userId;
-            const listRes = await apiAdminNpcFlavorPool(params);
+            const params = { limit: CHAR_DB_PAGE, offset: charDbState.offset };
+            if (charDbState.userId) params.user_id = charDbState.userId;
+            if (charDbState.nameQ) params.q = charDbState.nameQ;
+            const listRes = await apiAdminCharactersFull(params);
             const rows = listRes.rows || [];
             const total = listRes.total_matching ?? 0;
+            const prevOff = Math.max(0, charDbState.offset - CHAR_DB_PAGE);
+            const nextOff = charDbState.offset + CHAR_DB_PAGE < total ? charDbState.offset + CHAR_DB_PAGE : charDbState.offset;
 
-            const archParams = { limit: NPC_POOL_PAGE, offset: reuseArchiveState.offset };
-            if (npcPoolState.userId) archParams.user_id = npcPoolState.userId;
-            let archRes = { rows: [], total_matching: 0 };
-            try {
-                archRes = await apiAdminNpcReuseGenerated(archParams);
-            } catch (_) {
-                /* table may not exist until setup_mysql */
-            }
-            const archRows = archRes.rows || [];
-            const reuseTotal = archRes.total_matching ?? st.reuse_archive_total ?? 0;
-            const reusePrevOff = Math.max(0, reuseArchiveState.offset - NPC_POOL_PAGE);
-            const reuseNextOff = reuseArchiveState.offset + NPC_POOL_PAGE < reuseTotal ? reuseArchiveState.offset + NPC_POOL_PAGE : reuseArchiveState.offset;
-
-            const editionRows = (st.by_edition || []).map(r =>
-                `<tr><td>${esc(r.dnd_edition || '')}</td><td>${r.cnt}</td></tr>`
-            ).join('');
-
-            const topUserRows = (st.top_users || []).map(r =>
-                `<tr><td>${esc(r.username || '')}</td><td>${r.user_id}</td><td>${r.cnt}</td></tr>`
-            ).join('');
-
-            const tableRows = rows.map(r => `
-                <tr>
-                  <td>${r.id}</td>
-                  <td>${r.user_id}</td>
-                  <td>${esc(r.username || '')}</td>
-                  <td>${esc(r.dnd_edition || '')}</td>
-                  <td title="${esc(r.profile_hash || '')}"><code>${esc((r.profile_hash || '').slice(0, 8))}…</code></td>
-                  <td class="npc-reason-preview">${esc(r.reason_preview || '')}${(r.reason_len || 0) > 240 ? '…' : ''}</td>
-                  <td><small>${esc(r.created_at || '')}</small></td>
-                  <td><button type="button" class="admin-btn admin-btn-small" data-action="npc-sheet" data-id="${r.id}">Sheet</button></td>
-                  <td><button type="button" class="admin-btn admin-btn-danger admin-btn-small" data-action="npc-del" data-id="${r.id}">Delete</button></td>
-                </tr>
-            `).join('');
-
-            const archTableRows = archRows.map((r) => {
-                const tid = r.town_id;
-                const tnm = (r.town_name && String(r.town_name).trim()) ? esc(r.town_name) : '';
+            const tableRows = rows.map((c) => {
+                const tid = c.town_id;
+                const tnm = (c.town_name && String(c.town_name).trim()) ? esc(c.town_name) : '';
                 const tlabel = tnm ? `${tnm} <small>(${tid})</small>` : String(tid);
-                const cid = Number(r.character_id) || 0;
-                const aid = Number(r.archive_id) || 0;
-                const present = !r.char_missing && cid > 0;
-                const stLow = (r.status || 'Alive').toLowerCase().replace(/\s+/g, '-');
-                const lvlDisp = r.level != null && r.level !== '' && Number(r.level) > 0 ? r.level : '—';
-                const hpDisp = r.hp != null && r.hp !== '' ? esc(String(r.hp)) : '—';
-                const statusCell = r.char_missing
-                    ? '<td>—</td>'
-                    : `<td><span class="status-badge status-${stLow}">${esc(r.status || 'Alive')}</span></td>`;
-                const nameCell = present
-                    ? `<td class="member-name clickable reuse-char-detail-link" data-char-id="${cid}" data-char-name="${esc(r.name || '')}" data-user-id="${r.user_id}" data-username="${esc(r.username || '')}" data-town-id="${tid}" data-town-name="${esc(r.town_name || '')}" title="Archive #${aid}">${esc(r.name || '—')}</td>`
-                    : `<td class="member-name" title="Archive #${aid}">${esc(r.name || '—')}</td>`;
-                const actions = present
-                    ? `<button type="button" class="admin-btn admin-btn-small" data-action="reuse-edit-char" data-char-id="${cid}" title="Edit">✏️</button>
-                       <button type="button" class="admin-btn admin-btn-danger admin-btn-small" data-action="reuse-del-char" data-char-id="${cid}" data-name="${esc(r.name || '')}" title="Delete character">🗑️</button>`
-                    : `<button type="button" class="admin-btn admin-btn-small" data-action="reuse-del-archive" data-archive-id="${aid}" title="Remove archive log row only">Remove log</button>`;
-                return `
-                <tr>
-                  <td class="cell-id">${cid || '—'}</td>
-                  ${nameCell}
-                  <td>${esc(r.race || '—')}</td>
-                  <td>${esc(r.class || '—')}</td>
-                  <td>${lvlDisp}</td>
-                  <td>${hpDisp}</td>
-                  ${statusCell}
-                  <td>${esc(r.alignment || '—')}</td>
-                  <td class="cell-truncate">${esc(r.role || '—')}</td>
+                const stLow = (c.status || 'Alive').toLowerCase().replace(/\s+/g, '-');
+                const owner = esc(c.owner_username || '');
+                const ouid = c.owner_user_id;
+                const cls = esc(c.class || '—');
+                return `<tr>
+                  <td class="cell-id">${c.id}</td>
+                  <td class="member-name clickable char-db-detail-link" data-char-id="${c.id}" data-char-name="${esc(c.name || '')}" data-user-id="${ouid}" data-username="${esc(c.owner_username || '')}" data-town-id="${tid}" data-town-name="${esc(c.town_name || '')}">${esc(c.name || '—')}</td>
+                  <td>${esc(c.race || '—')}</td>
+                  <td>${cls}</td>
+                  <td>${c.level != null && c.level !== '' ? c.level : '—'}</td>
+                  <td>${c.hp != null && c.hp !== '' ? esc(String(c.hp)) : '—'}</td>
+                  <td><span class="status-badge status-${stLow}">${esc(c.status || 'Alive')}</span></td>
+                  <td>${esc(c.alignment || '—')}</td>
+                  <td class="cell-truncate">${esc(c.role || '—')}</td>
                   <td class="cell-truncate">${tlabel}</td>
-                  <td>${actions}</td>
+                  <td class="cell-truncate"><small>${owner} <span class="admin-subtle">(${ouid})</span></small></td>
+                  <td>
+                    <button type="button" class="admin-btn admin-btn-small" data-action="char-db-edit" data-char-id="${c.id}" title="Edit">✏️</button>
+                    <button type="button" class="admin-btn admin-btn-danger admin-btn-small" data-action="char-db-del" data-char-id="${c.id}" data-char-name="${esc(c.name || '')}" title="Delete">🗑️</button>
+                  </td>
                 </tr>`;
             }).join('');
 
-            const prevOff = Math.max(0, npcPoolState.offset - NPC_POOL_PAGE);
-            const nextOff = npcPoolState.offset + NPC_POOL_PAGE < total ? npcPoolState.offset + NPC_POOL_PAGE : npcPoolState.offset;
+            const refresh = () => refreshCharactersDbView();
 
             contentEl.innerHTML = `
               <div class="admin-section-header">
-                <h2>NPC reuse (MySQL)</h2>
-                <p class="admin-subtle"><strong>Not training data.</strong> Reuse lives in two tables: <code>npc_flavor_pool</code> (deduped borrow pool) and <code>npc_reuse_generated</code> (append-only log of every qualifying applied NPC). OpenRouter training export is separate (<code>private_data/llm_training.jsonl</code>).</p>
+                <h2>Characters (full database)</h2>
+                <p class="admin-subtle">All <code>characters</code> rows (joined to town + owner). Intake checks <strong>exact town + name</strong> (living) before donor pool or AI.</p>
               </div>
-              <div class="admin-stats-grid" style="margin-bottom:1.5rem">
-                <div class="admin-stat-card"><div class="admin-stat-value">${st.total}</div><div class="admin-stat-label">npc_flavor_pool rows</div></div>
-                <div class="admin-stat-card"><div class="admin-stat-value">${st.reuse_archive_total ?? 0}</div><div class="admin-stat-label">npc_reuse_generated rows</div></div>
-              </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem" class="admin-npc-pool-grid">
-                <div>
-                  <h3>By edition</h3>
-                  <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Edition</th><th>Count</th></tr></thead><tbody>${editionRows || '<tr><td colspan="2">No data</td></tr>'}</tbody></table></div>
+              <div class="admin-drill-section">
+                <div class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-bottom:1rem">
+                  <label>Owner user ID <input type="number" id="char-db-user" class="admin-input" value="${esc(charDbState.userId)}" min="0" style="width:7rem" title="0 = all accounts"></label>
+                  <label>Name contains <input type="text" id="char-db-q" class="admin-input" value="${esc(charDbState.nameQ)}" style="width:11rem" placeholder="Search"></label>
+                  <button type="button" class="admin-btn admin-btn-primary" id="char-db-apply">Apply</button>
+                  <button type="button" class="admin-btn" id="char-db-clear">Clear</button>
+                  <span class="admin-subtle">Showing ${rows.length} of ${total}</span>
+                  <button type="button" class="admin-btn" id="char-db-prev" ${charDbState.offset <= 0 ? 'disabled' : ''}>Previous</button>
+                  <button type="button" class="admin-btn" id="char-db-next" ${nextOff === charDbState.offset ? 'disabled' : ''}>Next</button>
                 </div>
-                <div>
-                  <h3>Top accounts</h3>
-                  <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>User</th><th>ID</th><th>Rows</th></tr></thead><tbody>${topUserRows || '<tr><td colspan="3">No data</td></tr>'}</tbody></table></div>
-                </div>
-              </div>
-              <div class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-bottom:0.5rem">
-                <strong>npc_flavor_pool</strong>
-                <span class="admin-subtle">Deduped borrow rows — Sheet previews stored flavor / sheet.</span>
-              </div>
-              <div class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-bottom:1rem">
-                <label>Filter user ID <input type="number" id="npc-pool-user" class="admin-input" value="${esc(npcPoolState.userId)}" min="0" style="width:7rem"></label>
-                <button type="button" class="admin-btn admin-btn-primary" id="npc-pool-apply">Apply</button>
-                <button type="button" class="admin-btn" id="npc-pool-clear">Clear filter</button>
-                <span class="admin-subtle">Showing ${rows.length} of ${total}</span>
-                <button type="button" class="admin-btn" id="npc-pool-prev" ${npcPoolState.offset <= 0 ? 'disabled' : ''}>Previous</button>
-                <button type="button" class="admin-btn" id="npc-pool-next" ${nextOff === npcPoolState.offset ? 'disabled' : ''}>Next</button>
-              </div>
-              <div class="admin-table-wrap">
-                <table class="admin-table" id="npc-pool-table">
-                  <thead><tr><th>ID</th><th>User</th><th>Username</th><th>Edition</th><th>Profile</th><th>Reason preview</th><th>Created</th><th></th><th></th></tr></thead>
-                  <tbody>${tableRows || '<tr><td colspan="9">No rows</td></tr>'}</tbody>
-                </table>
-              </div>
-              <div class="admin-drill-section" style="margin-top:1.75rem">
-                <h3>npc_reuse_generated</h3>
-                <p class="admin-subtle">Applied NPCs — same columns as town <strong>Characters</strong> (live <code>characters</code> join). Archive id is in the row tooltip. Use <strong>Remove log</strong> when the character row is already gone.</p>
-                <div class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin:0.75rem 0">
-                  <label>Filter user ID <input type="number" id="npc-reuse-user" class="admin-input" value="${esc(npcPoolState.userId)}" min="0" style="width:7rem"></label>
-                  <button type="button" class="admin-btn admin-btn-primary" id="npc-reuse-apply">Apply</button>
-                  <button type="button" class="admin-btn" id="npc-reuse-clear">Clear filter</button>
-                  <span class="admin-subtle">Showing ${archRows.length} of ${reuseTotal}</span>
-                  <button type="button" class="admin-btn" id="npc-reuse-prev" ${reuseArchiveState.offset <= 0 ? 'disabled' : ''}>Previous</button>
-                  <button type="button" class="admin-btn" id="npc-reuse-next" ${reuseNextOff === reuseArchiveState.offset ? 'disabled' : ''}>Next</button>
-                </div>
-                <div class="admin-table-wrap" style="margin-bottom:0.5rem">
-                  <table class="admin-table compact" id="npc-reuse-archive-table">
+                <div class="admin-table-wrap">
+                  <table class="admin-table compact" id="char-db-table">
                     <thead>
-                      <tr>
-                        <th>ID</th><th>Name</th><th>Race</th><th>Class</th><th>Lvl</th><th>HP</th><th>Status</th><th>Alignment</th><th>Role</th><th>Town</th><th>Actions</th>
-                      </tr>
+                      <tr><th>ID</th><th>Name</th><th>Race</th><th>Class</th><th>Lvl</th><th>HP</th><th>Status</th><th>Alignment</th><th>Role</th><th>Town</th><th>Owner</th><th>Actions</th></tr>
                     </thead>
-                    <tbody>${archTableRows || '<tr><td colspan="11">No rows yet — run setup_mysql, then add NPCs via intake + apply.</td></tr>'}</tbody>
+                    <tbody>${tableRows || '<tr><td colspan="12">No characters</td></tr>'}</tbody>
                   </table>
                 </div>
               </div>
             `;
 
-            contentEl.querySelector('#npc-pool-apply')?.addEventListener('click', () => {
-                const v = contentEl.querySelector('#npc-pool-user')?.value?.trim() || '';
-                npcPoolState.userId = v;
-                npcPoolState.offset = 0;
-                reuseArchiveState.offset = 0;
-                refreshNpcFlavorPoolView();
+            contentEl.querySelector('#char-db-apply')?.addEventListener('click', () => {
+                charDbState.userId = contentEl.querySelector('#char-db-user')?.value?.trim() || '';
+                charDbState.nameQ = contentEl.querySelector('#char-db-q')?.value?.trim() || '';
+                charDbState.offset = 0;
+                refresh();
             });
-            contentEl.querySelector('#npc-pool-clear')?.addEventListener('click', () => {
-                npcPoolState.userId = '';
-                npcPoolState.offset = 0;
-                reuseArchiveState.offset = 0;
-                refreshNpcFlavorPoolView();
+            contentEl.querySelector('#char-db-clear')?.addEventListener('click', () => {
+                charDbState.userId = '';
+                charDbState.nameQ = '';
+                charDbState.offset = 0;
+                refresh();
             });
-            contentEl.querySelector('#npc-pool-prev')?.addEventListener('click', () => {
-                npcPoolState.offset = prevOff;
-                refreshNpcFlavorPoolView();
+            contentEl.querySelector('#char-db-prev')?.addEventListener('click', () => {
+                charDbState.offset = prevOff;
+                refresh();
             });
-            contentEl.querySelector('#npc-pool-next')?.addEventListener('click', () => {
-                if (nextOff !== npcPoolState.offset) npcPoolState.offset = nextOff;
-                refreshNpcFlavorPoolView();
+            contentEl.querySelector('#char-db-next')?.addEventListener('click', () => {
+                if (nextOff !== charDbState.offset) charDbState.offset = nextOff;
+                refresh();
             });
-            contentEl.querySelector('#npc-reuse-apply')?.addEventListener('click', () => {
-                const v = contentEl.querySelector('#npc-reuse-user')?.value?.trim() || '';
-                npcPoolState.userId = v;
-                npcPoolState.offset = 0;
-                reuseArchiveState.offset = 0;
-                refreshNpcFlavorPoolView();
-            });
-            contentEl.querySelector('#npc-reuse-clear')?.addEventListener('click', () => {
-                npcPoolState.userId = '';
-                npcPoolState.offset = 0;
-                reuseArchiveState.offset = 0;
-                refreshNpcFlavorPoolView();
-            });
-            contentEl.querySelector('#npc-reuse-prev')?.addEventListener('click', () => {
-                reuseArchiveState.offset = reusePrevOff;
-                refreshNpcFlavorPoolView();
-            });
-            contentEl.querySelector('#npc-reuse-next')?.addEventListener('click', () => {
-                if (reuseNextOff !== reuseArchiveState.offset) reuseArchiveState.offset = reuseNextOff;
-                refreshNpcFlavorPoolView();
-            });
-            contentEl.querySelectorAll('[data-action="npc-sheet"]').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const id = parseInt(btn.dataset.id, 10);
-                    if (!id) return;
-                    try {
-                        const rowRes = await apiAdminNpcFlavorPoolRow(id);
-                        const row = rowRes.row;
-                        if (!row) {
-                            alert('Row not found');
-                            return;
-                        }
-                        const char = npcPoolRowToPreviewChar(row);
-                        const { el: modalEl } = showModal({
-                            title: `NPC pool #${row.id} — ${esc(char.name || 'Preview')}`,
-                            width: 'wide',
-                            content: '<div id="npc-pool-sheet-host" style="max-height:82vh;overflow:auto;padding:0.25rem"></div>',
-                        });
-                        const host = modalEl.querySelector('#npc-pool-sheet-host');
-                        if (host) {
-                            renderCharacterSheet(host, char, { previewMode: true });
-                        }
-                    } catch (e) {
-                        alert(e.message || String(e));
-                    }
-                });
-            });
-            contentEl.querySelectorAll('.reuse-char-detail-link').forEach((el) => {
+            contentEl.querySelectorAll('.char-db-detail-link').forEach((el) => {
                 el.addEventListener('click', () => {
                     const charId = parseInt(el.dataset.charId, 10);
                     const charName = el.dataset.charName || '';
@@ -1998,7 +1844,7 @@ export default function AdminDashboardView(container) {
                     drillCharacter(uidDr, unameDr, tidDr, tnameDr, charId, charName);
                 });
             });
-            contentEl.querySelectorAll('[data-action="reuse-edit-char"]').forEach((btn) => {
+            contentEl.querySelectorAll('[data-action="char-db-edit"]').forEach((btn) => {
                 btn.addEventListener('click', async () => {
                     const charId = parseInt(btn.dataset.charId, 10);
                     if (!charId) return;
@@ -2022,55 +1868,31 @@ export default function AdminDashboardView(container) {
                             { key: 'gender', label: 'Gender', value: char.gender },
                         ], async (formData) => {
                             await apiAdminUpdateCharacter(charId, formData);
-                            await refreshNpcFlavorPoolView();
+                            await refreshCharactersDbView();
                         });
                     } catch (e) {
                         alert(e.message || String(e));
                     }
                 });
             });
-            contentEl.querySelectorAll('[data-action="reuse-del-char"]').forEach((btn) => {
+            contentEl.querySelectorAll('[data-action="char-db-del"]').forEach((btn) => {
                 btn.addEventListener('click', async () => {
                     const charId = parseInt(btn.dataset.charId, 10);
-                    if (!charId || !confirm(`Delete character "${btn.dataset.name || ''}"? Archive rows for this character are removed too.`)) return;
+                    const nm = btn.dataset.charName || '';
+                    if (!charId || !confirm(`Delete character "${nm}"?`)) return;
                     try {
                         await apiAdminDeleteCharacter(charId);
-                        await refreshNpcFlavorPoolView();
+                        await refreshCharactersDbView();
                     } catch (e) {
                         alert(e.message || String(e));
-                    }
-                });
-            });
-            contentEl.querySelectorAll('[data-action="reuse-del-archive"]').forEach((btn) => {
-                btn.addEventListener('click', async () => {
-                    const aid = parseInt(btn.dataset.archiveId, 10);
-                    if (!aid || !confirm(`Remove reuse log row #${aid}? This does not delete a character.`)) return;
-                    try {
-                        await apiAdminNpcReuseGeneratedDelete(aid);
-                        await refreshNpcFlavorPoolView();
-                    } catch (e) {
-                        alert(e.message || String(e));
-                    }
-                });
-            });
-            contentEl.querySelectorAll('[data-action="npc-del"]').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const id = parseInt(btn.dataset.id, 10);
-                    if (!id || !confirm(`Delete flavor pool row ${id}?`)) return;
-                    try {
-                        await apiAdminNpcFlavorDelete(id);
-                        await refreshNpcFlavorPoolView();
-                    } catch (e) {
-                        alert(e.message);
                     }
                 });
             });
         } catch (err) {
-            contentEl.innerHTML = `<div class="admin-error">⚠️ ${esc(err.message)}</div><p class="admin-subtle">If the table is missing, run setup_mysql.php on this server.</p>`;
+            contentEl.innerHTML = `<div class="admin-error">⚠️ ${esc(err.message)}</div>`;
         }
     }
 
-    // ═══════════════════════════════════════
     // LLM TRAINING FILE — launch readiness
     // ═══════════════════════════════════════
     async function renderLlmTrainingAnalyze() {
