@@ -151,3 +151,8 @@ export function apiAdminNpcReuseGenerated(params = {}) {
 export function apiAdminNpcReuseGeneratedDelete(id) {
     return apiFetch('admin_npc_reuse_generated_delete', { method: 'DELETE', body: { id } });
 }
+
+/** Admin: analyze private_data/llm_training.jsonl for duplicate spacing and launch readiness. */
+export function apiAdminLlmTrainingAnalyze(params = {}) {
+    return apiFetch('admin_llm_training_analyze', { params });
+}

@@ -4094,6 +4094,11 @@ try {
             $charId = (int) ($input['character_id'] ?? 0);
             if (!$charId) throw new Exception('Missing character_id');
             execute('DELETE FROM characters WHERE id = ?', [$charId], 0);
+            try {
+                execute('DELETE FROM npc_reuse_generated WHERE character_id = ?', [$charId], 0);
+            } catch (Exception $e) {
+                /* table may be absent on very old DBs */
+            }
             respond(['ok' => true]);
             break;
 
@@ -4399,10 +4404,15 @@ try {
                 $userFilter = (int) ($_GET['user_id'] ?? 0);
                 if ($userFilter > 0) {
                     $rows = query(
-                        'SELECT g.id, g.user_id, COALESCE(u.username, CONCAT(\'user#\', g.user_id)) AS username, g.town_id, g.character_id, g.dnd_edition, g.profile_hash, g.flavor_hash, g.created_at, g.full_sheet_json, t.name AS town_name
+                        'SELECT g.id AS archive_id, g.user_id, COALESCE(u.username, CONCAT(\'user#\', g.user_id)) AS username,
+                                g.town_id, g.character_id, g.created_at, g.full_sheet_json, t.name AS town_name,
+                                c.name AS c_name, c.race AS c_race, c.class AS c_class, c.level AS c_level, c.hp AS c_hp,
+                                c.status AS c_status, c.alignment AS c_alignment, c.role AS c_role,
+                                (c.id IS NOT NULL) AS char_present
                          FROM npc_reuse_generated g
                          LEFT JOIN users u ON u.id = g.user_id
                          LEFT JOIN towns t ON t.id = g.town_id
+                         LEFT JOIN characters c ON c.id = g.character_id
                          WHERE g.user_id = ?
                          ORDER BY g.id DESC
                          LIMIT ? OFFSET ?',
@@ -4412,10 +4422,15 @@ try {
                     $cntRow = query('SELECT COUNT(*) AS c FROM npc_reuse_generated WHERE user_id = ?', [$userFilter], 0);
                 } else {
                     $rows = query(
-                        'SELECT g.id, g.user_id, COALESCE(u.username, CONCAT(\'user#\', g.user_id)) AS username, g.town_id, g.character_id, g.dnd_edition, g.profile_hash, g.flavor_hash, g.created_at, g.full_sheet_json, t.name AS town_name
+                        'SELECT g.id AS archive_id, g.user_id, COALESCE(u.username, CONCAT(\'user#\', g.user_id)) AS username,
+                                g.town_id, g.character_id, g.created_at, g.full_sheet_json, t.name AS town_name,
+                                c.name AS c_name, c.race AS c_race, c.class AS c_class, c.level AS c_level, c.hp AS c_hp,
+                                c.status AS c_status, c.alignment AS c_alignment, c.role AS c_role,
+                                (c.id IS NOT NULL) AS char_present
                          FROM npc_reuse_generated g
                          LEFT JOIN users u ON u.id = g.user_id
                          LEFT JOIN towns t ON t.id = g.town_id
+                         LEFT JOIN characters c ON c.id = g.character_id
                          ORDER BY g.id DESC
                          LIMIT ? OFFSET ?',
                         [$limit, $offset],
@@ -4425,27 +4440,50 @@ try {
                 }
                 $fullCount = (int) ($cntRow[0]['c'] ?? 0);
                 foreach ($rows ?: [] as &$r) {
-                    $j = json_decode($r['full_sheet_json'] ?? '', true);
-                    if (!is_array($j)) {
-                        $j = [];
-                    }
-                    $r['sheet_name'] = (string) ($j['name'] ?? '');
-                    $r['sheet_race'] = (string) ($j['race'] ?? '');
-                    $r['sheet_class'] = (string) ($j['class'] ?? '');
-                    $lv = isset($j['level']) ? (int) $j['level'] : 0;
-                    if ($lv <= 0 && !empty($r['sheet_class']) && preg_match('/(\d+)\s*$/', $r['sheet_class'], $m)) {
-                        $lv = (int) $m[1];
-                    }
-                    $r['sheet_level'] = $lv;
-                    $r['sheet_hp'] = (string) ($j['hp'] ?? '');
-                    $r['sheet_status'] = (string) ($j['status'] ?? 'Alive');
-                    $r['sheet_alignment'] = (string) ($j['alignment'] ?? '');
-                    $r['sheet_role'] = (string) ($j['role'] ?? '');
-                    $hist = trim((string) ($j['history'] ?? $j['reason'] ?? ''));
-                    if (function_exists('mb_strlen') && function_exists('mb_substr')) {
-                        $r['history_preview'] = mb_strlen($hist) > 220 ? mb_substr($hist, 0, 220) . '…' : $hist;
+                    $jsonRaw = $r['full_sheet_json'] ?? '';
+                    $present = !empty($r['char_present']);
+                    unset($r['char_present']);
+                    if ($present) {
+                        $r['name'] = trim((string) ($r['c_name'] ?? ''));
+                        $r['race'] = trim((string) ($r['c_race'] ?? ''));
+                        $r['class'] = trim((string) ($r['c_class'] ?? ''));
+                        $r['level'] = (int) ($r['c_level'] ?? 0);
+                        $r['hp'] = $r['c_hp'] !== null && $r['c_hp'] !== '' ? (string) $r['c_hp'] : '';
+                        $r['status'] = trim((string) ($r['c_status'] ?? 'Alive'));
+                        $r['alignment'] = trim((string) ($r['c_alignment'] ?? ''));
+                        $r['role'] = trim((string) ($r['c_role'] ?? ''));
                     } else {
-                        $r['history_preview'] = strlen($hist) > 220 ? substr($hist, 0, 220) . '...' : $hist;
+                        $j = json_decode($jsonRaw, true);
+                        if (!is_array($j)) {
+                            $j = [];
+                        }
+                        $r['name'] = (string) ($j['name'] ?? '');
+                        $r['race'] = (string) ($j['race'] ?? '');
+                        $r['class'] = (string) ($j['class'] ?? '');
+                        $lv = isset($j['level']) ? (int) $j['level'] : 0;
+                        if ($lv <= 0 && !empty($r['class']) && preg_match('/(\d+)\s*$/', $r['class'], $m)) {
+                            $lv = (int) $m[1];
+                        }
+                        $r['level'] = $lv;
+                        $r['hp'] = (string) ($j['hp'] ?? '');
+                        $r['status'] = (string) ($j['status'] ?? 'Alive');
+                        $r['alignment'] = (string) ($j['alignment'] ?? '');
+                        $r['role'] = (string) ($j['role'] ?? '');
+                    }
+                    $cid = (int) ($r['character_id'] ?? 0);
+                    $r['char_missing'] = !$present && $cid > 0;
+                    if (!empty($r['char_missing'])) {
+                        $r['name'] = '(deleted)';
+                        $r['race'] = '—';
+                        $r['class'] = '—';
+                        $r['level'] = 0;
+                        $r['hp'] = '';
+                        $r['status'] = '—';
+                        $r['alignment'] = '—';
+                        $r['role'] = '—';
+                    }
+                    foreach (['c_name', 'c_race', 'c_class', 'c_level', 'c_hp', 'c_status', 'c_alignment', 'c_role'] as $ck) {
+                        unset($r[$ck]);
                     }
                     unset($r['full_sheet_json']);
                 }
@@ -4464,6 +4502,170 @@ try {
             }
             execute('DELETE FROM npc_reuse_generated WHERE id = ?', [$rid], 0);
             respond(['ok' => true, 'deleted_id' => $rid]);
+            break;
+
+        case 'admin_llm_training_analyze':
+            requireAdmin();
+            require_once __DIR__ . '/llm_training_dataset.php';
+            $minHours = max(1.0, min(8760.0, (float) ($_GET['min_hours_between_repeats'] ?? 48)));
+            $minLines = max(50, min(5000000, (int) ($_GET['min_total_lines'] ?? 1500)));
+            $maxLines = max(1000, min(5000000, (int) ($_GET['max_lines'] ?? 300000)));
+            $path = __DIR__ . '/private_data/llm_training.jsonl';
+            $out = [
+                'ok' => true,
+                'path' => 'private_data/llm_training.jsonl',
+                'file_exists' => is_file($path),
+                'file_size_bytes' => is_file($path) ? (int) filesize($path) : 0,
+                'lines_read' => 0,
+                'parse_errors' => 0,
+                'ts_invalid' => 0,
+                'unique_fingerprints' => 0,
+                'repeat_occurrences' => 0,
+                'repeat_pair_violations' => 0,
+                'repeat_violation_rate' => null,
+                'worst_min_gap_hours' => null,
+                'median_min_gap_hours' => null,
+                'worst_offenders' => [],
+                'launch_ready' => false,
+                'criteria' => [
+                    'min_hours_between_repeats' => $minHours,
+                    'min_total_lines' => $minLines,
+                    'max_lines_scanned' => $maxLines,
+                ],
+                'notes' => 'Launch-ready means: enough lines and no consecutive duplicate fingerprints closer than the minimum hour threshold.',
+            ];
+            if (!is_file($path) || !is_readable($path)) {
+                respond($out);
+                break;
+            }
+            $byFp = [];
+            $fpPreview = [];
+            $fh = @fopen($path, 'rb');
+            if (!$fh) {
+                $out['notes'] = 'Could not open file for reading.';
+                respond($out);
+                break;
+            }
+            $n = 0;
+            $rawLines = 0;
+            while (!feof($fh) && $n < $maxLines && $rawLines < $maxLines * 50) {
+                $rawLines++;
+                $line = fgets($fh);
+                if ($line === false) {
+                    break;
+                }
+                $line = trim($line);
+                if ($line === '') {
+                    continue;
+                }
+                $n++;
+                $rec = json_decode($line, true);
+                if (!is_array($rec)) {
+                    $out['parse_errors']++;
+                    continue;
+                }
+                $tsRaw = $rec['ts'] ?? '';
+                $tu = strtotime((string) $tsRaw);
+                if ($tu === false || $tu <= 0) {
+                    $out['ts_invalid']++;
+                    continue;
+                }
+                $fp = ew_llm_training_record_fingerprint($rec);
+                if (!isset($byFp[$fp])) {
+                    $byFp[$fp] = [];
+                    $msgs = isset($rec['messages']) && is_array($rec['messages']) ? $rec['messages'] : [];
+                    $pv = '';
+                    for ($i = count($msgs) - 1; $i >= 0; $i--) {
+                        if (($msgs[$i]['role'] ?? '') === 'assistant') {
+                            $pv = trim((string) ($msgs[$i]['content'] ?? ''));
+                            break;
+                        }
+                    }
+                    $fpPreview[$fp] = strlen($pv) > 140 ? substr($pv, 0, 140) . '…' : $pv;
+                }
+                $byFp[$fp][] = $tu;
+            }
+            $scanTruncated = ($n >= $maxLines && !feof($fh));
+            fclose($fh);
+            $out['scan_truncated'] = $scanTruncated;
+            $out['lines_read'] = $n;
+            $out['unique_fingerprints'] = count($byFp);
+            $perFpMins = [];
+            $violations = 0;
+            $repeatPairs = 0;
+            foreach ($byFp as $fp => $tses) {
+                $c = count($tses);
+                if ($c < 2) {
+                    continue;
+                }
+                sort($tses, SORT_NUMERIC);
+                $localMinGapH = null;
+                for ($i = 1; $i < $c; $i++) {
+                    $repeatPairs++;
+                    $gapH = ($tses[$i] - $tses[$i - 1]) / 3600.0;
+                    if ($localMinGapH === null || $gapH < $localMinGapH) {
+                        $localMinGapH = $gapH;
+                    }
+                    if ($gapH < $minHours) {
+                        $violations++;
+                    }
+                }
+                if ($localMinGapH !== null) {
+                    $perFpMins[] = $localMinGapH;
+                }
+            }
+            $out['repeat_occurrences'] = $repeatPairs;
+            $out['repeat_pair_violations'] = $violations;
+            if ($repeatPairs > 0) {
+                $out['repeat_violation_rate'] = round($violations / $repeatPairs, 6);
+            }
+            if ($perFpMins !== []) {
+                $out['worst_min_gap_hours'] = round(min($perFpMins), 4);
+                sort($perFpMins, SORT_NUMERIC);
+                $mid = (int) floor((count($perFpMins) - 1) / 2);
+                $out['median_min_gap_hours'] = round($perFpMins[$mid], 4);
+            }
+            $validLines = $out['lines_read'] - $out['parse_errors'] - $out['ts_invalid'];
+            $out['valid_lines'] = $validLines;
+            $out['diversity_ratio'] = $validLines > 0 ? round($out['unique_fingerprints'] / $validLines, 6) : null;
+            $linesOk = $validLines >= $minLines;
+            $spacingOk = $violations === 0;
+            $out['launch_ready'] = $linesOk && $spacingOk;
+            if ($scanTruncated) {
+                $out['notes'] .= ' Scan stopped at the line cap before EOF — raise max lines for a complete pass.';
+            }
+            $out['checks'] = [
+                'enough_lines' => $linesOk,
+                'no_too_soon_repeats' => $spacingOk,
+            ];
+            $off = [];
+            foreach ($byFp as $fp => $tses) {
+                if (count($tses) < 2) {
+                    continue;
+                }
+                sort($tses, SORT_NUMERIC);
+                $minGh = PHP_FLOAT_MAX;
+                for ($i = 1; $i < count($tses); $i++) {
+                    $g = ($tses[$i] - $tses[$i - 1]) / 3600.0;
+                    if ($g < $minGh) {
+                        $minGh = $g;
+                    }
+                }
+                if ($minGh === PHP_FLOAT_MAX) {
+                    continue;
+                }
+                $off[] = [
+                    'fp' => substr($fp, 0, 12),
+                    'occurrences' => count($tses),
+                    'min_gap_hours' => round($minGh, 4),
+                    'preview' => $fpPreview[$fp] ?? '',
+                ];
+            }
+            usort($off, function ($a, $b) {
+                return ($a['min_gap_hours'] <=> $b['min_gap_hours']);
+            });
+            $out['worst_offenders'] = array_slice($off, 0, 12);
+            respond($out);
             break;
 
         /* ═══════════════════════════════════════════════════

@@ -89,3 +89,30 @@ function ew_openrouter_log_chat_completion(string $feature, array $requestPayloa
     }
     ew_llm_training_append($full, $metaOut);
 }
+
+/**
+ * Stable fingerprint for dedup / spacing analysis (last assistant message body).
+ *
+ * @param array<string, mixed> $record One decoded JSONL object (schema eon-weaver-llm-v1)
+ */
+function ew_llm_training_record_fingerprint(array $record): string
+{
+    $msgs = isset($record['messages']) && is_array($record['messages']) ? $record['messages'] : [];
+    $last = '';
+    for ($i = count($msgs) - 1; $i >= 0; $i--) {
+        if (($msgs[$i]['role'] ?? '') === 'assistant') {
+            $last = trim((string) ($msgs[$i]['content'] ?? ''));
+            break;
+        }
+    }
+    if ($last === '' && $msgs !== []) {
+        $enc = json_encode($msgs);
+        $last = $enc !== false ? $enc : '';
+    }
+    $norm = preg_replace('/\s+/', ' ', $last);
+    if (strlen($norm) > 50000) {
+        $norm = substr($norm, 0, 50000);
+    }
+
+    return md5($norm);
+}

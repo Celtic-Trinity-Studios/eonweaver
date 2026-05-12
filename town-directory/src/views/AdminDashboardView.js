@@ -19,6 +19,7 @@ import {
     apiAdminAdjustCredits,
     apiAdminNpcFlavorPool, apiAdminNpcFlavorPoolRow, apiAdminNpcFlavorDelete,
     apiAdminNpcReuseGenerated, apiAdminNpcReuseGeneratedDelete,
+    apiAdminLlmTrainingAnalyze,
 } from '../api/admin.js';
 import {
     TOKENS_PER_CREDIT,
@@ -50,6 +51,7 @@ export default function AdminDashboardView(container) {
         <button class="admin-tab" data-tab="towns">🏰 Towns</button>
         <button class="admin-tab" data-tab="usage">📈 Token Usage</button>
         <button class="admin-tab" data-tab="npc-pool">🧬 NPC reuse (MySQL)</button>
+        <button class="admin-tab" data-tab="llm-training">📼 LLM training file</button>
         <button class="admin-tab" data-tab="settings">⚙️ Site Settings</button>
       </div>
 
@@ -86,6 +88,7 @@ export default function AdminDashboardView(container) {
             else if (tab === 'towns') await renderAllTowns();
             else if (tab === 'usage') await renderUsage();
             else if (tab === 'npc-pool') await renderNpcFlavorPool();
+            else if (tab === 'llm-training') await renderLlmTrainingAnalyze();
             else if (tab === 'settings') await renderSettings();
         } catch (err) {
             contentEl.innerHTML = `<div class="admin-error">⚠️ ${err.message}</div>`;
@@ -1812,32 +1815,35 @@ export default function AdminDashboardView(container) {
                 const tid = r.town_id;
                 const tnm = (r.town_name && String(r.town_name).trim()) ? esc(r.town_name) : '';
                 const tlabel = tnm ? `${tnm} <small>(${tid})</small>` : String(tid);
-                const st = (r.sheet_status || 'Alive').toLowerCase().replace(/\s+/g, '-');
-                const cid = r.character_id != null ? r.character_id : '—';
-                const ph = (r.profile_hash || '').slice(0, 8);
+                const cid = Number(r.character_id) || 0;
+                const aid = Number(r.archive_id) || 0;
+                const present = !r.char_missing && cid > 0;
+                const stLow = (r.status || 'Alive').toLowerCase().replace(/\s+/g, '-');
+                const lvlDisp = r.level != null && r.level !== '' && Number(r.level) > 0 ? r.level : '—';
+                const hpDisp = r.hp != null && r.hp !== '' ? esc(String(r.hp)) : '—';
+                const statusCell = r.char_missing
+                    ? '<td>—</td>'
+                    : `<td><span class="status-badge status-${stLow}">${esc(r.status || 'Alive')}</span></td>`;
+                const nameCell = present
+                    ? `<td class="member-name clickable reuse-char-detail-link" data-char-id="${cid}" data-char-name="${esc(r.name || '')}" data-user-id="${r.user_id}" data-username="${esc(r.username || '')}" data-town-id="${tid}" data-town-name="${esc(r.town_name || '')}" title="Archive #${aid}">${esc(r.name || '—')}</td>`
+                    : `<td class="member-name" title="Archive #${aid}">${esc(r.name || '—')}</td>`;
+                const actions = present
+                    ? `<button type="button" class="admin-btn admin-btn-small" data-action="reuse-edit-char" data-char-id="${cid}" title="Edit">✏️</button>
+                       <button type="button" class="admin-btn admin-btn-danger admin-btn-small" data-action="reuse-del-char" data-char-id="${cid}" data-name="${esc(r.name || '')}" title="Delete character">🗑️</button>`
+                    : `<button type="button" class="admin-btn admin-btn-small" data-action="reuse-del-archive" data-archive-id="${aid}" title="Remove archive log row only">Remove log</button>`;
                 return `
                 <tr>
-                  <td class="cell-id">${cid}</td>
-                  <td class="member-name clickable" data-action="reuse-sheet" data-id="${r.id}" title="Snapshot log #${r.id}">${esc(r.sheet_name || '—')}</td>
-                  <td>${esc(r.sheet_race || '—')}</td>
-                  <td>${esc(r.sheet_class || '—')}</td>
-                  <td>${r.sheet_level || '—'}</td>
-                  <td>${esc(r.sheet_hp || '—')}</td>
-                  <td><span class="status-badge status-${st}">${esc(r.sheet_status || 'Alive')}</span></td>
-                  <td>${esc(r.sheet_alignment || '—')}</td>
-                  <td class="cell-truncate">${esc(r.sheet_role || '—')}</td>
+                  <td class="cell-id">${cid || '—'}</td>
+                  ${nameCell}
+                  <td>${esc(r.race || '—')}</td>
+                  <td>${esc(r.class || '—')}</td>
+                  <td>${lvlDisp}</td>
+                  <td>${hpDisp}</td>
+                  ${statusCell}
+                  <td>${esc(r.alignment || '—')}</td>
+                  <td class="cell-truncate">${esc(r.role || '—')}</td>
                   <td class="cell-truncate">${tlabel}</td>
-                  <td class="cell-id" title="Snapshot PK">${r.id}</td>
-                  <td title="${esc(r.profile_hash || '')}"><code>${esc(ph)}…</code></td>
-                  <td class="npc-reason-preview">${esc(r.history_preview || '')}</td>
-                  <td>${r.user_id}</td>
-                  <td>${esc(r.username || '')}</td>
-                  <td>${esc(r.dnd_edition || '')}</td>
-                  <td><small>${esc(r.created_at || '')}</small></td>
-                  <td>
-                    <button type="button" class="admin-btn admin-btn-small" data-action="reuse-sheet" data-id="${r.id}">Sheet</button>
-                    <button type="button" class="admin-btn admin-btn-danger admin-btn-small" data-action="reuse-del" data-id="${r.id}">Delete</button>
-                  </td>
+                  <td>${actions}</td>
                 </tr>`;
             }).join('');
 
@@ -1883,7 +1889,7 @@ export default function AdminDashboardView(container) {
               </div>
               <div class="admin-drill-section" style="margin-top:1.75rem">
                 <h3>npc_reuse_generated</h3>
-                <p class="admin-subtle">Append-only MySQL log of applied NPCs (full sheet JSON). Same filter as the pool above; roster columns match town character tables.</p>
+                <p class="admin-subtle">Applied NPCs — same columns as town <strong>Characters</strong> (live <code>characters</code> join). Archive id is in the row tooltip. Use <strong>Remove log</strong> when the character row is already gone.</p>
                 <div class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin:0.75rem 0">
                   <label>Filter user ID <input type="number" id="npc-reuse-user" class="admin-input" value="${esc(npcPoolState.userId)}" min="0" style="width:7rem"></label>
                   <button type="button" class="admin-btn admin-btn-primary" id="npc-reuse-apply">Apply</button>
@@ -1896,11 +1902,10 @@ export default function AdminDashboardView(container) {
                   <table class="admin-table compact" id="npc-reuse-archive-table">
                     <thead>
                       <tr>
-                        <th>ID</th><th>Name</th><th>Race</th><th>Class</th><th>Lvl</th><th>HP</th><th>Status</th><th>Alignment</th><th>Role</th>
-                        <th>Town</th><th>Log</th><th>Profile</th><th>History</th><th>User</th><th>Username</th><th>Edition</th><th>Created</th><th>Actions</th>
+                        <th>ID</th><th>Name</th><th>Race</th><th>Class</th><th>Lvl</th><th>HP</th><th>Status</th><th>Alignment</th><th>Role</th><th>Town</th><th>Actions</th>
                       </tr>
                     </thead>
-                    <tbody>${archTableRows || '<tr><td colspan="18">No rows yet — run setup_mysql, then add NPCs via intake + apply.</td></tr>'}</tbody>
+                    <tbody>${archTableRows || '<tr><td colspan="11">No rows yet — run setup_mysql, then add NPCs via intake + apply.</td></tr>'}</tbody>
                   </table>
                 </div>
               </div>
@@ -1974,27 +1979,75 @@ export default function AdminDashboardView(container) {
                     }
                 });
             });
-            contentEl.querySelectorAll('[data-action="reuse-sheet"]').forEach(btn => {
+            contentEl.querySelectorAll('.reuse-char-detail-link').forEach((el) => {
+                el.addEventListener('click', () => {
+                    const charId = parseInt(el.dataset.charId, 10);
+                    const charName = el.dataset.charName || '';
+                    const uidDr = parseInt(el.dataset.userId, 10);
+                    const unameDr = el.dataset.username || '';
+                    const tidDr = parseInt(el.dataset.townId, 10);
+                    const tnameDr = el.dataset.townName || '';
+                    if (!charId) return;
+                    breadcrumb.push({
+                        type: 'character',
+                        label: charName,
+                        icon: '🧙',
+                        id: charId,
+                        loader: () => drillCharacter(uidDr, unameDr, tidDr, tnameDr, charId, charName),
+                    });
+                    drillCharacter(uidDr, unameDr, tidDr, tnameDr, charId, charName);
+                });
+            });
+            contentEl.querySelectorAll('[data-action="reuse-edit-char"]').forEach((btn) => {
                 btn.addEventListener('click', async () => {
-                    const id = parseInt(btn.dataset.id, 10);
-                    if (!id) return;
+                    const charId = parseInt(btn.dataset.charId, 10);
+                    if (!charId) return;
                     try {
-                        const rowRes = await apiAdminNpcReuseGenerated({ id });
-                        const row = rowRes.row;
-                        if (!row) {
-                            alert('Row not found');
+                        const data = await apiAdminCharacterDetail(charId);
+                        const char = data.character;
+                        if (!char) {
+                            alert('Character not found');
                             return;
                         }
-                        const char = npcPoolRowToPreviewChar(row);
-                        const { el: modalEl } = showModal({
-                            title: `Reuse log #${row.id} — ${esc(char.name || 'Preview')}`,
-                            width: 'wide',
-                            content: '<div id="npc-reuse-sheet-host" style="max-height:82vh;overflow:auto;padding:0.25rem"></div>',
+                        showEditModal('Edit Character', [
+                            { key: 'name', label: 'Name', value: char.name },
+                            { key: 'race', label: 'Race', value: char.race },
+                            { key: 'class', label: 'Class', value: char.class },
+                            { key: 'level', label: 'Level', value: char.level, type: 'number' },
+                            { key: 'hp', label: 'HP', value: char.hp, type: 'number' },
+                            { key: 'status', label: 'Status', value: char.status, type: 'select', options: ['Alive', 'Dead', 'Missing', 'Departed', 'Unconscious'] },
+                            { key: 'alignment', label: 'Alignment', value: char.alignment },
+                            { key: 'role', label: 'Role', value: char.role },
+                            { key: 'age', label: 'Age', value: char.age, type: 'number' },
+                            { key: 'gender', label: 'Gender', value: char.gender },
+                        ], async (formData) => {
+                            await apiAdminUpdateCharacter(charId, formData);
+                            await refreshNpcFlavorPoolView();
                         });
-                        const host = modalEl.querySelector('#npc-reuse-sheet-host');
-                        if (host) {
-                            renderCharacterSheet(host, char, { previewMode: true });
-                        }
+                    } catch (e) {
+                        alert(e.message || String(e));
+                    }
+                });
+            });
+            contentEl.querySelectorAll('[data-action="reuse-del-char"]').forEach((btn) => {
+                btn.addEventListener('click', async () => {
+                    const charId = parseInt(btn.dataset.charId, 10);
+                    if (!charId || !confirm(`Delete character "${btn.dataset.name || ''}"? Archive rows for this character are removed too.`)) return;
+                    try {
+                        await apiAdminDeleteCharacter(charId);
+                        await refreshNpcFlavorPoolView();
+                    } catch (e) {
+                        alert(e.message || String(e));
+                    }
+                });
+            });
+            contentEl.querySelectorAll('[data-action="reuse-del-archive"]').forEach((btn) => {
+                btn.addEventListener('click', async () => {
+                    const aid = parseInt(btn.dataset.archiveId, 10);
+                    if (!aid || !confirm(`Remove reuse log row #${aid}? This does not delete a character.`)) return;
+                    try {
+                        await apiAdminNpcReuseGeneratedDelete(aid);
+                        await refreshNpcFlavorPoolView();
                     } catch (e) {
                         alert(e.message || String(e));
                     }
@@ -2012,21 +2065,127 @@ export default function AdminDashboardView(container) {
                     }
                 });
             });
-            contentEl.querySelectorAll('[data-action="reuse-del"]').forEach(btn => {
-                btn.addEventListener('click', async () => {
-                    const id = parseInt(btn.dataset.id, 10);
-                    if (!id || !confirm(`Delete reuse log row ${id}? This removes the archive entry only, not the live character.`)) return;
-                    try {
-                        await apiAdminNpcReuseGeneratedDelete(id);
-                        await refreshNpcFlavorPoolView();
-                    } catch (e) {
-                        alert(e.message || String(e));
-                    }
-                });
-            });
         } catch (err) {
             contentEl.innerHTML = `<div class="admin-error">⚠️ ${esc(err.message)}</div><p class="admin-subtle">If the table is missing, run setup_mysql.php on this server.</p>`;
         }
+    }
+
+    // ═══════════════════════════════════════
+    // LLM TRAINING FILE — launch readiness
+    // ═══════════════════════════════════════
+    async function renderLlmTrainingAnalyze() {
+        contentEl.innerHTML = `
+          <div class="admin-section-header">
+            <h2>LLM training file</h2>
+            <p class="admin-subtle">Analyzes <code>private_data/llm_training.jsonl</code> on this server. Each line is one JSON record (see <code>llm_training_dataset.php</code>). Fingerprints come from the <strong>last assistant message</strong> in <code>messages</code>. Consecutive occurrences of the same fingerprint must be at least <strong>N hours</strong> apart, or training is treated as repeating too quickly.</p>
+          </div>
+          <div class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:flex-end;margin-bottom:1rem">
+            <label>Min hours between repeats <input type="number" id="llm-min-hours" class="admin-input" value="48" min="1" max="8760" step="1" style="width:6.5rem" title="Same assistant output must not reappear this soon after the previous time"></label>
+            <label>Min valid lines <input type="number" id="llm-min-lines" class="admin-input" value="1500" min="50" style="width:6.5rem" title="Minimum non-broken records required"></label>
+            <label>Max lines to scan <input type="number" id="llm-max-lines" class="admin-input" value="300000" min="1000" style="width:7.5rem" title="Cap to bound memory and time"></label>
+            <button type="button" class="admin-btn admin-btn-primary" id="llm-analyze-run">Run analysis</button>
+          </div>
+          <div id="llm-train-results"><div class="admin-subtle">Click Run analysis to scan the file.</div></div>
+        `;
+        const resultsEl = contentEl.querySelector('#llm-train-results');
+        const run = async () => {
+            let minH = parseFloat(String(contentEl.querySelector('#llm-min-hours')?.value || '48'));
+            if (Number.isNaN(minH) || minH < 1) minH = 48;
+            let minL = parseInt(contentEl.querySelector('#llm-min-lines')?.value || '1500', 10);
+            if (Number.isNaN(minL) || minL < 50) minL = 1500;
+            let maxL = parseInt(contentEl.querySelector('#llm-max-lines')?.value || '300000', 10);
+            if (Number.isNaN(maxL) || maxL < 1000) maxL = 300000;
+            resultsEl.innerHTML = '<div class="admin-loading"><div class="admin-spinner"></div>Scanning…</div>';
+            try {
+                const d = await apiAdminLlmTrainingAnalyze({
+                    min_hours_between_repeats: minH,
+                    min_total_lines: minL,
+                    max_lines: maxL,
+                });
+                resultsEl.innerHTML = llmTrainingAnalyzeHtml(d);
+            } catch (e) {
+                resultsEl.innerHTML = `<div class="admin-error">${esc(e.message || String(e))}</div>`;
+            }
+        };
+        contentEl.querySelector('#llm-analyze-run')?.addEventListener('click', run);
+        await run();
+    }
+
+    function llmTrainingAnalyzeHtml(d) {
+        if (!d || !d.ok) {
+            return '<div class="admin-error">Invalid response</div>';
+        }
+        const kb = d.file_size_bytes != null ? Math.round(d.file_size_bytes / 102.4) / 10 : 0;
+        const ready = !!d.launch_ready;
+        const badge = ready
+            ? '<div class="admin-stat-card" style="border:2px solid rgba(82,196,26,0.45)"><div class="admin-stat-value" style="color:#52c41a">Launch-ready</div><div class="admin-stat-label">Line count + spacing rules pass</div></div>'
+            : '<div class="admin-stat-card" style="border:2px solid rgba(255,107,107,0.45)"><div class="admin-stat-value" style="color:#ff6b6b">Not ready</div><div class="admin-stat-label">Increase spacing, data volume, or fix JSON</div></div>';
+        const crit = d.criteria || {};
+        const chk = d.checks || {};
+        const trunc = d.scan_truncated ? '<p class="admin-subtle" style="color:var(--warning,#faad14)">Scan stopped at the line cap before end of file.</p>' : '';
+        const wmh = d.worst_min_gap_hours != null ? d.worst_min_gap_hours : '—';
+        const mdh = d.median_min_gap_hours != null ? d.median_min_gap_hours : '—';
+        const rvr = d.repeat_violation_rate != null ? `${(d.repeat_violation_rate * 100).toFixed(2)}%` : '—';
+        const divPct = d.diversity_ratio != null ? `${(d.diversity_ratio * 100).toFixed(1)}%` : '—';
+        const offenders = (d.worst_offenders || []).map((o) => `
+          <tr>
+            <td><code>${esc(o.fp || '')}</code></td>
+            <td>${o.occurrences}</td>
+            <td>${o.min_gap_hours}</td>
+            <td class="npc-reason-preview">${esc(o.preview || '')}</td>
+          </tr>`).join('');
+        return `
+          <div class="admin-stats-grid" style="margin-bottom:1rem">
+            ${badge}
+            <div class="admin-stat-card"><div class="admin-stat-value">${d.file_exists ? 'Yes' : 'No'}</div><div class="admin-stat-label">File exists</div></div>
+            <div class="admin-stat-card"><div class="admin-stat-value">${kb} KB</div><div class="admin-stat-label">Size (approx)</div></div>
+            <div class="admin-stat-card"><div class="admin-stat-value">${d.valid_lines ?? 0}</div><div class="admin-stat-label">Valid lines</div></div>
+            <div class="admin-stat-card"><div class="admin-stat-value">${d.unique_fingerprints ?? 0}</div><div class="admin-stat-label">Unique fingerprints</div></div>
+          </div>
+          ${trunc}
+          <p class="admin-subtle">${esc(d.notes || '')}</p>
+          <h3 style="margin-top:1rem">Criteria used</h3>
+          <ul class="admin-subtle" style="margin:0.25rem 0 1rem 1.25rem">
+            <li>Minimum spacing: <strong>${crit.min_hours_between_repeats}</strong> hours between consecutive identical fingerprints.</li>
+            <li>Minimum valid lines: <strong>${crit.min_total_lines}</strong> (parsed with valid timestamp).</li>
+            <li>Scanned at most <strong>${crit.max_lines_scanned}</strong> non-empty lines.</li>
+          </ul>
+          <h3>Checks</h3>
+          <div class="admin-table-wrap" style="margin-bottom:1rem">
+            <table class="admin-table compact">
+              <thead><tr><th>Check</th><th>Result</th></tr></thead>
+              <tbody>
+                <tr><td>Enough valid lines</td><td>${chk.enough_lines ? '✓ Pass' : '✗ Fail'}</td></tr>
+                <tr><td>No repeats closer than min hours</td><td>${chk.no_too_soon_repeats ? '✓ Pass' : '✗ Fail'}</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <h3>Duplicates & timing</h3>
+          <div class="admin-table-wrap" style="margin-bottom:1rem">
+            <table class="admin-table compact">
+              <thead><tr><th>Metric</th><th>Value</th></tr></thead>
+              <tbody>
+                <tr><td>Lines read (non-empty)</td><td>${d.lines_read ?? 0}</td></tr>
+                <tr><td>JSON parse errors</td><td>${d.parse_errors ?? 0}</td></tr>
+                <tr><td>Invalid timestamps</td><td>${d.ts_invalid ?? 0}</td></tr>
+                <tr><td>Repeat pairs (same fingerprint, consecutive in time)</td><td>${d.repeat_occurrences ?? 0}</td></tr>
+                <tr><td>Pairs under min spacing</td><td>${d.repeat_pair_violations ?? 0}</td></tr>
+                <tr><td>Violation rate (of repeat pairs)</td><td>${rvr}</td></tr>
+                <tr><td>Tightest min gap (hours, across fingerprints)</td><td>${wmh}</td></tr>
+                <tr><td>Median of per-fingerprint min gaps (hours)</td><td>${mdh}</td></tr>
+                <tr><td>Diversity (unique / valid)</td><td>${divPct}</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <h3>Tightest spacing (sample)</h3>
+          <p class="admin-subtle">Fingerprints with the smallest minimum time between two occurrences (assistant preview truncated).</p>
+          <div class="admin-table-wrap">
+            <table class="admin-table compact">
+              <thead><tr><th>Fingerprint</th><th>Occurrences</th><th>Min gap (h)</th><th>Preview</th></tr></thead>
+              <tbody>${offenders || '<tr><td colspan="4">No duplicate fingerprints in this scan.</td></tr>'}</tbody>
+            </table>
+          </div>
+        `;
     }
 
     // ═══════════════════════════════════════
