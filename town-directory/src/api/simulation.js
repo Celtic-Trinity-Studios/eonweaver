@@ -105,8 +105,8 @@ export function apiIntakeRoster(townId, numArrivals, rules, instructions) {
     return simFetch('intake_roster', { town_id: townId, num_arrivals: numArrivals, rules, instructions });
 }
 
-export function apiIntakeFlesh(townId, stubs, rules) {
-    return simFetch('intake_flesh', { town_id: townId, stubs, rules });
+export function apiIntakeFlesh(townId, stubs, rules, opts = {}) {
+    return simFetch('intake_flesh', { town_id: townId, stubs, rules, ...opts });
 }
 
 /**

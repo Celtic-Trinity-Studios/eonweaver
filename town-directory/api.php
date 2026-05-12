@@ -4298,6 +4298,66 @@ try {
             respond(['ok' => true]);
             break;
 
+        case 'admin_npc_flavor_pool':
+            requireAdmin();
+            try {
+                $statsOnly = isset($_GET['stats']) && (string) $_GET['stats'] === '1';
+                if ($statsOnly) {
+                    $totalRow = query('SELECT COUNT(*) AS c FROM npc_flavor_pool', [], 0);
+                    $total = (int) ($totalRow[0]['c'] ?? 0);
+                    $byEdition = query('SELECT dnd_edition, COUNT(*) AS cnt FROM npc_flavor_pool GROUP BY dnd_edition ORDER BY cnt DESC', [], 0);
+                    $topUsers = query(
+                        'SELECT p.user_id, COALESCE(u.username, CONCAT(\'user#\', p.user_id)) AS username, COUNT(*) AS cnt FROM npc_flavor_pool p LEFT JOIN users u ON u.id = p.user_id GROUP BY p.user_id, u.username ORDER BY cnt DESC LIMIT 30',
+                        [],
+                        0
+                    );
+                    respond(['ok' => true, 'stats' => ['total' => $total, 'by_edition' => $byEdition, 'top_users' => $topUsers]]);
+                    break;
+                }
+                $limit = min(200, max(1, (int) ($_GET['limit'] ?? 50)));
+                $offset = max(0, (int) ($_GET['offset'] ?? 0));
+                $userFilter = (int) ($_GET['user_id'] ?? 0);
+                if ($userFilter > 0) {
+                    $rows = query(
+                        'SELECT p.id, p.user_id, u.username, p.dnd_edition, p.profile_hash, p.flavor_hash, LEFT(p.reason, 240) AS reason_preview, CHAR_LENGTH(p.reason) AS reason_len, p.created_at
+                         FROM npc_flavor_pool p
+                         LEFT JOIN users u ON u.id = p.user_id
+                         WHERE p.user_id = ?
+                         ORDER BY p.id DESC
+                         LIMIT ? OFFSET ?',
+                        [$userFilter, $limit, $offset],
+                        0
+                    );
+                    $cntRow = query('SELECT COUNT(*) AS c FROM npc_flavor_pool WHERE user_id = ?', [$userFilter], 0);
+                } else {
+                    $rows = query(
+                        'SELECT p.id, p.user_id, u.username, p.dnd_edition, p.profile_hash, p.flavor_hash, LEFT(p.reason, 240) AS reason_preview, CHAR_LENGTH(p.reason) AS reason_len, p.created_at
+                         FROM npc_flavor_pool p
+                         LEFT JOIN users u ON u.id = p.user_id
+                         ORDER BY p.id DESC
+                         LIMIT ? OFFSET ?',
+                        [$limit, $offset],
+                        0
+                    );
+                    $cntRow = query('SELECT COUNT(*) AS c FROM npc_flavor_pool', [], 0);
+                }
+                $fullCount = (int) ($cntRow[0]['c'] ?? 0);
+                respond(['ok' => true, 'rows' => $rows ?: [], 'total_matching' => $fullCount, 'limit' => $limit, 'offset' => $offset]);
+            } catch (Exception $e) {
+                throw new Exception('NPC flavor pool: ' . $e->getMessage() . ' (Run setup_mysql.php if the table is missing.)');
+            }
+            break;
+
+        case 'admin_npc_flavor_delete':
+            requireAdmin();
+            $delId = (int) ($input['id'] ?? 0);
+            if ($delId <= 0) {
+                throw new Exception('Missing id');
+            }
+            execute('DELETE FROM npc_flavor_pool WHERE id = ?', [$delId], 0);
+            respond(['ok' => true, 'deleted_id' => $delId]);
+            break;
+
         /* ═══════════════════════════════════════════════════
            PHASE FRAMEWORK — Macro sim / player portal / wiki
            ═══════════════════════════════════════════════════ */

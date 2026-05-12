@@ -404,6 +404,12 @@ SPROMPT;
 
                     $data = json_decode($response, true);
                     $respText = $data["choices"][0]["message"]["content"] ?? "";
+                    if (is_array($data)) {
+                        $reqLog = json_decode($payload, true);
+                        if (is_array($reqLog)) {
+                            ew_openrouter_log_chat_completion('sim_forced_arrival', $reqLog, $data, ['town_id' => $townId]);
+                        }
+                    }
                     $respText = preg_replace('/^\s*`+\w*\s*/i', '', $respText);
                     $respText = preg_replace('/\s*`+\s*$/', '', $respText);
                     $respText = trim($respText);
@@ -974,12 +980,13 @@ PROMPT;
                         : 18000;
                     $maxTok = min(65536, max(28672, $mmBase + $mmPer * max(0, $months - 1)));
                 }
-                $payload = ew_json_encode_openrouter_body([
+                $reqPayloadArr = [
                     "model" => $model,
                     "messages" => [["role" => "user", "content" => $prompt]],
                     "temperature" => 0.8,
                     "max_tokens" => $maxTok
-                ]);
+                ];
+                $payload = ew_json_encode_openrouter_body($reqPayloadArr);
                 $ch = curl_init($openRouterUrl);
                 curl_setopt_array($ch, [
                     CURLOPT_POST => true,
@@ -1002,9 +1009,12 @@ PROMPT;
                     throw new Exception("OpenRouter API error (HTTP {$httpCode}): " . substr($response, 0, 500));
                 }
                 $data = json_decode($response, true);
-                $lastOpenRouterUsage = $data['usage'] ?? null;
-                $text = $data["choices"][0]["message"]["content"] ?? "";
-                $GLOBALS['EW_SIM_LAST_OPENROUTER_FINISH_REASON'] = $data['choices'][0]['finish_reason'] ?? '';
+                $lastOpenRouterUsage = is_array($data) ? ($data['usage'] ?? null) : null;
+                $text = is_array($data) ? ($data["choices"][0]["message"]["content"] ?? "") : "";
+                if (is_array($data)) {
+                    ew_openrouter_log_chat_completion('sim_run', $reqPayloadArr, $data, ['town_id' => $townId, 'months' => $months]);
+                }
+                $GLOBALS['EW_SIM_LAST_OPENROUTER_FINISH_REASON'] = is_array($data) ? ($data['choices'][0]['finish_reason'] ?? '') : '';
             }
 
             // ── Parse JSON response ───────────────────────────────────

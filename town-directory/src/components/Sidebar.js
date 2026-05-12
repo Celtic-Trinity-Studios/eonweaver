@@ -18,18 +18,20 @@ function escapeAttr(s) {
     .replace(/</g, '&lt;');
 }
 
+/** Top-level: always visible, not inside a collapsible category. */
+const DASHBOARD_ITEM = {
+  route: 'dashboard',
+  icon: '🏠',
+  label: 'Dashboard',
+  hint: 'Your campaign home: town cards, quick simulate, and stats links.',
+};
+
 /**
- * Grouped nav: DM workflow order — overview, settlement, world time, prep, table, reference, account.
+ * Grouped nav: DM workflow order — settlement, world time, prep, table, reference, account.
  * `hint` is shown as the native tooltip on hover.
+ * (Dashboard is rendered separately above these groups.)
  */
 const NAV_GROUPS = [
-  {
-    id: 'overview',
-    label: 'Overview',
-    items: [
-      { route: 'dashboard', icon: '🏠', label: 'Dashboard', hint: 'Your campaign home: town cards, quick simulate, and stats links.' },
-    ],
-  },
   {
     id: 'settlement',
     label: 'Settlement',
@@ -93,6 +95,18 @@ const NAV_GROUPS = [
     ],
   },
 ];
+
+function dashboardNavHtml(activeRoute) {
+  const item = DASHBOARD_ITEM;
+  const active = activeRoute === item.route ? ' active' : '';
+  return `
+      <div class="sidebar-nav-top">
+        <button type="button" class="nav-item${active}" data-route="${escapeAttr(item.route)}" data-tip="${escapeAttr(item.hint)}">
+          <span class="nav-icon">${item.icon}</span>
+          <span class="nav-label">${escapeAttr(item.label)}</span>
+        </button>
+      </div>`;
+}
 
 function navGroupsHtml(activeRoute) {
   return NAV_GROUPS.map((group) => {
@@ -176,6 +190,7 @@ export function renderSidebar(container) {
       </div>
 
       <nav class="sidebar-nav" aria-label="Main navigation">
+        ${dashboardNavHtml(activeRoute)}
         ${navGroupsHtml(activeRoute)}
       </nav>
       ` : ''}

@@ -91,6 +91,9 @@ define('OPENROUTER_MODEL', 'google/gemini-2.5-flash');
 define('OPENROUTER_MODEL_SMART', 'google/gemini-2.5-flash');
 define('OPENROUTER_MODEL_CHEAP', 'google/gemini-2.5-flash-lite');
 
+// Optional: set false in config.php to disable append-only JSONL at private_data/llm_training.jsonl (site-specific training export from intake).
+// define('EW_LLM_TRAINING_LOG', false);
+
 // ── AI prompt budgets (optional — trim context = fewer tokens per call) ──
 // Roster: how many NPCs get full-detail rows in tiered tables (clamped 4–24 server-side).
 // define('EW_SIM_ROSTER_DETAIL_CAP', 10);           // run_simulation / world / single-town

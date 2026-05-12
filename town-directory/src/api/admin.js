@@ -128,3 +128,12 @@ export function apiAdminDeleteMeta(townId, key) {
 export function apiAdminAdjustCredits(userId, amount, mode = 'add') {
     return apiFetch('admin_adjust_credits', { method: 'POST', body: { user_id: userId, amount, mode } });
 }
+
+/** Admin: NPC flavor pool (intake reuse DB). Pass `{ stats: 1 }` for aggregates only. */
+export function apiAdminNpcFlavorPool(params = {}) {
+    return apiFetch('admin_npc_flavor_pool', { params });
+}
+
+export function apiAdminNpcFlavorDelete(id) {
+    return apiFetch('admin_npc_flavor_delete', { method: 'DELETE', body: { id } });
+}

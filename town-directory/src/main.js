@@ -290,6 +290,10 @@ function showAdminApp() {
           <span class="nav-icon">📈</span>
           <span class="nav-label">Token Usage</span>
         </button>
+        <button class="nav-item" data-admin-tab="npc-pool">
+          <span class="nav-icon">🧬</span>
+          <span class="nav-label">NPC Pool</span>
+        </button>
         <button class="nav-item" data-admin-tab="settings">
           <span class="nav-icon">⚙️</span>
           <span class="nav-label">Site Settings</span>

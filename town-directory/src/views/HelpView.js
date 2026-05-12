@@ -68,7 +68,7 @@ export default function HelpView(container) {
       icon: '🏠',
       title: 'Dashboard',
       content: `
-        <p>The Dashboard is your home base. It shows all your towns at a glance with population counts and quick actions.</p>
+        <p>The Dashboard is your home base. It shows all your towns at a glance with population counts and quick actions. Open it from the <strong>top of the sidebar</strong> (always visible, above the grouped categories).</p>
         
         <div class="help-feature">
           <strong>🏰 Town Cards</strong>

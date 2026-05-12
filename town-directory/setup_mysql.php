@@ -1634,6 +1634,27 @@ try {
         $results[] = '⚠️ scribe_library: ' . htmlspecialchars($e->getMessage());
     }
 
+    // -- Per-user NPC flavor pool (intake_flesh reuse + town-setup seeding) --
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS npc_flavor_pool (
+            id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            user_id INT UNSIGNED NOT NULL,
+            dnd_edition VARCHAR(16) NOT NULL DEFAULT '3.5e',
+            profile_hash CHAR(32) NOT NULL,
+            flavor_hash CHAR(32) NOT NULL,
+            is_creature TINYINT(1) NOT NULL DEFAULT 0,
+            skills_feats TEXT,
+            feats TEXT,
+            reason TEXT NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE KEY uniq_user_flavor (user_id, flavor_hash),
+            KEY idx_user_profile (user_id, profile_hash, is_creature)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        $results[] = '✅ npc_flavor_pool table';
+    } catch (Exception $e) {
+        $results[] = '⚠️ npc_flavor_pool: ' . htmlspecialchars($e->getMessage());
+    }
+
     // -- Create admin account (CelticTrinityStudios) --
     try {
         $adminExists = $pdo->query("SELECT id FROM users WHERE username = 'CelticTrinityStudios'")->fetch();

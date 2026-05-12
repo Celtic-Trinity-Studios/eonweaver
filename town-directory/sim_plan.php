@@ -98,12 +98,13 @@ PLAN;
             // Quick AI call with low token limit
             $openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
             $model = defined("OPENROUTER_MODEL_CHEAP") ? OPENROUTER_MODEL_CHEAP : (defined("OPENROUTER_MODEL") ? OPENROUTER_MODEL : "google/gemini-2.5-flash-lite");
-            $payload = ew_json_encode_openrouter_body([
+            $planReqPayload = [
                 "model" => $model,
                 "messages" => [["role" => "user", "content" => $planPrompt]],
                 "temperature" => 0.8,
                 "max_tokens" => 4096
-            ]);
+            ];
+            $payload = ew_json_encode_openrouter_body($planReqPayload);
 
             $ch = curl_init($openRouterUrl);
             curl_setopt_array($ch, [
@@ -132,6 +133,10 @@ PLAN;
             }
 
             $planText = $respData['choices'][0]['message']['content'] ?? '';
+
+            if (is_array($respData)) {
+                ew_openrouter_log_chat_completion('sim_planning', $planReqPayload, $respData, ['town_id' => $townId, 'months' => $months]);
+            }
 
             // Try to parse as JSON
             $planText = preg_replace('/^`+\w*\s*/m', '', $planText);

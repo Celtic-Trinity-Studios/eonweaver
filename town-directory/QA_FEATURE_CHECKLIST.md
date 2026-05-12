@@ -15,6 +15,57 @@ Use this document as a **working todo**: check boxes when verified, note failure
 
 **What counts as done:** Mark **`[x]`** only after **you** (or QA) has **executed** the procedure in the stated surface/environment—browser clicks, API smoke, DB step, deploy smoke, etc. Source-code review, grep, or assistant walkthroughs **do not** satisfy the checklist; those belong in implementation notes or PRs. **`[ ]`** means “not yet run” or “needs retest after a relevant change.”
 
+### Systematic pass: website first, then features
+
+Use this order so you **finish the website** (hosting, auth, shell, staging smoke) before you invest in deep feature QA.
+
+**How to move in chat:** Say which **phase** and **ID** you are on or finishing (e.g. “Phase A done through GLB-03” or “Starting AUTH-01”). When something fails, log it in **`WANT_NEED_BACKLOG.md`** with the same ID.
+
+**Cursor todo list (session helper):** In the IDE Todo panel, add a *small* set of items for your *current phase only* (for example the next three IDs in Phase A). Those todos are for **steering the session**; the **`[ ]` / `[x]`** cells in the tables below remain the **sign-off record**.
+
+### New chat: the user only says “next step”
+
+Use **`QA_PROGRESS.md`** as the handoff cursor: it lists **`ORDERED_IDS`** (same order as the phases above) and **`Last completed ID`**. The agent finds the next ID after that marker whose row is still **`[ ]`** here, then pastes that row’s **Test procedure** into the reply. After a real pass, the human says **`done <ID>`** (or edits **`Last completed ID`** in `QA_PROGRESS.md`) and **`next step`** again. See also **`AGENTS.md`** (repo root) for one-line pointer.
+
+#### Phase A — Website & platform (do this block before “features”)
+
+Goal: staging (or prod) loads, auth works, build/deploy path is trusted, one happy-path smoke passes.
+
+| Step | IDs (see tables below) | What you are proving |
+|------|-------------------------|-------------------------|
+| A1 | `GLB-*` | App shell, router, deep links, bug-report path |
+| A2 | `AUTH-*` | Register, login/logout, session/`me`, resend verify, usage/tier awareness |
+| A3 | `INF-*` | Dev stack, **correct** prod build, DB/setup on staging clone, **INF-04** post-deploy smoke |
+| A4 | `DSH-01`, `HLP-01`, `SET-01`, `SET-02` | Dashboard empty state, help matches routes, settings save, subscription/catalog |
+| A5 | `INTG-01` | Integrations page (if webhooks are part of launch) |
+
+**Website-done gate:** complete **INF-04** on **worldscribe.online** (or your production URL) after a deploy — login → open town → one sim or scribe call — then treat Phase A as closed.
+
+#### Phase B — Core campaign loop
+
+| Step | IDs | What you are proving |
+|------|-----|----------------------|
+| B1 | `CMP-*`, `TWN-*` | Campaigns and towns CRUD + meta + moves |
+| B2 | `ROST-*` | Roster UX, filters, graveyard, demographics targets |
+| B3 | `CAL-*` | Calendar |
+| B4 | `MAP-*`, `STATS-*` | World map + town stats (if in your first-ship bar) |
+
+#### Phase C — Simulation & characters (AI-heavy)
+
+`INT-*` → `SIM-*` → `WSIM-*` → `MACRO-*` → `CHS-*` → `EQ-*` / `SPL-*` / `EFX-*` / `LVL-*`
+
+#### Phase D — Settlement depth & table
+
+`BLD-*` → `SOC-*` → `FAC-*` / `INC-*` / `REP-*` → `PRT-*` → `ENC-*`
+
+#### Phase E — Content, SRD, library, portal, export
+
+`SCR-*` → `SRD-*` → `HB-*` → `LIB-*` → `WIKI-*` → `PLR-*` → `VTT-*`
+
+#### Phase F — Admin & LLM extras
+
+`ADM-*` → `LLM-*`
+
 ---
 
 ## Discord: all QA in the `bug-reports` forum
@@ -464,13 +515,12 @@ The headings **How to use this checklist** and **Suggested run order** are meta 
 
 ## Suggested run order (first pass)
 
-1. GLB-* then AUTH-*  
-2. CMP-* / TWN-* / ROST-*  
-3. SIM-* and CHS-*  
-4. SOC-* / FAC-* / ENC-*  
-5. SCR-* / SRD-* / remaining views  
-6. INF-* on release candidate  
+Use **Systematic pass: website first, then features** (under *How to use this checklist*) as the master sequence. Short mnemonic:
+
+1. **Phase A** — `GLB-*` → `AUTH-*` → `INF-*` → thin shell (`DSH`, `HLP`, `SET`, optional `INTG`) until **INF-04** passes on staging.  
+2. **Phase B** — `CMP`/`TWN`/`ROST` → `CAL` → `MAP`/`STATS`.  
+3. **Phases C–F** — simulation, sheets, world depth, content, admin — in the order listed there.
 
 ---
 
-*Document version: 2026-05-11. Update rows when routes or API names change.*
+*Document version: 2026-05-11 (systematic phases added). Update rows when routes or API names change.*

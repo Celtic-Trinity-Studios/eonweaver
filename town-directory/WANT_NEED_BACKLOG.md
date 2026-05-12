@@ -2,6 +2,8 @@
 
 Use this file **while** you work through `QA_FEATURE_CHECKLIST.md`. When a test fails, a procedure is unclear, or you think of an improvement, **append a row** here so the checklist stays procedural and this file stays the product/design backlog.
 
+**Systematic order:** In the checklist, use **Phase A (website first)** until hosting + **INF-04** smoke pass on staging; only then treat backlog items as “feature” work unless they block Phase A (log those as **Need** with checklist ID).
+
 **Convention**
 
 - **Want** = nice-to-have, polish, depth, or future idea.  

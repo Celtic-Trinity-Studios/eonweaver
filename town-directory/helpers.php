@@ -6,6 +6,7 @@
 
 require_once __DIR__ . '/tier_economics.php';
 require_once __DIR__ . '/pricing.php';
+require_once __DIR__ . '/llm_training_dataset.php';
 
 /**
  * Metadata OpenRouter expects on chat requests (HTTP-Referer + X-Title).

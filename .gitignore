@@ -53,7 +53,7 @@ cookies.txt
 town-directory/ftp.txt
 
 # ── User uploads ─────────────────────────────────────────
-town-directory/portraits/
+town-directory/private_data/
 
 # ── Misc temp files ──────────────────────────────────────
 *.log

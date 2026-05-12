@@ -41,12 +41,13 @@ if ($action === 'scribe_generate') {
         $temp = 0.55;
     }
 
-    $payload = json_encode([
+    $scribeReqPayload = [
         "model" => $model,
         "messages" => [["role" => "user", "content" => $prompt]],
         "temperature" => $temp,
         "max_tokens" => 4096
-    ]);
+    ];
+    $payload = json_encode($scribeReqPayload);
     
     $ch = curl_init($openRouterUrl);
     curl_setopt_array($ch, [
@@ -71,6 +72,12 @@ if ($action === 'scribe_generate') {
     }
 
     $data = json_decode($response, true);
+    if (is_array($data)) {
+        ew_openrouter_log_chat_completion('scribe_generate', $scribeReqPayload, $data, [
+            'generator_type' => $generatorType,
+            'town_id' => $townId,
+        ]);
+    }
     ew_track_ai_fixed_billing(
         $userId,
         $data['usage'] ?? null,

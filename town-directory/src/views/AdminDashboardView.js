@@ -17,6 +17,7 @@ import {
     apiAdminAllTowns, apiAdminAllCampaigns,
     apiAdminUpdateMeta, apiAdminDeleteMeta,
     apiAdminAdjustCredits,
+    apiAdminNpcFlavorPool, apiAdminNpcFlavorDelete,
 } from '../api/admin.js';
 import {
     TOKENS_PER_CREDIT,
@@ -44,6 +45,7 @@ export default function AdminDashboardView(container) {
         <button class="admin-tab" data-tab="campaigns">📜 Campaigns</button>
         <button class="admin-tab" data-tab="towns">🏰 Towns</button>
         <button class="admin-tab" data-tab="usage">📈 Token Usage</button>
+        <button class="admin-tab" data-tab="npc-pool">🧬 NPC Flavor Pool</button>
         <button class="admin-tab" data-tab="settings">⚙️ Site Settings</button>
       </div>
 
@@ -79,6 +81,7 @@ export default function AdminDashboardView(container) {
             else if (tab === 'campaigns') await renderAllCampaigns();
             else if (tab === 'towns') await renderAllTowns();
             else if (tab === 'usage') await renderUsage();
+            else if (tab === 'npc-pool') await renderNpcFlavorPool();
             else if (tab === 'settings') await renderSettings();
         } catch (err) {
             contentEl.innerHTML = `<div class="admin-error">⚠️ ${err.message}</div>`;
@@ -1719,6 +1722,121 @@ export default function AdminDashboardView(container) {
             });
         } catch (err) {
             contentEl.innerHTML = `<div class="admin-error">⚠️ ${err.message}</div>`;
+        }
+    }
+
+    // ═══════════════════════════════════════
+    // NPC FLAVOR POOL (intake master DB)
+    // ═══════════════════════════════════════
+    const NPC_POOL_PAGE = 40;
+    let npcPoolState = { offset: 0, userId: '' };
+
+    async function renderNpcFlavorPool() {
+        npcPoolState = { offset: 0, userId: '' };
+        await refreshNpcFlavorPoolView();
+    }
+
+    async function refreshNpcFlavorPoolView() {
+        try {
+            const statsRes = await apiAdminNpcFlavorPool({ stats: 1 });
+            const st = statsRes.stats || { total: 0, by_edition: [], top_users: [] };
+            const params = { limit: NPC_POOL_PAGE, offset: npcPoolState.offset };
+            if (npcPoolState.userId) params.user_id = npcPoolState.userId;
+            const listRes = await apiAdminNpcFlavorPool(params);
+            const rows = listRes.rows || [];
+            const total = listRes.total_matching ?? 0;
+
+            const editionRows = (st.by_edition || []).map(r =>
+                `<tr><td>${esc(r.dnd_edition || '')}</td><td>${r.cnt}</td></tr>`
+            ).join('');
+
+            const topUserRows = (st.top_users || []).map(r =>
+                `<tr><td>${esc(r.username || '')}</td><td>${r.user_id}</td><td>${r.cnt}</td></tr>`
+            ).join('');
+
+            const tableRows = rows.map(r => `
+                <tr>
+                  <td>${r.id}</td>
+                  <td>${r.user_id}</td>
+                  <td>${esc(r.username || '')}</td>
+                  <td>${esc(r.dnd_edition || '')}</td>
+                  <td title="${esc(r.profile_hash || '')}"><code>${esc((r.profile_hash || '').slice(0, 8))}…</code></td>
+                  <td class="npc-reason-preview">${esc(r.reason_preview || '')}${(r.reason_len || 0) > 240 ? '…' : ''}</td>
+                  <td><small>${esc(r.created_at || '')}</small></td>
+                  <td><button type="button" class="admin-btn admin-btn-danger admin-btn-small" data-action="npc-del" data-id="${r.id}">Delete</button></td>
+                </tr>
+            `).join('');
+
+            const prevOff = Math.max(0, npcPoolState.offset - NPC_POOL_PAGE);
+            const nextOff = npcPoolState.offset + NPC_POOL_PAGE < total ? npcPoolState.offset + NPC_POOL_PAGE : npcPoolState.offset;
+
+            contentEl.innerHTML = `
+              <div class="admin-section-header">
+                <h2>NPC flavor pool</h2>
+                <p class="admin-subtle">Reusable backstory snippets from intake (profile-matched). Used to cut duplicate LLM work.</p>
+              </div>
+              <div class="admin-stats-grid" style="margin-bottom:1.5rem">
+                <div class="admin-stat-card"><div class="admin-stat-value">${st.total}</div><div class="admin-stat-label">Total rows</div></div>
+              </div>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem" class="admin-npc-pool-grid">
+                <div>
+                  <h3>By edition</h3>
+                  <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>Edition</th><th>Count</th></tr></thead><tbody>${editionRows || '<tr><td colspan="2">No data</td></tr>'}</tbody></table></div>
+                </div>
+                <div>
+                  <h3>Top accounts</h3>
+                  <div class="admin-table-wrap"><table class="admin-table"><thead><tr><th>User</th><th>ID</th><th>Rows</th></tr></thead><tbody>${topUserRows || '<tr><td colspan="3">No data</td></tr>'}</tbody></table></div>
+                </div>
+              </div>
+              <div class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-bottom:1rem">
+                <label>Filter user ID <input type="number" id="npc-pool-user" class="admin-input" value="${esc(npcPoolState.userId)}" min="0" style="width:7rem"></label>
+                <button type="button" class="admin-btn admin-btn-primary" id="npc-pool-apply">Apply</button>
+                <button type="button" class="admin-btn" id="npc-pool-clear">Clear filter</button>
+                <span class="admin-subtle">Showing ${rows.length} of ${total}</span>
+                <button type="button" class="admin-btn" id="npc-pool-prev" ${npcPoolState.offset <= 0 ? 'disabled' : ''}>Previous</button>
+                <button type="button" class="admin-btn" id="npc-pool-next" ${nextOff === npcPoolState.offset ? 'disabled' : ''}>Next</button>
+              </div>
+              <div class="admin-table-wrap">
+                <table class="admin-table" id="npc-pool-table">
+                  <thead><tr><th>ID</th><th>User</th><th>Username</th><th>Edition</th><th>Profile</th><th>Reason preview</th><th>Created</th><th></th></tr></thead>
+                  <tbody>${tableRows || '<tr><td colspan="8">No rows</td></tr>'}</tbody>
+                </table>
+              </div>
+            `;
+
+            contentEl.querySelector('#npc-pool-apply')?.addEventListener('click', () => {
+                const v = contentEl.querySelector('#npc-pool-user')?.value?.trim() || '';
+                npcPoolState.userId = v;
+                npcPoolState.offset = 0;
+                refreshNpcFlavorPoolView();
+            });
+            contentEl.querySelector('#npc-pool-clear')?.addEventListener('click', () => {
+                npcPoolState.userId = '';
+                npcPoolState.offset = 0;
+                refreshNpcFlavorPoolView();
+            });
+            contentEl.querySelector('#npc-pool-prev')?.addEventListener('click', () => {
+                npcPoolState.offset = prevOff;
+                refreshNpcFlavorPoolView();
+            });
+            contentEl.querySelector('#npc-pool-next')?.addEventListener('click', () => {
+                if (nextOff !== npcPoolState.offset) npcPoolState.offset = nextOff;
+                refreshNpcFlavorPoolView();
+            });
+            contentEl.querySelectorAll('[data-action="npc-del"]').forEach(btn => {
+                btn.addEventListener('click', async () => {
+                    const id = parseInt(btn.dataset.id, 10);
+                    if (!id || !confirm(`Delete flavor pool row ${id}?`)) return;
+                    try {
+                        await apiAdminNpcFlavorDelete(id);
+                        await refreshNpcFlavorPoolView();
+                    } catch (e) {
+                        alert(e.message);
+                    }
+                });
+            });
+        } catch (err) {
+            contentEl.innerHTML = `<div class="admin-error">⚠️ ${esc(err.message)}</div><p class="admin-subtle">If the table is missing, run setup_mysql.php on this server.</p>`;
         }
     }
 

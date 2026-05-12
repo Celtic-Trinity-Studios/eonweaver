@@ -88,12 +88,13 @@
             }
             if ($simText === null) {
                 $openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
-                $payload = json_encode([
+                $reqPayloadArr = [
                     'model' => defined('OPENROUTER_MODEL_SMART') ? OPENROUTER_MODEL_SMART : (defined('OPENROUTER_MODEL') ? OPENROUTER_MODEL : 'google/gemini-2.5-flash'),
                     'messages' => [['role' => 'user', 'content' => $prompt]],
                     'temperature' => 0.8,
                     'max_tokens' => 8192
-                ]);
+                ];
+                $payload = json_encode($reqPayloadArr);
                 $ch = curl_init($openRouterUrl);
                 curl_setopt_array($ch, [
                     CURLOPT_POST => true,
@@ -115,6 +116,9 @@
                 $orResp = json_decode($resp, true);
                 $singleTownOrUsage = $orResp['usage'] ?? null;
                 $simText = $orResp['choices'][0]['message']['content'] ?? '';
+                if (is_array($orResp)) {
+                    ew_openrouter_log_chat_completion('sim_single_town', $reqPayloadArr, $orResp, ['town_id' => $tId, 'months' => $months]);
+                }
             }
             resetDB();
             $sim = robustJsonDecode($simText);

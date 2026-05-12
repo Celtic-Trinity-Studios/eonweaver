@@ -480,12 +480,13 @@ Respond ONLY with valid JSON:
             }
             if ($chunkText === null) {
                 $openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
-                $payload = json_encode([
+                $chunkReqPayload = [
                     'model' => ($category === 'story' && defined('OPENROUTER_MODEL_SMART')) ? OPENROUTER_MODEL_SMART : (defined('OPENROUTER_MODEL_CHEAP') ? OPENROUTER_MODEL_CHEAP : 'google/gemini-2.5-flash'),
                     'messages' => [['role' => 'user', 'content' => $prompt]],
                     'temperature' => 0.8,
                     'max_tokens' => 2048
-                ]);
+                ];
+                $payload = json_encode($chunkReqPayload);
                 $ch = curl_init($openRouterUrl);
                 curl_setopt_array($ch, [
                     CURLOPT_POST => true,
@@ -507,6 +508,9 @@ Respond ONLY with valid JSON:
                 $gr = json_decode($resp, true);
                 $chunkOrUsage = $gr['usage'] ?? null;
                 $chunkText = $gr['choices'][0]['message']['content'] ?? '';
+                if (is_array($gr)) {
+                    ew_openrouter_log_chat_completion('simulate_chunk_' . $category, $chunkReqPayload, $gr, ['town_id' => $tId, 'month' => $monthNum]);
+                }
             }
             if ($chunkText !== null && $chunkText !== '') {
                 ew_track_ai_fixed_billing(
@@ -575,12 +579,13 @@ PROMPT;
             if ($promptText === null) {
                 $openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
                 $model = defined('OPENROUTER_MODEL_CHEAP') ? OPENROUTER_MODEL_CHEAP : (defined('OPENROUTER_MODEL') ? OPENROUTER_MODEL : 'google/gemini-2.5-flash');
-                $payload = json_encode([
+                $portraitReqPayload = [
                     'model' => $model,
                     'messages' => [['role' => 'user', 'content' => $prompt]],
                     'temperature' => 0.9,
                     'max_tokens' => 512
-                ]);
+                ];
+                $payload = json_encode($portraitReqPayload);
                 $ch = curl_init($openRouterUrl);
                 curl_setopt_array($ch, [
                     CURLOPT_POST => true,
@@ -606,6 +611,9 @@ PROMPT;
                 $orResp = json_decode($resp, true);
                 $portraitOrUsage = $orResp['usage'] ?? null;
                 $promptText = trim($orResp['choices'][0]['message']['content'] ?? '');
+                if (is_array($orResp)) {
+                    ew_openrouter_log_chat_completion('portrait_prompt', $portraitReqPayload, $orResp, []);
+                }
             }
 
             if (!$promptText) {
@@ -971,12 +979,13 @@ WPROMPT;
 
             $openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
             $model = defined("OPENROUTER_MODEL_CHEAP") ? OPENROUTER_MODEL_CHEAP : (defined("OPENROUTER_MODEL") ? OPENROUTER_MODEL : "google/gemini-2.5-flash");
-            $payload = json_encode([
+            $weatherReqPayload = [
                 "model" => $model,
                 "messages" => [["role" => "user", "content" => $weatherPrompt]],
                 "temperature" => 0.8,
                 "max_tokens" => 8192,
-            ]);
+            ];
+            $payload = json_encode($weatherReqPayload);
             $ch = curl_init($openRouterUrl);
             curl_setopt_array($ch, [
                 CURLOPT_POST => true,
@@ -1000,6 +1009,9 @@ WPROMPT;
 
             $data = json_decode($response, true);
             $respText = $data["choices"][0]["message"]["content"] ?? "";
+            if (is_array($data)) {
+                ew_openrouter_log_chat_completion('weather_year', $weatherReqPayload, $data, ['town_id' => $townId]);
+            }
             $weatherData = robustJsonDecode($respText);
 
             if (!$weatherData || empty($weatherData['months'])) {
@@ -1177,12 +1189,13 @@ REPROMPT;
 
             $openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
             $model = defined('OPENROUTER_MODEL_CHEAP') ? OPENROUTER_MODEL_CHEAP : 'google/gemini-2.5-flash';
-            $payload = json_encode([
+            $encounterReqPayload = [
                 'model' => $model,
                 'messages' => [['role' => 'user', 'content' => $rePrompt]],
                 'temperature' => 0.9,
                 'max_tokens' => 2048
-            ]);
+            ];
+            $payload = json_encode($encounterReqPayload);
             $ch = curl_init($openRouterUrl);
             curl_setopt_array($ch, [
                 CURLOPT_POST => true,
@@ -1205,6 +1218,9 @@ REPROMPT;
 
             $data = json_decode($resp, true);
             $respText = $data['choices'][0]['message']['content'] ?? '';
+            if (is_array($data)) {
+                ew_openrouter_log_chat_completion('random_encounter', $encounterReqPayload, $data, ['town_id' => $townId]);
+            }
 
             // Try to extract JSON if wrapped in markdown or extra text
             if (preg_match('/\{[\s\S]*\}/u', $respText, $jsonMatch)) {
@@ -1288,12 +1304,13 @@ LPROMPT;
 
             $openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
             $model = defined('OPENROUTER_MODEL_CHEAP') ? OPENROUTER_MODEL_CHEAP : 'google/gemini-2.5-flash';
-            $payload = json_encode([
+            $lootReqPayload = [
                 'model' => $model,
                 'messages' => [['role' => 'user', 'content' => $lootPrompt]],
                 'temperature' => 0.9,
                 'max_tokens' => 1024
-            ]);
+            ];
+            $payload = json_encode($lootReqPayload);
             $ch = curl_init($openRouterUrl);
             curl_setopt_array($ch, [
                 CURLOPT_POST => true,
@@ -1316,6 +1333,9 @@ LPROMPT;
 
             $data = json_decode($resp, true);
             $respText = $data['choices'][0]['message']['content'] ?? '';
+            if (is_array($data)) {
+                ew_openrouter_log_chat_completion('loot_gen', $lootReqPayload, $data, []);
+            }
             $lootData = robustJsonDecode($respText);
             if (!$lootData)
                 throw new Exception('AI returned invalid loot data. Try again.');
@@ -1411,12 +1431,13 @@ SPROMPT;
 
             $openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
             $model = defined('OPENROUTER_MODEL_CHEAP') ? OPENROUTER_MODEL_CHEAP : 'google/gemini-2.5-flash';
-            $payload = json_encode([
+            $shopReqPayload = [
                 'model' => $model,
                 'messages' => [['role' => 'user', 'content' => $shopPrompt]],
                 'temperature' => 0.9,
                 'max_tokens' => 1536
-            ]);
+            ];
+            $payload = json_encode($shopReqPayload);
             $ch = curl_init($openRouterUrl);
             curl_setopt_array($ch, [
                 CURLOPT_POST => true,
@@ -1439,6 +1460,9 @@ SPROMPT;
 
             $data = json_decode($resp, true);
             $respText = $data['choices'][0]['message']['content'] ?? '';
+            if (is_array($data)) {
+                ew_openrouter_log_chat_completion('magic_shop', $shopReqPayload, $data, ['town_id' => $townId]);
+            }
             $shopData = robustJsonDecode($respText);
             if (!$shopData)
                 throw new Exception('AI returned invalid shop data. Try again.');

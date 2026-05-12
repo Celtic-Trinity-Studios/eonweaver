@@ -913,7 +913,7 @@ export function openTownSetupWizard(townId, onRefresh) {
                 const batch = roster.slice(i, i + BATCH);
                 statusEl.innerHTML = `<span style="color:var(--text-secondary)">🔧 Fleshing out humanoids... (${humanoidFleshed}/${roster.length})</span>`;
                 try {
-                  const fleshRes = await apiIntakeFlesh(townId, batch, rules);
+                  const fleshRes = await apiIntakeFlesh(townId, batch, rules, { seed_master_npc_pool: true });
                   const chars = fleshRes.characters || [];
                   if (chars.length) {
                     await apiApplySimulation(townId, { new_characters: chars }, null, 0);
@@ -1000,7 +1000,7 @@ export function openTownSetupWizard(townId, onRefresh) {
           const batch = roster.slice(i, i + BATCH);
           statusEl.innerHTML = `<span style="color:var(--text-secondary)">🔧 Step 2/2: Fleshing out... (${created}/${roster.length})</span>`;
           try {
-            const fleshRes = await apiIntakeFlesh(townId, batch, rules);
+            const fleshRes = await apiIntakeFlesh(townId, batch, rules, { seed_master_npc_pool: true });
             const chars = fleshRes.characters || [];
             if (chars.length) {
               await apiApplySimulation(townId, { new_characters: chars }, null, 0);

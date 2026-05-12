@@ -342,12 +342,13 @@ OUTPUT (VALID JSON ONLY, no markdown):
 {\"name\":\"{$sn}\",\"race\":\"{$sr}\",\"class\":\"{$sc}\",\"gender\":\"{$sg}\",\"age\":{$sa},\"status\":\"Alive\",\"alignment\":\"{$sal}\",\"role\":\"{$srl}\",\"skills_feats\":\"Skill1, Skill2, Skill3\",\"feats\":\"Feat1, Feat2\",\"reason\":\"...\"}";
     }
 
-    $payload = json_encode([
+    $reqPayloadArr = [
         'model' => $model,
         'messages' => [['role' => 'user', 'content' => $fleshPrompt]],
         'temperature' => 0.9,
         'max_tokens' => 1024,
-    ]);
+    ];
+    $payload = json_encode($reqPayloadArr);
     $ch2 = curl_init($openRouterUrl);
     curl_setopt_array($ch2, [
         CURLOPT_POST => true,
@@ -384,6 +385,10 @@ OUTPUT (VALID JSON ONLY, no markdown):
         $parsed = json_decode($t2clean, true);
     }
     if ($parsed && isset($parsed['name'])) {
+        if (is_array($d2)) {
+            ew_openrouter_log_chat_completion('intake_flesh_single', $reqPayloadArr, $d2, []);
+        }
+
         return $parsed;
     }
 
@@ -484,12 +489,13 @@ OUTPUT: Valid JSON array ONLY, exactly {$n} objects. No markdown or commentary."
 
     $maxTok = min(8192, max(2048, (int) (600 * $n + 900)));
 
-    $payload = json_encode([
+    $reqPayloadArr = [
         'model' => $model,
         'messages' => [['role' => 'user', 'content' => $batchPrompt]],
         'temperature' => 0.85,
         'max_tokens' => $maxTok,
-    ]);
+    ];
+    $payload = json_encode($reqPayloadArr);
     $ch2 = curl_init($openRouterUrl);
     curl_setopt_array($ch2, [
         CURLOPT_POST => true,
@@ -544,17 +550,21 @@ OUTPUT: Valid JSON array ONLY, exactly {$n} objects. No markdown or commentary."
             $usageForBatch[] = $d2['usage'];
         }
         ew_track_intake_flesh_billing($userId, $n, $usageForBatch);
+        if (is_array($d2)) {
+            ew_openrouter_log_chat_completion('intake_flesh_batch', $reqPayloadArr, $d2, []);
+        }
     } else {
         if (!empty($d2['usage'])) {
             $usageForBatch[] = $d2['usage'];
         }
 
-        $payloadRetry = json_encode([
+        $retryPayloadArr = [
             'model' => $model,
             'messages' => [['role' => 'user', 'content' => $batchPrompt . "\n\nREMINDER: Output ONLY a JSON array of exactly {$n} objects. No markdown. Index order must match the stub list."]],
             'temperature' => 0.35,
             'max_tokens' => $maxTok,
-        ]);
+        ];
+        $payloadRetry = json_encode($retryPayloadArr);
         $chR = curl_init($openRouterUrl);
         curl_setopt_array($chR, [
             CURLOPT_POST => true,
@@ -572,6 +582,8 @@ OUTPUT: Valid JSON array ONLY, exactly {$n} objects. No markdown or commentary."
         curl_close($chR);
         resetDB();
 
+        $tR = '';
+        $dR = null;
         if ($codeR === 200 && $respR) {
             $dR = json_decode($respR, true);
             if (!empty($dR['usage'])) {
@@ -583,6 +595,9 @@ OUTPUT: Valid JSON array ONLY, exactly {$n} objects. No markdown or commentary."
 
         if ($parsedArr !== null && count($parsedArr) === $n) {
             ew_track_intake_flesh_billing($userId, $n, $usageForBatch);
+            if (is_array($dR)) {
+                ew_openrouter_log_chat_completion('intake_flesh_batch_retry', $retryPayloadArr, $dR, []);
+            }
         } else {
             foreach ($usageForBatch as $uLog) {
                 ew_ai_log_usage_analytics_row($userId, $uLog, 'intake_flesh');
@@ -1052,12 +1067,13 @@ For each character provide ONLY: name, race, class, gender, age, role, alignment
     $openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
     $model = defined("OPENROUTER_MODEL_CHEAP") ? OPENROUTER_MODEL_CHEAP : (defined("OPENROUTER_MODEL") ? OPENROUTER_MODEL : "google/gemini-2.5-flash");
 
-    $payload = json_encode([
+    $rosterReqPayload = [
         "model" => $model,
         "messages" => [["role" => "user", "content" => $rosterPrompt]],
         "temperature" => 0.95,
         "max_tokens" => 32768
-    ]);
+    ];
+    $payload = json_encode($rosterReqPayload);
     $ch = curl_init($openRouterUrl);
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
@@ -1174,6 +1190,10 @@ For each character provide ONLY: name, race, class, gender, age, role, alignment
         }
     }
 
+    if (is_array($data)) {
+        ew_openrouter_log_chat_completion('intake_roster_ai', $rosterReqPayload, $data, ['creature' => $isCreatureIntake, 'town_id' => $townId]);
+    }
+
     // Bill only after a usable roster exists (fixed price; see pricing.php).
     ew_track_intake_roster_ai_billing($userId, $numArrivals, $data['usage'] ?? null);
 
@@ -1239,6 +1259,16 @@ elseif ($action === 'intake_flesh') {
     $openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
     $model = defined("OPENROUTER_MODEL_CHEAP") ? OPENROUTER_MODEL_CHEAP : (defined("OPENROUTER_MODEL") ? OPENROUTER_MODEL : "google/gemini-2.5-flash");
 
+    $useFlavorPool = true;
+    if (array_key_exists('use_master_npc_pool', $input)) {
+        $useFlavorPool = filter_var($input['use_master_npc_pool'], FILTER_VALIDATE_BOOLEAN);
+    }
+    $seedFlavorPool = filter_var($input['seed_master_npc_pool'] ?? false, FILTER_VALIDATE_BOOLEAN);
+
+    require_once __DIR__ . '/npc_flavor_pool.php';
+    $usedFlavorHashes = ew_npc_flavor_town_history_hashes($townId, $uid);
+    $usedPoolIds = [];
+
     $startTime = time();
     $timeLimit = 180;
     $fleshedChars = [];
@@ -1249,11 +1279,32 @@ elseif ($action === 'intake_flesh') {
     foreach ($groups as $group) {
         $creature = $group['creature'];
         $list = $group['stubs'];
-        for ($gi = 0; $gi < count($list); $gi += $fleshBatchSize) {
+        $nList = count($list);
+        $resolved = array_fill(0, $nList, null);
+
+        if (!$creature && $useFlavorPool) {
+            for ($li = 0; $li < $nList; $li++) {
+                $borrowed = ew_npc_flavor_pool_try_borrow($userId, $townId, $uid, $dndEdition, $list[$li], $usedFlavorHashes, $usedPoolIds);
+                if ($borrowed) {
+                    $resolved[$li] = $borrowed;
+                }
+            }
+        }
+
+        $llmStubs = [];
+        $llmIndexMap = [];
+        for ($li = 0; $li < $nList; $li++) {
+            if ($resolved[$li] === null) {
+                $llmIndexMap[] = $li;
+                $llmStubs[] = $list[$li];
+            }
+        }
+
+        for ($gi = 0; $gi < count($llmStubs); $gi += $fleshBatchSize) {
             if (time() - $startTime >= $timeLimit) {
                 break 2;
             }
-            $chunk = array_slice($list, $gi, $fleshBatchSize);
+            $chunk = array_slice($llmStubs, $gi, $fleshBatchSize);
             $part = ew_intake_flesh_batch_chunk(
                 $chunk,
                 $creature,
@@ -1268,11 +1319,38 @@ elseif ($action === 'intake_flesh') {
                 $openRouterUrl,
                 $userId
             );
-            foreach ($part as $row) {
-                $fleshedChars[] = $row;
+            foreach ($part as $pi => $row) {
+                if (isset($llmIndexMap[$gi + $pi])) {
+                    $origLi = $llmIndexMap[$gi + $pi];
+                    $resolved[$origLi] = $row;
+                    if (is_array($row) && empty($row['is_creature'])) {
+                        $r0 = trim((string) ($row['reason'] ?? ''));
+                        if ($r0 !== '') {
+                            $usedFlavorHashes[ew_npc_flavor_text_hash(
+                                $r0,
+                                trim((string) ($row['skills_feats'] ?? '')),
+                                trim((string) ($row['feats'] ?? ''))
+                            )] = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        for ($li = 0; $li < $nList; $li++) {
+            if ($resolved[$li] !== null && is_array($resolved[$li])) {
+                $fleshedChars[] = $resolved[$li];
             }
         }
     }
+
+    if ($seedFlavorPool) {
+        ew_npc_flavor_pool_seed_from_flesh($userId, $dndEdition, $fleshedChars);
+    }
+    foreach ($fleshedChars as &$fcRow) {
+        unset($fcRow['_from_flavor_pool'], $fcRow['_flavor_pool_id']);
+    }
+    unset($fcRow);
 
     simRespond(['ok' => true, 'characters' => $fleshedChars, 'town_id' => $townId]);
 }
@@ -1791,12 +1869,13 @@ Town: \"{$townName}\"
     $openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
     $model = defined("OPENROUTER_MODEL") ? OPENROUTER_MODEL : "google/gemini-2.5-flash";
 
-    $payload = json_encode([
+    $customReqPayload = [
         "model" => $model,
         "messages" => [["role" => "user", "content" => $customPrompt]],
         "temperature" => 0.9,
         "max_tokens" => 2048
-    ]);
+    ];
+    $payload = json_encode($customReqPayload);
     $ch = curl_init($openRouterUrl);
     curl_setopt_array($ch, [
         CURLOPT_POST => true,
@@ -1844,6 +1923,10 @@ Town: \"{$townName}\"
     }
     $parsed['status'] = $parsed['status'] ?? 'Alive';
     $parsed['age'] = (int) ($parsed['age'] ?? 25);
+
+    if (is_array($data)) {
+        ew_openrouter_log_chat_completion('intake_custom', $customReqPayload, $data, ['town_id' => $townId]);
+    }
 
     ew_track_intake_custom_billing($userId, $data['usage'] ?? null);
 

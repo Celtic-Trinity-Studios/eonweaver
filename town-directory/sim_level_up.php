@@ -115,7 +115,7 @@
 
             // Call OpenRouter
             $openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
-            $payload = [
+            $levelReqPayload = [
                 'model' => defined('OPENROUTER_MODEL_SMART') ? OPENROUTER_MODEL_SMART : (defined('OPENROUTER_MODEL') ? OPENROUTER_MODEL : 'google/gemini-2.5-flash'),
                 'messages' => [['role' => 'user', 'content' => $prompt]],
                 'temperature' => 0.5,
@@ -124,7 +124,7 @@
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_POST => true,
-                CURLOPT_POSTFIELDS => json_encode($payload),
+                CURLOPT_POSTFIELDS => json_encode($levelReqPayload),
                 CURLOPT_HTTPHEADER => array_merge([
                     'Content-Type: application/json',
                     'Authorization: Bearer ' . $apiKey,
@@ -140,6 +140,10 @@
             $decoded = json_decode($resp, true);
             if (isset($decoded['error']))
                 throw new Exception("API error: " . ($decoded['error']['message'] ?? 'Unknown'));
+
+            if (is_array($decoded)) {
+                ew_openrouter_log_chat_completion('level_up', $levelReqPayload, $decoded, ['town_id' => $townId, 'character_id' => $charId]);
+            }
 
             $aiContent = $decoded['choices'][0]['message']['content'] ?? '';
             $aiContent = preg_replace('/^\s*`+\w*\s*/i', '', trim($aiContent));
