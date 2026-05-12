@@ -458,7 +458,7 @@ The headings **How to use this checklist** and **Suggested run order** are meta 
 | [ ] | INF-01 | Local dev stack | Dev machine | 1) `npm run dev` + `php -S localhost:8080`. 2) API proxy works. | `AGENTS.md` |
 | [ ] | INF-02 | Production build | CI / local | 1) `npm run build` produces `live/` with correct `BASE_URL`. 2) Wrong build not used for prod FTP. | `vite.config.live.js` |
 | [ ] | INF-03 | DB migrations | Staging | 1) Run `setup_mysql.php` on copy of prod schema. 2) No destructive surprises; Phase 1 tables created. | `setup_mysql.php` |
-| [ ] | INF-04 | Post-deploy smoke | Staging/prod | 1) Login. 2) Open town. 3) One sim or scribe call. | |
+| [ ] | INF-04 | Post-deploy smoke | Staging/prod | 1) Login. 2) Open town. 3) One sim or scribe call. | **FTP 2026-05-11:** worldscribe.online (live + PHP). Run smoke when convenient. |
 
 ---
 
