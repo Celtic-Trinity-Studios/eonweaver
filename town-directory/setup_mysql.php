@@ -344,6 +344,37 @@ try {
     } catch (Exception $e) { /* exists or unsupported */
     }
 
+    // Town-less per-user sheet library (canonical NPC snapshots for reuse across towns)
+    $pdo->exec("CREATE TABLE IF NOT EXISTS character_sheet_library (
+        id            INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        user_id       INT NOT NULL,
+        campaign_key  INT NOT NULL DEFAULT 0,
+        dnd_edition   VARCHAR(10) NOT NULL DEFAULT '3.5e',
+        name          VARCHAR(255) NOT NULL,
+        name_norm     VARCHAR(190) NOT NULL,
+        sheet_json    LONGTEXT NOT NULL,
+        created_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at    DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_lib_scope_name (user_id, campaign_key, dnd_edition, name_norm),
+        KEY idx_lib_user (user_id),
+        KEY idx_lib_user_campaign (user_id, campaign_key)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $results[] = '✅ character_sheet_library table';
+
+    try {
+        $pdo->exec('ALTER TABLE characters ADD COLUMN library_sheet_id INT UNSIGNED NULL DEFAULT NULL AFTER sheet_source_character_id');
+        $results[] = '✅ Added library_sheet_id column';
+    } catch (Exception $e) {
+        if (strpos($e->getMessage(), 'Duplicate column') !== false) {
+            $results[] = '⏭️ library_sheet_id column already exists';
+        }
+    }
+    try {
+        $pdo->exec('CREATE INDEX idx_chars_library_sheet ON characters (library_sheet_id)');
+        $results[] = '✅ Index idx_chars_library_sheet';
+    } catch (Exception $e) { /* exists or unsupported */
+    }
+
     // Add domains column (Cleric domain selections, e.g. "War, Healing")
     try {
         $pdo->exec("ALTER TABLE characters ADD COLUMN domains VARCHAR(255) DEFAULT '' AFTER feats");
@@ -1727,6 +1758,31 @@ try {
         }
     } catch (Exception $e) {
         $results[] = '⚠️ Admin account: ' . htmlspecialchars($e->getMessage());
+    }
+
+    // -- One-time NPC sheet library backfill from existing characters (copy only; idempotent upserts) --
+    try {
+        $doBackfill = false;
+        if (!empty($_GET['force_backfill_library'])) {
+            $doBackfill = true;
+        } else {
+            $st = $pdo->query("SELECT value FROM site_settings WHERE `key` = 'character_sheet_library_backfilled' LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+            if (!$st || ($st['value'] ?? '') !== '1') {
+                $doBackfill = true;
+            }
+        }
+        if ($doBackfill) {
+            require_once __DIR__ . '/npc_flavor_pool.php';
+            require_once __DIR__ . '/character_sheet_library.php';
+            $bf = ew_sheet_library_backfill_from_all_characters(0);
+            $results[] = '✅ character_sheet_library backfill: scanned ' . (int) $bf['scanned'] . ', upserted ' . (int) $bf['upserted'] . ', skipped ' . (int) $bf['skipped'] . ', errors ' . (int) $bf['errors'];
+            $pdo->prepare('INSERT INTO site_settings (`key`, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value), updated_at = NOW()')
+                ->execute(['character_sheet_library_backfilled', '1']);
+        } else {
+            $results[] = '⏭️ character_sheet_library backfill already completed (add &force_backfill_library=1 to re-run)';
+        }
+    } catch (Throwable $e) {
+        $results[] = '⚠️ character_sheet_library backfill: ' . htmlspecialchars($e->getMessage());
     }
 
 } catch (Exception $e) {

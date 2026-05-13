@@ -5,10 +5,13 @@
  * Usage:
  *   node discord_deploy_notify.mjs path/to/payload.json
  *
- * Payload JSON (same fields the old API expected):
+ * Payload JSON:
  *   deploy_notify: "live" | "dev"
- *   deploy_edition: "both" | "3.5e" | "5e" | … (dev only)
- *   environment, description, deploy_target, app_editions, dev_site_hint?, changes?: string[]
+ *   deploy_edition: "both" | "3.5e" | "5e" | … (dev only — which channel(s) to ping)
+ *   site_url, site_name — optional; used in title/link (defaults by tier)
+ *   description — optional one-line blurb (kept short)
+ *   changes?: string[] — optional; if omitted, recent git log is used (noise commits filtered)
+ *   (legacy keys deploy_target, app_editions, environment are ignored for the embed body)
  *
  * .env.discord:
  *   DISCORD_TOKEN=…
@@ -77,8 +80,19 @@ function gitTopLevel(startDir) {
     }
 }
 
-/** When deploy scripts omit `-Changes`, use recent commits from this repo. */
-function changesFromGit(scriptDir, maxCommits = 12) {
+/** Automated deploy snapshot commits — hide from "Updates" so real work shows through. */
+function isNoiseCommitLine(line) {
+    const s = String(line).trim();
+    if (!s) return true;
+    const subject = s.replace(/^[a-f0-9]{4,40}\s+/, '').trim();
+    if (/^chore\(deploy\)/i.test(subject)) return true;
+    if (/^merge branch\b/i.test(subject)) return true;
+    if (/^merge pull request\b/i.test(subject)) return true;
+    return false;
+}
+
+/** When deploy scripts omit `-Changes`, scan recent git history and drop noise. */
+function changesFromGit(scriptDir, maxFetch = 50) {
     const root = gitTopLevel(scriptDir);
     if (!root) {
         return [];
@@ -86,7 +100,7 @@ function changesFromGit(scriptDir, maxCommits = 12) {
     try {
         const out = execFileSync(
             'git',
-            ['-C', root, 'log', `-${maxCommits}`, '--pretty=format:%h %s'],
+            ['-C', root, 'log', `-${maxFetch}`, '--pretty=format:%h %s'],
             {
                 encoding: 'utf8',
                 maxBuffer: 256 * 1024,
@@ -97,7 +111,8 @@ function changesFromGit(scriptDir, maxCommits = 12) {
             .trim()
             .split(/\r?\n/)
             .map((l) => l.trim())
-            .filter(Boolean);
+            .filter(Boolean)
+            .filter((l) => !isNoiseCommitLine(l));
     } catch {
         return [];
     }
@@ -107,11 +122,17 @@ function resolveChangeLines(payload) {
     const raw = Array.isArray(payload.changes) ? payload.changes : [];
     const fromPayload = raw
         .map((c) => String(typeof c === 'object' ? JSON.stringify(c) : c).trim())
-        .filter(Boolean);
+        .filter(Boolean)
+        .filter((c) => !isNoiseCommitLine(c));
     if (fromPayload.length) {
         return fromPayload;
     }
     return changesFromGit(__dirname);
+}
+
+function truncateField(s, max = 1024) {
+    if (s.length <= max) return s;
+    return `${s.slice(0, max - 24)}\n_…truncated_`;
 }
 
 function devChannelIds(edition) {
@@ -132,68 +153,39 @@ function devChannelIds(edition) {
 function buildEmbed(payload, tier) {
     const isLive = tier === 'live';
     const color = isLive ? 0x2ecc71 : 0xe67e22;
-    const title = isLive ? '🚀 Live — eonweaver.com' : '🧪 Dev server — QA';
-    let banner;
-    if (isLive) {
-        banner = '**Channel:** Live / production\n**Site:** `eonweaver.com` — player-facing.';
-    } else if (payload.dev_site_hint) {
-        banner =
-            '**Channel:** Dev / QA (not live)\n**Deploy surface:** ' +
-            String(payload.dev_site_hint).slice(0, 900);
-    } else {
-        banner = '**Channel:** Dev / QA\n**Site:** `worldscribe.online` — **not** live production.';
-    }
+    const siteUrl = String(
+        payload.site_url || (isLive ? 'https://eonweaver.com/' : 'https://worldscribe.online/')
+    ).trim();
+    const siteName = String(payload.site_name || (isLive ? 'eonweaver.com' : 'worldscribe.online')).trim();
+    const title = isLive ? `🚀 Deployed — ${siteName}` : `🧪 Deployed — ${siteName}`;
 
-    const fields = [
-        {
-            name: isLive ? '🟢 Live vs dev' : '🟠 Dev vs live',
-            value: banner.slice(0, 1024),
-            inline: false,
-        },
-    ];
-
-    if (payload.deploy_target) {
-        fields.push({
-            name: '🎯 Deploy target',
-            value: String(payload.deploy_target).slice(0, 1024),
-            inline: false,
-        });
-    }
-    if (payload.app_editions) {
-        fields.push({
-            name: '📚 Rules editions in this build',
-            value: String(payload.app_editions).slice(0, 1024),
-            inline: false,
-        });
-    }
-
-    const env = (payload.environment || '').trim();
-    const desc = (payload.description || '').trim();
-    const summary = env ? `**Deploy run:** ${env}\n\n${desc}` : desc;
-    if (summary) {
-        fields.push({
-            name: '📋 Summary',
-            value: summary.slice(0, 1024),
-            inline: false,
-        });
-    }
+    const defaultBlurb = isLive
+        ? 'Production build is live (player-facing).'
+        : 'Staging build is live (not production).';
+    const extra = String(payload.description || '').trim();
+    const description = truncateField(
+        [defaultBlurb, extra, siteUrl].filter(Boolean).join('\n'),
+        500
+    );
 
     const changeStrings = resolveChangeLines(payload);
-    const lines = changeStrings.map((c) => `• ${c}`).slice(0, 25);
+    const lines = changeStrings.map((c) => `• ${c}`).slice(0, 18);
     const changeBlock = lines.length
         ? lines.join('\n')
-        : '_No commit history found (run deploy from the git repo, or pass `-Changes` on the deploy script)._';
-    fields.push({
-        name: '🔧 Changes',
-        value: changeBlock.slice(0, 1024),
-        inline: false,
-    });
+        : '_No recent feature/fix commits in git log (or not in a git repo). Deploy still completed._';
 
     const now = new Date();
     return {
         title: title.slice(0, 256),
+        description,
         color,
-        fields,
+        fields: [
+            {
+                name: '📝 Updates',
+                value: truncateField(changeBlock, 1024),
+                inline: false,
+            },
+        ],
         footer: { text: `Eon Weaver • ${now.toISOString().slice(0, 16).replace('T', ' ')} UTC` },
         timestamp: now.toISOString(),
     };

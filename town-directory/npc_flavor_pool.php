@@ -646,7 +646,7 @@ function ew_npc_flavor_pool_seed_from_flesh(int $userId, string $dndEdition, arr
         if (!empty($row['is_creature'])) {
             continue;
         }
-        if (!empty($row['_from_flavor_pool']) || !empty($row['_from_town_character_db']) || !empty($row['_from_town_exact_match']) || !empty($row['_from_community_character_db'])) {
+        if (!empty($row['_from_flavor_pool']) || !empty($row['_from_town_character_db']) || !empty($row['_from_town_exact_match']) || !empty($row['_from_community_character_db']) || !empty($row['_from_sheet_library'])) {
             continue;
         }
         $stubLike = [

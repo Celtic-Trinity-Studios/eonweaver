@@ -1,5 +1,6 @@
 <?php
             require_once __DIR__ . '/sim_prompt_lib.php';
+            require_once __DIR__ . '/sim_arrival_name_pool.php';
             require_once __DIR__ . '/macro_framework_lib.php';
 
             $tId = (int) ($input['town_id'] ?? 0);
@@ -70,10 +71,23 @@
             $charCount = count($chars);
             $historyText = ew_sim_prompt_history_block($hist, $rollingSummary);
 
+            $arrivalNamePool = ew_sim_build_arrival_name_pool(
+                $tId,
+                $userId,
+                $uid,
+                $townCampIdSt ? (int) $townCampIdSt : null,
+                $dndEdition,
+                $chars,
+                $townMetaSt,
+                max(1, (int) $months),
+                []
+            );
+            $arrivalPoolPrompt = ew_sim_arrival_pool_prompt_block($arrivalNamePool);
+
             if ($months === 0) {
-                $prompt = "You are a D&D {$dndEdition} world manager. No time passes. Add new characters or relationships to \"{$tName}\".\n{$macroFoodLineSt}\n\nTown ({$charCount} residents):\nRoster is TOON tabular — npc_id = characters.id.\n(CRITICAL: Do NOT reuse names from this roster. Use highly unique D&D names.)\n{$rosterText}\n\nInstructions: {$instructions}\n\nRespond ONLY valid JSON with fields: summary, new_characters, new_relationships, stat_changes, xp_gains (empty), deaths (MUST be empty), role_changes, history_entry.";
+                $prompt = "You are a D&D {$dndEdition} world manager. No time passes. Add new characters or relationships to \"{$tName}\".\n{$macroFoodLineSt}\n\nTown ({$charCount} residents):\nRoster is TOON tabular — npc_id = characters.id.\n(CRITICAL — NEW ARRIVALS: " . ew_sim_new_arrival_naming_rules() . ")\n{$arrivalPoolPrompt}\n{$rosterText}\n\nInstructions: {$instructions}\n\nRespond ONLY valid JSON with fields: summary, new_characters, new_relationships, stat_changes, xp_gains (empty), deaths (MUST be empty), role_changes, history_entry.";
             } else {
-                $prompt = "You are a D&D {$dndEdition} simulation engine. Simulate {$months} month(s) in \"{$tName}\" (pop {$charCount}).\nSettings: relSpeed={$relSpeed}, birthRate={$birthRate}, deathRule={$popText}, childGrowth={$childGrowth}, conflict={$conflictFreq}\n{$demoTextSt}{$closedBordersTextSt}{$macroFoodLineSt}\nXP: Town difficulty={$diffLevelSt} (x{$diffMultSt}). Use Growth Score tags for XP.\nRules: {$rules}\nInstructions: {$instructions}\n\nRoster (TOON tabular — npc_id = database character id):\n(CRITICAL: Do NOT reuse names from this roster. Use highly unique D&D names.)\n{$rosterText}\n\nHistory:\n{$historyText}\n\nIn changes, prefer numeric character_id from roster for xp_gains, stat_changes, role_changes; character1_id/character2_id for relationships (names optional).\n\nRespond ONLY valid JSON with the standard simulation structure (summary, events, changes:{new_characters,deaths,new_relationships,xp_gains,stat_changes,role_changes}, new_history_entry).";
+                $prompt = "You are a D&D {$dndEdition} simulation engine. Simulate {$months} month(s) in \"{$tName}\" (pop {$charCount}).\nSettings: relSpeed={$relSpeed}, birthRate={$birthRate}, deathRule={$popText}, childGrowth={$childGrowth}, conflict={$conflictFreq}\n{$demoTextSt}{$closedBordersTextSt}{$macroFoodLineSt}\nXP: Town difficulty={$diffLevelSt} (x{$diffMultSt}). Use Growth Score tags for XP.\nRules: {$rules}\nInstructions: {$instructions}\n\nRoster (TOON tabular — npc_id = database character id):\n(CRITICAL — NEW ARRIVALS: " . ew_sim_new_arrival_naming_rules() . ")\n{$arrivalPoolPrompt}\n{$rosterText}\n\nHistory:\n{$historyText}\n\nIn changes, prefer numeric character_id from roster for xp_gains, stat_changes, role_changes; character1_id/character2_id for relationships (names optional).\n\nRespond ONLY valid JSON with the standard simulation structure (summary, events, changes:{new_characters,deaths,new_relationships,xp_gains,stat_changes,role_changes}, new_history_entry).";
             }
 
             // LLM routing: local first, Gemini fallback
@@ -135,6 +149,7 @@
                 'town_id' => $tId,
                 'town_name' => $tName,
                 'simulation' => $sim ?? ['error' => 'Parse failed: ' . json_last_error_msg(), 'raw' => substr($simText, 0, 300)],
+                'arrival_name_pool' => $arrivalNamePool,
             ]);
 
         /* ═══════════════════════════════════════════════════════════

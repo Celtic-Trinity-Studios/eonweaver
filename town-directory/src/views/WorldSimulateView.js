@@ -450,7 +450,10 @@ export default function WorldSimulateView(container) {
 
             const applyMonths = batchPartialDays > 0 ? 0 : batchMonths;
             const applyDays = batchPartialDays > 0 ? batchPartialDays : 0;
-            await apiApplySimulation(town.id, ch, sim.new_history_entry || null, applyMonths, applyDays, { skipCalendar: true })
+            await apiApplySimulation(town.id, ch, sim.new_history_entry || null, applyMonths, applyDays, {
+              skipCalendar: true,
+              arrivalNamePool: result.arrival_name_pool,
+            })
               .then(applyRes => {
                 if (applyRes?.applied?.auto_levelups) {
                   totalAutoLevelups += applyRes.applied.auto_levelups;
@@ -535,7 +538,10 @@ export default function WorldSimulateView(container) {
                 const ch = retry.simulation.changes || {};
                 const retryApplyMonths = batchPartialDays > 0 ? 0 : batchMonths;
                 const retryApplyDays = batchPartialDays > 0 ? batchPartialDays : 0;
-                const retryApplyRes = await apiApplySimulation(town.id, ch, retry.simulation.new_history_entry || null, retryApplyMonths, retryApplyDays, { skipCalendar: true });
+                const retryApplyRes = await apiApplySimulation(town.id, ch, retry.simulation.new_history_entry || null, retryApplyMonths, retryApplyDays, {
+                  skipCalendar: true,
+                  arrivalNamePool: retry.arrival_name_pool,
+                });
                 const births = (ch.births || retry.simulation.births || []).map(b => ({ ...b, town: town.name, townId: town.id, month: batchEnd }));
                 const deaths = (ch.deaths || retry.simulation.deaths || []).map(d => ({ ...d, town: town.name, townId: town.id, month: batchEnd }));
                 const arrivals = (ch.new_characters || retry.simulation.new_characters || []).map(a => ({ ...a, town: town.name, townId: town.id, month: batchEnd }));

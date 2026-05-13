@@ -1,5 +1,6 @@
 <?php
             require_once __DIR__ . '/sim_prompt_lib.php';
+            require_once __DIR__ . '/sim_arrival_name_pool.php';
             require_once __DIR__ . '/weather_daily_lib.php';
             require_once __DIR__ . '/macro_framework_lib.php';
 
@@ -348,7 +349,7 @@ This is character #{$charNum} of {$numArrivals} being added.
 - VARY the class! A town needs farmers, merchants, blacksmiths, bakers, tavern keepers, priests — not just fighters.{$customClassRef}{$namePatternWarning}
 
 ## NAME DIVERSITY (CRITICAL):
-- Every name MUST be unique and sound DIFFERENT from existing names.
+- Every name MUST be unique and sound DIFFERENT from existing names. Duplicate full names are rejected by the server and the character never arrives.
 - Do NOT use the same naming conventions repeatedly (e.g., not all "Stone-" or "Iron-" prefixed dwarven names).
 - Mix naming cultures: some names simple and common (Tom, Mary), some exotic, some with titles or nicknames.
 - NEVER repeat a surname pattern. If there's already a "Stonefist", do NOT create "Stonehand" or "Stonebrow".
@@ -596,6 +597,19 @@ SPROMPT;
                     $settlementBlock2 = "\n## SETTLEMENT TYPE: {$settlementLabel2}\nThis location is a **{$settlementLabel2}**, NOT a standard town. Events, buildings, and new arrivals should be appropriate for this type of settlement. For example: a Cave System might have tunnels instead of streets, a Dungeon might have monster lairs instead of shops.\n";
                 }
 
+                $arrivalNamePool = ew_sim_build_arrival_name_pool(
+                    $townId,
+                    $userId,
+                    $uid,
+                    $townCampId ? (int) $townCampId : null,
+                    $dndEdition,
+                    $characters,
+                    $townMeta2,
+                    max(1, (int) $months),
+                    $customClasses
+                );
+                $arrivalPoolPrompt = ew_sim_arrival_pool_prompt_block($arrivalNamePool);
+
                 $existingBuildings = query('SELECT name, status, build_progress, build_time, description FROM town_buildings WHERE town_id = ?', [$townId], $uid);
                 $buildingLines = [];
                 foreach ($existingBuildings as $b) {
@@ -779,6 +793,8 @@ CAL;
 HINT;
                 }
 
+                $ewSimNewArrivalNaming = ew_sim_new_arrival_naming_rules();
+
                 $prompt = <<<PROMPT
 
 {$demoBlock}
@@ -822,7 +838,9 @@ DM Override: If the DM's instructions below specify exact XP for a character, ho
 - Available races: Human, Elf, Dwarf, Halfling, Gnome, Half-Elf, Half-Orc.{$customRaceRef}
 - Feats: 1 at L1 (Humans 2). Use common SRD feats (Alertness, Toughness, Skill Focus, Dodge, Weapon Focus, Power Attack, etc).
 - Skills: pick appropriate class skills. The system will calculate bonuses.
-- NAMING: Use WILDLY diverse naming styles. Mix Anglo, Celtic, Norse, Mediterranean, Slavic, Arabic, East Asian, African, Polynesian, invented fantasy, and archaic names. NO two new characters should share the same first syllable. Every character MUST have a completely unique first AND last name not seen in the roster.
+- NAMING: Use WILDLY diverse naming styles. Mix Anglo, Celtic, Norse, Mediterranean, Slavic, Arabic, East Asian, African, Polynesian, invented fantasy, and archaic names. NO two new characters in this response should share the same first syllable. Every arrival MUST have a completely unique first name and surname vs the roster (mentally split roster full names into given + family; avoid reusing the same given name as any resident and avoid copy-paste surnames).
+- DUPLICATE POLICY (CRITICAL): {$ewSimNewArrivalNaming}
+{$arrivalPoolPrompt}
 - BANNED NAME SUFFIXES: NEVER use dynasty-style suffixes like II, III, IV, Jr., Sr., "the Younger", "the Elder", "the Bold", "the Fair", "the Red". Every character must have their OWN unique name — they are NOT descended from existing characters.
 - BANNED FIRST NAMES (AI over-uses these — NEVER use): Elara, Lyra, Lyria, Theron, Seraphina, Kael, Aelara, Elowen, Rowan, Thorne, Astra, Kaelen, Isolde, Alaric, Lysander, Cassian, Aurelia, Selene, Eldric, Zephyr, Nyx, Orion, Sylas, Briar, Ember, Vesper, Corvus, Liora, Thalion, Arianne, Caelum, Ravenna, Fenris, Seren, Astrid, Mira, Vex, Kira, Caspian, Faelar, Cerys, Brynjar, Caladwen, Eamon, Rhiannon, Galen, Torin, Eira, Lirael, Aldric, Iris, Wren, Sage, Luna, Celeste, Sorrel, Ash, Raven, Dusk, Storm, Frost, Vale, Wilder, Fern, Ivy, Hazel, Cedar, Linden, Birch, Ignatius, Ilphas, Ielenia, Marden, Gunnar, Katya, Kethra, Glimmer, Godfrey, Lada.
 - BANNED SURNAMES (AI recycles these constantly — NEVER use): Meadowlight, Thornvale, Greenleaf, Fairfax, Brightwood, Darkhollow, Ironforge, Stormwind, Blackthorn, Silverbrook, Goldleaf, Moonshadow, Starweaver, Dawnfire, Nightshade, Willowmere, Oakenshield, Stoneheart, Frostborne, Flamecrest, Sunblade, Shadowmere, Ravenwood, Wolfbane, Hawthorne, Whitmore, Ashford, Blackwood, Redcliffe, Holloway, Dunbar, Reed, Windwalker, Oakshade, Mithrilheart, Sparklefingers, Galanodel, Yarborough, Brooking, Chandler, Thorne, Mossfoot, Holloway.
@@ -1060,7 +1078,8 @@ PROMPT;
                 'ok' => true,
                 'simulation' => $simulation,
                 'town_id' => $townId,
-                'months' => $months
+                'months' => $months,
+                'arrival_name_pool' => $arrivalNamePool ?? [],
             ]);
 
         /* ═══════════════════════════════════════════════════════════

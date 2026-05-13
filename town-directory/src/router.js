@@ -5,7 +5,8 @@
  *   /dev/settings
  *   /dev/sunday/yart (campaign-name/town-name)
  */
-import { getState, subscribe } from './stores/appState.js';
+import { getState, setState, subscribe } from './stores/appState.js';
+import { apiGetTowns } from './api/towns.js';
 import { pingVisit } from './utils/visitMetrics.js';
 
 const routes = {};
@@ -142,33 +143,84 @@ function handleRoute() {
     pingVisit(path);
 }
 
+function normalizeTownsResponse(res) {
+    if (Array.isArray(res)) return res;
+    return res?.towns || [];
+}
+
 /**
  * Listen for data load to resolve a clean URL (slugs) to a numeric town ID.
+ * Bootstrap does not load `towns` into app state — only views like Dashboard do.
+ * A hard refresh on a pretty URL must fetch the town list here or we stay on "Loading Town..." forever.
  */
 function resolveAndNavigateClean({ campaignSlug, townSlug }) {
     window.__pendingCleanRoute = { campaignSlug, townSlug };
-    
-    // Set a "loading" or empty state while we wait for sync
+
     const container = document.getElementById('app-content');
     if (container) container.innerHTML = '<div class="view-empty"><h2>Loading Town...</h2></div>';
 
-    const check = () => {
-        const state = getState();
-        if (!state.towns?.length || !state.currentCampaign) return;
+    let townsFetchInFlight = false;
+    let townsFetchCompleted = false;
 
-        const { campaignSlug, townSlug } = window.__pendingCleanRoute;
-        
-        if (slugify(state.currentCampaign.name) === campaignSlug) {
-            const town = state.towns.find(t => slugify(t.name) === townSlug);
-            if (town) {
-                // Resolved! Unsubscribe and navigate to the technical route (which handleRoute will then rewrite)
-                unsubscribeCheck();
-                delete window.__pendingCleanRoute;
-                // Use replaceState so resolving doesn't add to history
-                window.history.replaceState({}, '', `${getBasePath()}/town/${town.id}`);
-                handleRoute();
-            }
+    const finishNotFound = (message) => {
+        unsubscribeCheck();
+        delete window.__pendingCleanRoute;
+        if (container) {
+            const dash = appHref('dashboard');
+            container.innerHTML = `
+                <div class="view-empty">
+                    <h2>Town not found</h2>
+                    <p>${String(message || '').replace(/</g, '&lt;')}</p>
+                    <p><a href="${dash}">Back to Dashboard</a></p>
+                </div>`;
         }
+    };
+
+    const check = () => {
+        if (!window.__pendingCleanRoute) return;
+
+        const state = getState();
+        if (!state.currentCampaign) return;
+
+        const pending = window.__pendingCleanRoute;
+
+        if (!state.towns?.length) {
+            if (!townsFetchCompleted && !townsFetchInFlight) {
+                townsFetchInFlight = true;
+                apiGetTowns()
+                    .then((res) => {
+                        setState({ towns: normalizeTownsResponse(res) });
+                    })
+                    .catch((err) => {
+                        console.error('resolveAndNavigateClean: towns fetch failed', err);
+                        finishNotFound(err.message || 'Failed to load towns.');
+                    })
+                    .finally(() => {
+                        townsFetchInFlight = false;
+                        townsFetchCompleted = true;
+                        check();
+                    });
+            } else if (townsFetchCompleted) {
+                finishNotFound('No towns in this campaign yet.');
+            }
+            return;
+        }
+
+        if (slugify(state.currentCampaign.name) !== pending.campaignSlug) {
+            finishNotFound('That link does not match your active campaign.');
+            return;
+        }
+
+        const town = state.towns.find((t) => slugify(t.name) === pending.townSlug);
+        if (town) {
+            unsubscribeCheck();
+            delete window.__pendingCleanRoute;
+            window.history.replaceState({}, '', `${getBasePath()}/town/${town.id}`);
+            handleRoute();
+            return;
+        }
+
+        finishNotFound('No town matches that name in your active campaign.');
     };
 
     const unsubscribeCheck = subscribe(check);

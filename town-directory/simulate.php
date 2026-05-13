@@ -366,7 +366,8 @@ try {
                 ? (macroFoodEconomyPromptLine($tId, (int) $townCampIdC) . macroFoodAutonomyDirective($tId, (int) $townCampIdC))
                 : '';
 
-            $base = "D&D {$dndEdition} | Town: \"{$tName}\"{$biomeBlock}{$stBlock} | Month {$monthNum} of {$totalMonths}{$macroFoodChunk}\n{$ctx}{$buildingText}\n\nCURRENT ROSTER (TOON tabular below — npc_id column = characters.id; CRITICAL: Do NOT reuse any names from this roster. Use highly unique D&D names):\n{$rosterText}";
+            $narChunk = ew_sim_new_arrival_naming_rules();
+            $base = "D&D {$dndEdition} | Town: \"{$tName}\"{$biomeBlock}{$stBlock} | Month {$monthNum} of {$totalMonths}{$macroFoodChunk}\n{$ctx}{$buildingText}\n\nCURRENT ROSTER (TOON tabular below — npc_id column = characters.id). NEW ARRIVALS / NAMING: {$narChunk}\n{$rosterText}";
 
             // Category-specific prompt
             switch ($category) {
@@ -392,11 +393,11 @@ Respond ONLY with valid JSON:
                     $genRulesPop = json_decode($townMeta['gen_rules'] ?? '{}', true) ?: [];
                     $closedBordersPop = !empty($genRulesPop['closed_borders']);
                     if ($numArrivals > 0) {
-                        $arrivalInstruction = "IMPORTANT: EXACTLY {$numArrivals} new people are arriving in this town. Your 'arrivals' array MUST contain EXACTLY {$numArrivals} entries. Use highly unique, diverse, and rare authentic D&D fantasy names (e.g. Kaelen Vane, Vexia Nor). NEVER use real-world names. Do NOT repeat names from the Roster. Do NOT generate any deaths.{$demoText} All new characters MUST start at exactly Level 1 (0 XP) unless the additional instructions say otherwise.";
+                        $arrivalInstruction = "IMPORTANT: EXACTLY {$numArrivals} new people are arriving in this town. Your 'arrivals' array MUST contain EXACTLY {$numArrivals} entries. " . ew_sim_new_arrival_naming_rules() . " Use names that sound like real people from varied cultures (not a single \"fantasy\" register). Do NOT generate any deaths.{$demoText} All new characters MUST start at exactly Level 1 (0 XP) unless the additional instructions say otherwise.";
                     } elseif ($closedBordersPop) {
                         $arrivalInstruction = "CLOSED BORDERS: This town has CLOSED BORDERS. NO new arrivals are allowed. The arrivals array MUST be EMPTY unless a BIRTH occurs from an existing romantic couple. Birth rate: {$birthRate}. BIRTHS: Only if a romantic couple has existed for 9+ months AND race gestation is met. Death rule: {$popText}. Keep deaths rare unless instructed otherwise.{$demoText}";
                     } else {
-                        $arrivalInstruction = "Birth rate: {$birthRate}. Death rule: {$popText}. Who naturally arrives, is born, or dies this month? BIRTHS: Only if a romantic couple has existed for 9+ months AND race gestation is met (Human 9mo, Elf 12mo, Dwarf 12mo). Do NOT invent births for couples that just formed. One-night-stand children are uncommon. Use highly unique D&D fantasy names. Do NOT repeat names from the Roster. Keep deaths rare unless instructed otherwise.{$demoText} All new characters MUST start at exactly Level 1 (0 XP) unless the additional instructions say otherwise.";
+                        $arrivalInstruction = "Birth rate: {$birthRate}. Death rule: {$popText}. Who naturally arrives, is born, or dies this month? BIRTHS: Only if a romantic couple has existed for 9+ months AND race gestation is met (Human 9mo, Elf 12mo, Dwarf 12mo). Do NOT invent births for couples that just formed. One-night-stand children are uncommon. " . ew_sim_new_arrival_naming_rules() . " Keep deaths rare unless instructed otherwise.{$demoText} All new characters MUST start at exactly Level 1 (0 XP) unless the additional instructions say otherwise.";
                     }
                     $prompt = "{$base}\n{$arrivalInstruction}\nInstructions: {$instructions}\n\nFull stats will be generated per-character separately. Respond with ONLY valid JSON, no extra text:\n{\"arrivals\":[{\"name\":\"[D&D NAME]\",\"race\":\"\",\"class\":\"\",\"age\":0,\"gender\":\"\",\"reason_for_arrival\":\"\"}],\"deaths\":[{\"name\":\"\",\"cause\":\"\"}]}";
                     break;

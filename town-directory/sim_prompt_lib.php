@@ -82,6 +82,20 @@ if (!function_exists('ew_sim_budget_history_max_older_lines')) {
     }
 }
 
+if (!function_exists('ew_sim_new_arrival_naming_rules')) {
+    /**
+     * Shared LLM instructions: unique full names + high onomastic variety (town / world / main sim).
+     */
+    function ew_sim_new_arrival_naming_rules(): string
+    {
+        return 'Every new arrival full name must be unique vs the roster and unique within new_characters in this response (case-insensitive). '
+            . 'The server rejects duplicates — they never move in. Before emitting JSON, compare each proposed full name to every roster name. '
+            . 'Maximize variety: rotate real-world naming traditions (not only English); mix short plain names with longer distinctive ones; use '
+            . 'patronymics, particles (de, von, al-, bin), hyphens, and uncommon spellings. Do not reuse given names or surname stems already on '
+            . 'the roster. Do NOT use Jr., II, III, or epithets like "the Bold" to dodge collisions.';
+    }
+}
+
 if (!function_exists('ew_sim_roster_spouse_cell')) {
     /** Single cell for spouse / partner columns in TOON roster rows. */
     function ew_sim_roster_spouse_cell(array $c): string

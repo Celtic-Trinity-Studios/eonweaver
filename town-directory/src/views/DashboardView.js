@@ -247,7 +247,9 @@ async function runWorldSim(content, towns, months, rules, instructions) {
       const action = await showTownResult(currentEl, town, sim, newChars, deaths, events, months);
 
       if (action === 'apply') {
-        await apiApplySimulation(town.id, sim.changes, sim.new_history_entry, months);
+        await apiApplySimulation(town.id, sim.changes, sim.new_history_entry, months, 0, {
+          arrivalNamePool: result.arrival_name_pool,
+        });
         if (statusEl) { statusEl.textContent = 'Applied'; statusEl.classList.add('wsim-applied'); }
         applied++;
       } else {

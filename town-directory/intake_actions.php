@@ -1269,6 +1269,7 @@ elseif ($action === 'intake_flesh') {
     }
 
     require_once __DIR__ . '/npc_flavor_pool.php';
+    require_once __DIR__ . '/character_sheet_library.php';
     $townBorrowBlocks = ew_npc_flavor_town_borrow_blocklists($townId, $uid);
     $usedFlavorHashes = $townBorrowBlocks['text_hashes'];
     $usedFullHashes = $townBorrowBlocks['full_hashes'];
@@ -1293,6 +1294,20 @@ elseif ($action === 'intake_flesh') {
                 $exact = ew_intake_exact_town_character_to_flesh($townId, $uid, $list[$li], $usedFlavorHashes, $usedFullHashes);
                 if ($exact) {
                     $resolved[$li] = $exact;
+                    continue;
+                }
+                $libBorrow = ew_intake_sheet_library_try_borrow(
+                    $userId,
+                    $intakeCampId,
+                    $townId,
+                    $uid,
+                    $dndEdition,
+                    $list[$li],
+                    $usedFlavorHashes,
+                    $usedFullHashes
+                );
+                if ($libBorrow) {
+                    $resolved[$li] = $libBorrow;
                     continue;
                 }
                 if ($useFlavorPool) {
@@ -1391,7 +1406,7 @@ elseif ($action === 'intake_flesh') {
         ew_npc_flavor_pool_seed_from_flesh($userId, $dndEdition, $fleshedChars);
     }
     foreach ($fleshedChars as &$fcRow) {
-        unset($fcRow['_from_flavor_pool'], $fcRow['_flavor_pool_id'], $fcRow['_from_town_character_db'], $fcRow['_from_town_exact_match'], $fcRow['_from_community_character_db']);
+        unset($fcRow['_from_flavor_pool'], $fcRow['_flavor_pool_id'], $fcRow['_from_town_character_db'], $fcRow['_from_town_exact_match'], $fcRow['_from_community_character_db'], $fcRow['_from_sheet_library']);
     }
     unset($fcRow);
 

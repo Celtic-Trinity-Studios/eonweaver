@@ -1142,6 +1142,48 @@
     max-width: 900px;
 }
 
+.view-simulation-with-log {
+    max-width: none;
+    width: 100%;
+}
+
+.sim-layout {
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+    width: 100%;
+}
+
+.sim-main-column {
+    flex: 1;
+    min-width: 0;
+}
+
+.sim-debug-sidebar {
+    flex: 0 0 clamp(280px, 32vw, 420px);
+    width: clamp(280px, 32vw, 420px);
+    position: sticky;
+    top: 0.75rem;
+    align-self: flex-start;
+    max-height: calc(100vh - 1.5rem);
+    display: flex;
+    flex-direction: column;
+}
+
+@media (max-width: 960px) {
+    .sim-layout {
+        flex-direction: column;
+    }
+
+    .sim-debug-sidebar {
+        position: relative;
+        top: 0;
+        flex: 1 1 auto;
+        width: 100%;
+        max-height: none;
+    }
+}
+
 .view-simulation .dash-card {
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -1687,29 +1729,46 @@
     border-left: 2px solid var(--border);
 }
 
-/* ── Simulation Debug Log ────────────────────────────────── */
+/* ── Simulation Debug Log (sidebar on wide screens) ─────── */
 .sim-debug-log {
-    margin-top: 1rem;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    margin-top: 0;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    padding: .75rem 1rem;
+    padding: 0.65rem 0.75rem;
 }
 
-.sim-debug-log h3 {
-    font-size: .85rem;
-    color: var(--text-muted);
-    margin-bottom: .5rem;
+.sim-debug-log-header {
     display: flex;
     align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    margin-bottom: 0.4rem;
+}
+
+.sim-debug-log-header h3 {
+    font-size: 0.8rem;
+    color: var(--text-muted);
+    margin: 0;
+    font-weight: 600;
 }
 
 .sim-log-entries {
-    max-height: 250px;
+    flex: 1;
+    min-height: min(70vh, 560px);
+    max-height: min(70vh, 560px);
     overflow-y: auto;
-    background: rgba(0, 0, 0, .2);
+    overflow-x: auto;
+    background: rgba(0, 0, 0, .22);
     border-radius: var(--radius-sm);
-    padding: .5rem;
+    padding: 0.5rem 0.6rem;
+    font-size: 0.8rem;
+    line-height: 1.35;
 }
 
 /* ── Error state ─────────────────────────────────────────── */

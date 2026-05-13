@@ -103,7 +103,7 @@ Write-Host "Target: $ftpUri (PRODUCTION, user $ftpUser)" -ForegroundColor Gray
 
 # 1. Upload PHP backend files
 Write-Host "`n[1/6] Uploading PHP backend files..." -ForegroundColor Yellow
-$phpFiles = @("api.php", "db.php", "setup_mysql.php", "config.php", "simulate.php", "sim_apply.php", "sim_run.php", "sim_plan.php", "sim_prompt_lib.php", "toon_lib.php", "weather_daily_lib.php", "sim_single_town.php", "sim_world.php", "sim_level_up.php", "intake_actions.php", "scribe_actions.php", "auth.php", "upload_portrait.php", "upload_world_map.php", "upload_content.php", "helpers.php", "llm_training_dataset.php", "npc_flavor_pool.php", "pricing.php", "llm_local.php", "import_srd.php", "import_5e_srd.php", "setup_srd_dbs.php", "migrate_srd.php", "reset_app_data.php", "discord.php", "discord_member_sync_lib.php", "macro_framework_lib.php", "tier_policy.php", "tier_limits.php", "tier_economics.php", "signup_policy.php", "smtp_mail.php", "verify_email.php", "calendar_advance_lib.php", "calendar_display_lib.php", "metrics_lib.php", "sitemap.php", "user_db.php")
+$phpFiles = @("api.php", "db.php", "setup_mysql.php", "config.php", "simulate.php", "sim_apply.php", "sim_run.php", "sim_plan.php", "sim_prompt_lib.php", "sim_arrival_name_pool.php", "toon_lib.php", "weather_daily_lib.php", "sim_single_town.php", "sim_world.php", "sim_level_up.php", "intake_actions.php", "scribe_actions.php", "auth.php", "upload_portrait.php", "upload_world_map.php", "upload_content.php", "helpers.php", "llm_training_dataset.php", "npc_flavor_pool.php", "character_sheet_library.php", "pricing.php", "llm_local.php", "import_srd.php", "import_5e_srd.php", "setup_srd_dbs.php", "migrate_srd.php", "reset_app_data.php", "discord.php", "discord_member_sync_lib.php", "macro_framework_lib.php", "tier_policy.php", "tier_limits.php", "tier_economics.php", "signup_policy.php", "smtp_mail.php", "verify_email.php", "calendar_advance_lib.php", "calendar_display_lib.php", "metrics_lib.php", "sitemap.php", "user_db.php")
 foreach ($f in $phpFiles) {
     $path = Join-Path $localRoot $f
     if (Test-Path $path) {
@@ -153,10 +153,8 @@ $tmpNotify = $null
 try {
     $notify = @{
         deploy_notify = "live"
-        environment   = "Production (eonweaver.com)"
-        description   = 'New build on **live** eonweaver.com (player-facing production).'
-        deploy_target = "Live · https://eonweaver.com/ · root · one SPA for all in-app rule editions"
-        app_editions  = "3.5e · 5e · 5e2024 in this build (players choose in the app)"
+        site_url      = "https://eonweaver.com/"
+        site_name     = "eonweaver.com"
     }
     if ($Changes.Count -gt 0) { $notify.changes = $Changes }
     $tmpNotify = Join-Path $env:TEMP ("ew-deploy-notify-" + [Guid]::NewGuid().ToString() + ".json")

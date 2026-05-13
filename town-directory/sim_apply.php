@@ -1,6 +1,8 @@
 <?php
             require_once __DIR__ . '/sim_prompt_lib.php';
+            require_once __DIR__ . '/sim_arrival_name_pool.php';
             require_once __DIR__ . '/npc_flavor_pool.php';
+            require_once __DIR__ . '/character_sheet_library.php';
 
             $townId = (int) ($input['town_id'] ?? 0);
             $changes = $input['changes'] ?? [];
@@ -13,6 +15,14 @@
 
             $applied = ['new_characters' => 0, 'deaths' => 0, 'relationships' => 0, 'xp' => 0, 'stats' => 0, 'roles' => 0, 'history' => 0, 'arrivals_failed' => [], 'deaths_failed' => [], 'death_details' => []];
             $debugInfo = []; // Temporary debug output
+            $dbOpsLog = [];
+            $applyErrLog = [];
+            $logDbOp = function (string $line) use (&$dbOpsLog) {
+                $dbOpsLog[] = $line;
+            };
+            $logApplyErr = function (string $context, string $message, array $extra = []) use (&$applyErrLog) {
+                $applyErrLog[] = array_merge(['context' => $context, 'message' => $message], $extra);
+            };
 
             // Increment months_in_town for all living characters in this town
             // Keep raw value: 0 = intake only (no XP/level-ups), 1+ = simulated months
@@ -38,7 +48,27 @@
             }
 
             if (!empty($changes['new_characters'])) {
-                // â”€â”€ D&D 3.5e Calculation Tables â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+                $arrivalPoolRaw = $input['arrival_name_pool'] ?? null;
+                if (!is_array($arrivalPoolRaw)) {
+                    $arrivalPoolRaw = null;
+                }
+                $arrivalPoolIdx = 0;
+
+                $townCampRowsLib = query(
+                    'SELECT t.campaign_id, COALESCE(c.dnd_edition, ?) AS _lib_dnd FROM towns t LEFT JOIN campaigns c ON c.id = t.campaign_id WHERE t.id = ? LIMIT 1',
+                    [$dndEdition, $townId],
+                    $uid
+                );
+                $libCampaignId = null;
+                $dndEditionForLibrary = $dndEdition;
+                if (!empty($townCampRowsLib)) {
+                    if (!empty($townCampRowsLib[0]['campaign_id'])) {
+                        $libCampaignId = (int) $townCampRowsLib[0]['campaign_id'];
+                    }
+                    $dndEditionForLibrary = trim((string) ($townCampRowsLib[0]['_lib_dnd'] ?? $dndEdition)) ?: $dndEdition;
+                }
+
+                // D&D 3.5e calculation tables
                 $hitDice = [
                     'Commoner' => 4,
                     'Expert' => 6,
@@ -140,22 +170,54 @@
                 }
                 // $babHalf = everything else (Wizard, Sorcerer, Commoner)
 
+                $reservedNameLower = [];
+                try {
+                    $nameRows = query('SELECT LOWER(TRIM(name)) AS n FROM characters WHERE town_id = ?', [$townId], $uid);
+                    foreach ($nameRows as $nr) {
+                        $nk = (string) ($nr['n'] ?? '');
+                        if ($nk !== '') {
+                            $reservedNameLower[$nk] = true;
+                        }
+                    }
+                } catch (Exception $e) { /* non-fatal */
+                }
+
                 foreach ($changes['new_characters'] as $nc) {
                     $charName = trim($nc['name'] ?? 'Unknown');
                     if (!$charName || $charName === 'Unknown')
                         continue;
+
+                    if ($arrivalPoolRaw !== null && ew_sim_arrival_should_bind_server_name($nc)) {
+                        while ($arrivalPoolIdx < count($arrivalPoolRaw)) {
+                            $slot = $arrivalPoolRaw[$arrivalPoolIdx++];
+                            $cand = trim((string) ($slot['name'] ?? ''));
+                            if ($cand === '') {
+                                continue;
+                            }
+                            $clk = strtolower($cand);
+                            if (!isset($reservedNameLower[$clk])) {
+                                $charName = $cand;
+                                if (!empty($slot['_library_sheet_id'])) {
+                                    $nc['_library_sheet_id'] = (int) $slot['_library_sheet_id'];
+                                }
+                                break;
+                            }
+                        }
+                    }
+
                     // Strip dynasty-style suffixes the AI might still generate
                     $charName = preg_replace('/\s+(II|III|IV|V|VI|VII|VIII|IX|X|Jr\.|Sr\.|the Younger|the Elder|the Bold|the Quiet|the Red|the Fair)\s*$/i', '', $charName);
                     $charName = trim($charName);
 
-                    // Dedup: reject duplicates — AI must generate unique names
-                    $existing = query('SELECT id FROM characters WHERE town_id = ? AND name = ? LIMIT 1', [$townId, $charName], $uid);
-                    if (!empty($existing)) {
+                    // Reject vs roster + other arrivals in this same apply (case-insensitive); no rename-on-apply
+                    $lk = strtolower(trim($charName));
+                    if (isset($reservedNameLower[$lk])) {
                         $applied['arrivals_failed'][] = $charName . ' (duplicate name — skipped)';
                         continue;
                     }
+                    $reservedNameLower[$lk] = true;
+                    $nc['name'] = $charName;
 
-                    $aiRawData = json_encode($nc, JSON_UNESCAPED_UNICODE);
                     $isCreature = !empty($nc['is_creature']);
 
                     $classStr = $nc['class'] ?? 'Commoner 1';
@@ -291,12 +353,18 @@
                             $sid = (int) $nc['_source_character_id'];
                             $sheetSourceId = $sid > 0 ? $sid : null;
                         }
-                        execute('INSERT INTO characters (town_id, name, race, class, level, gender, age, status, alignment,
+                        $librarySheetId = null;
+                        if (!empty($nc['_library_sheet_id'])) {
+                            $lid = (int) $nc['_library_sheet_id'];
+                            $librarySheetId = $lid > 0 ? $lid : null;
+                        }
+                        $aiRawData = json_encode($nc, JSON_UNESCAPED_UNICODE);
+                        $newCharSqlId = insertAndGetId('INSERT INTO characters (town_id, name, race, class, level, gender, age, status, alignment,
                             hp, hd, ac, init, spd, grapple, atk, saves,
                             str, dex, con, int_, wis, cha,
                             spouse, spouse_label, role, skills_feats, feats, gear,
-                            languages, xp, cr, history, sheet_source_character_id, ai_data)
-                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+                            languages, xp, cr, history, sheet_source_character_id, library_sheet_id, ai_data)
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
                             $townId, $charName, $race, $className, $level,
                             $nc['gender'] ?? '', (int) ($nc['age'] ?? 0),
                             $nc['status'] ?? 'Alive', $nc['alignment'] ?? '',
@@ -307,13 +375,15 @@
                             is_array($nc['skills_feats'] ?? '') ? implode(', ', $nc['skills_feats']) : ($nc['skills_feats'] ?? ''),
                             is_array($nc['feats'] ?? '') ? implode(', ', $nc['feats']) : ($nc['feats'] ?? ''),
                             is_array($nc['gear'] ?? '') ? implode(', ', $nc['gear']) : ($nc['gear'] ?? ''),
-                            $languages, 0, $cr, $historyText, $sheetSourceId, $aiRawData
+                            $languages, 0, $cr, $historyText, $sheetSourceId, $librarySheetId, $aiRawData
                         ], $uid);
+                        $logDbOp('INSERT characters id=' . $newCharSqlId . ' town=' . $townId . ' name=' . $charName . ' ' . $race . ' ' . $className . ' L' . $level . ($isCreature ? ' [creature]' : '') . ($librarySheetId ? ' library_sheet_id=' . $librarySheetId : ''));
                         $charInserted = true;
                     } catch (Exception $e) {
+                        $logApplyErr('character_insert_full_row', $e->getMessage(), ['name' => $charName]);
                         try {
-                            execute('INSERT INTO characters (town_id, name, race, class, level, gender, age, status, alignment, hp, ac, str, dex, con, int_, wis, cha, spouse, spouse_label, role, skills_feats, feats, gear, sheet_source_character_id, ai_data)
-                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+                            $newCharSqlId = insertAndGetId('INSERT INTO characters (town_id, name, race, class, level, gender, age, status, alignment, hp, ac, str, dex, con, int_, wis, cha, spouse, spouse_label, role, skills_feats, feats, gear, sheet_source_character_id, library_sheet_id, ai_data)
+                                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
                                 $townId, $charName, $race, $className, $level,
                                 $nc['gender'] ?? '', (int) ($nc['age'] ?? 0),
                                 $nc['status'] ?? 'Alive', $nc['alignment'] ?? '',
@@ -324,12 +394,18 @@
                                 is_array($nc['feats'] ?? '') ? implode(', ', $nc['feats']) : ($nc['feats'] ?? ''),
                                 is_array($nc['gear'] ?? '') ? implode(', ', $nc['gear']) : ($nc['gear'] ?? ''),
                                 $sheetSourceId,
+                                $librarySheetId,
                                 $aiRawData
                             ], $uid);
+                            $logDbOp('INSERT characters (fallback row) id=' . $newCharSqlId . ' town=' . $townId . ' name=' . $charName);
                             $charInserted = true;
                         } catch (Exception $e2) {
                             $applied['arrivals_failed'][] = $charName . ' (' . $e2->getMessage() . ')';
+                            $logApplyErr('character_insert_fallback', $e2->getMessage(), ['name' => $charName]);
                         }
+                    }
+                    if (!$charInserted) {
+                        unset($reservedNameLower[$lk]);
                     }
                     if ($charInserted) {
                         $applied['new_characters']++;
@@ -363,6 +439,13 @@
                                 $cr,
                                 $historyText
                             );
+                            try {
+                                $libRow = query('SELECT * FROM characters WHERE town_id = ? AND name = ? ORDER BY id DESC LIMIT 1', [$townId, $charName], $uid);
+                                if (!empty($libRow)) {
+                                    ew_sheet_library_upsert_from_character_row($userId, $libCampaignId, $dndEditionForLibrary, $libRow[0], $uid);
+                                }
+                            } catch (Throwable $e) { /* non-fatal */
+                            }
                         }
 
                         // ── Auto-add Birth to Family Tree ──
@@ -404,13 +487,18 @@
                                     if (!empty($pRows)) {
                                         $parentId = (int) $pRows[0]['id'];
                                         try {
-                                            execute(
+                                            $famRows = execute(
                                                 'INSERT INTO character_relationships (char1_id, char2_id, rel_type, disposition, reason) VALUES (?,?,?,?,?)
                                                  ON DUPLICATE KEY UPDATE rel_type=VALUES(rel_type), reason=VALUES(reason)',
                                                 [$parentId, $newBornId, 'family', 10, 'parent'],
                                                 $uid
                                             );
-                                        } catch (Exception $e) { /* non-fatal */ }
+                                            if ($famRows > 0) {
+                                                $logDbOp('INSERT character_relationships birth parent_id=' . $parentId . ' child_id=' . $newBornId . ' (rows=' . $famRows . ')');
+                                            }
+                                        } catch (Exception $e) {
+                                            $logApplyErr('birth_parent_relationship', $e->getMessage(), ['parent_id' => $parentId, 'child_id' => $newBornId]);
+                                        }
                                     }
                                 }
                             }
@@ -492,6 +580,7 @@
                         $equippedShield = false;
                         $sortOrder = 0;
                         $gearNames = []; // Track for the gear text field
+                        $equipIns = 0;
 
                         foreach ($shopItems as $itemLookup) {
                             $lookupName = strtolower(trim($itemLookup));
@@ -572,8 +661,13 @@
                                     [$newCharId, $itemName, $itemType, $slot, 1, $weight, $props, $srdRef, $equipped, $sortOrder],
                                     $uid
                                 );
+                                $equipIns++;
                             } catch (Exception $eqErr) { /* non-fatal */
                             }
+                        }
+
+                        if ($equipIns > 0) {
+                            $logDbOp('INSERT character_equipment ×' . $equipIns . ' rows for character_id=' . $newCharId);
                         }
 
                         // Update the character's gear text field and recalc AC/ATK
@@ -622,6 +716,7 @@
                                     $applied['deaths']++;
                                     $alreadyKilled[] = $lc['id'];
                                     $applied['death_details'][] = ['name' => $lc['name'], 'reason' => $reason, 'match' => 'exact'];
+                                    $logDbOp('UPDATE characters id=' . $lc['id'] . ' status=Deceased name=' . $lc['name']);
                                     continue 2; // Next death entry
                                 }
                             }
@@ -700,8 +795,10 @@
                                 'match' => $matchType,
                                 'score' => $bestScore
                             ];
+                            $logDbOp('UPDATE characters id=' . $bestChar['id'] . ' status=Deceased name=' . $bestChar['name'] . ' (criteria match)');
                         } else {
                             $applied['deaths_failed'][] = "Matched {$bestChar['name']} but UPDATE failed";
+                            $logApplyErr('death_update_zero_rows', 'UPDATE characters status=Deceased affected 0 rows', ['id' => (int) $bestChar['id'], 'name' => $bestChar['name']]);
                         }
                     } else {
                         $criteriaDesc = $reason;
@@ -976,7 +1073,10 @@
                             $uid
                         );
                         $applied['memories']++;
-                    } catch (Exception $e) { /* non-fatal */
+                        $memPreview = substr(str_replace(["\n", "\r"], ' ', (string) ($mem['content'] ?? '')), 0, 80);
+                        $logDbOp('INSERT character_memories char_id=' . $cid . ' type=' . ($mem['type'] ?? 'event') . ' "' . $memPreview . '"');
+                    } catch (Exception $e) {
+                        $logApplyErr('character_memory', $e->getMessage(), ['character_id' => $cid]);
                     }
                 }
             }
@@ -996,7 +1096,7 @@
                         if (empty($existing)) {
                             $leaderId = !empty($fc['character_name']) ? $resolveCharId($fc['character_name']) : null;
                             try {
-                                insertAndGetId(
+                                $newFactionId = insertAndGetId(
                                     'INSERT INTO factions (town_id, name, faction_type, description, leader_id, influence, status) VALUES (?,?,?,?,?,?,?)',
                                     [
                                         $townId,
@@ -1010,7 +1110,9 @@
                                     $uid
                                 );
                                 $applied['factions']++;
-                            } catch (Exception $e) { /* non-fatal */
+                                $logDbOp('INSERT factions id=' . $newFactionId . ' town=' . $townId . ' name=' . $factionName);
+                            } catch (Exception $e) {
+                                $logApplyErr('faction_create', $e->getMessage(), ['faction' => $factionName]);
                             }
                         }
                     } elseif ($action === 'add_member') {
@@ -1021,14 +1123,18 @@
                         if (!empty($factionRows)) {
                             $fid = (int) $factionRows[0]['id'];
                             try {
-                                execute(
+                                $fmRows = execute(
                                     'INSERT INTO faction_members (faction_id, character_id, role, loyalty) VALUES (?,?,?,?)
                                      ON DUPLICATE KEY UPDATE role=VALUES(role), loyalty=VALUES(loyalty)',
                                     [$fid, $cid, $fc['role'] ?? 'member', 5],
                                     $uid
                                 );
                                 $applied['factions']++;
-                            } catch (Exception $e) { /* non-fatal */
+                                if ($fmRows > 0) {
+                                    $logDbOp('INSERT faction_members faction_id=' . $fid . ' character_id=' . $cid . ' (rows=' . $fmRows . ')');
+                                }
+                            } catch (Exception $e) {
+                                $logApplyErr('faction_member', $e->getMessage(), ['faction_id' => $fid, 'character_id' => $cid]);
                             }
                         }
                     } elseif ($action === 'remove_member') {
@@ -1065,6 +1171,8 @@
                             ],
                             $uid
                         );
+                        $logDbOp('INSERT town_incidents id=' . $incId . ' town=' . $townId . ' type=' . ($inc['type'] ?? 'general'));
+                        $partIns = 0;
                         // Add participants
                         if (!empty($inc['perpetrator'])) {
                             $pid = $resolveCharId($inc['perpetrator']);
@@ -1074,6 +1182,7 @@
                                     [$incId, $pid, 'perpetrator', 1],
                                     $uid
                                 );
+                                $partIns++;
                             }
                         }
                         if (!empty($inc['victim'])) {
@@ -1084,6 +1193,7 @@
                                     [$incId, $vid, 'victim', 0],
                                     $uid
                                 );
+                                $partIns++;
                             }
                         }
                         if (!empty($inc['witnesses']) && is_array($inc['witnesses'])) {
@@ -1095,11 +1205,16 @@
                                         [$incId, $wid, 'witness', 0],
                                         $uid
                                     );
+                                    $partIns++;
                                 }
                             }
                         }
+                        if ($partIns > 0) {
+                            $logDbOp('INSERT incident_participants ×' . $partIns . ' for incident_id=' . $incId);
+                        }
                         $applied['incidents']++;
-                    } catch (Exception $e) { /* non-fatal */
+                    } catch (Exception $e) {
+                        $logApplyErr('town_incident', $e->getMessage(), ['summary' => substr($summary, 0, 120)]);
                     }
                 }
             }
@@ -1139,16 +1254,22 @@
                             $uid
                         );
                         $applied['relationships']++;
+                        $logDbOp('UPDATE characters spouse fields: ' . $name1 . ' ↔ ' . $name2);
 
                         if ($cid1 && $cid2) {
                             try {
-                                execute(
+                                $spRel = execute(
                                     'INSERT INTO character_relationships (char1_id, char2_id, rel_type, disposition, reason) VALUES (?,?,?,?,?)
                                      ON DUPLICATE KEY UPDATE rel_type=VALUES(rel_type), reason=VALUES(reason)',
                                     [$cid1, $cid2, 'family', 10, 'spouse'],
                                     $uid
                                 );
-                            } catch (Exception $e) { /* non-fatal, may already exist */ }
+                                if ($spRel > 0) {
+                                    $logDbOp('UPSERT character_relationships spouse char1=' . $cid1 . ' char2=' . $cid2 . ' (rows=' . $spRel . ')');
+                                }
+                            } catch (Exception $e) {
+                                $logApplyErr('relationship_spouse_row', $e->getMessage(), ['char1' => $cid1, 'char2' => $cid2]);
+                            }
                         }
                     }
 
@@ -1163,13 +1284,17 @@
                             $disposition = $dispMap[$mappedType] ?? 0;
                         }
                         try {
-                            execute(
+                            $relRows = execute(
                                 'INSERT INTO character_relationships (char1_id, char2_id, rel_type, disposition, reason) VALUES (?,?,?,?,?)
                                  ON DUPLICATE KEY UPDATE rel_type=VALUES(rel_type), disposition=VALUES(disposition), reason=VALUES(reason)',
                                 [$cid1, $cid2, $mappedType, $disposition, $r['reason'] ?? ''],
                                 $uid
                             );
-                        } catch (Exception $e) { /* non-fatal, unique constraint may fire */
+                            if ($relRows > 0) {
+                                $logDbOp('UPSERT character_relationships ' . $mappedType . ' char1=' . $cid1 . ' char2=' . $cid2 . ' (rows=' . $relRows . ')');
+                            }
+                        } catch (Exception $e) {
+                            $logApplyErr('relationship_row', $e->getMessage(), ['char1' => $cid1, 'char2' => $cid2, 'type' => $mappedType]);
                         }
                     }
                 }
@@ -1178,11 +1303,12 @@
                 $h = $input['history_entry'];
                 $maxSort = query('SELECT COALESCE(MAX(sort_order), 0) as m FROM history WHERE town_id = ?', [$townId], $uid);
                 $nextSort = ($maxSort[0]['m'] ?? 0) + 1;
-                execute(
+                $histId = insertAndGetId(
                     'INSERT INTO history (town_id, heading, content, sort_order) VALUES (?, ?, ?, ?)',
                     [$townId, $h['heading'] ?? 'Simulation', $h['content'] ?? '', $nextSort],
                     $uid
                 );
+                $logDbOp('INSERT history id=' . $histId . ' town=' . $townId . ' sort=' . $nextSort);
                 $applied['history'] = 1;
                 $hHead = trim((string) ($h['heading'] ?? ''));
                 $hBody = trim((string) ($h['content'] ?? ''));
@@ -1207,12 +1333,13 @@
                             // Check if building already exists
                             $exists = query('SELECT id FROM town_buildings WHERE town_id = ? AND name = ?', [$townId, $bName], $uid);
                             if (empty($exists)) {
-                                execute(
+                                $bid = insertAndGetId(
                                     'INSERT INTO town_buildings (town_id, name, status, build_progress, build_time, description) VALUES (?, ?, ?, ?, ?, ?)',
                                     [$townId, $bName, 'under_construction', 0, $buildTime, $desc],
                                     $uid
                                 );
                                 $applied['buildings']++;
+                                $logDbOp('INSERT town_buildings id=' . $bid . ' town=' . $townId . ' name=' . $bName . ' (under_construction, ' . $buildTime . ' mo)');
                             }
                             break;
                         case 'progress':
@@ -1282,6 +1409,13 @@
                 } catch (Exception $e) {
                     $debugInfo['macro_tick_error'] = $e->getMessage();
                 }
+            }
+
+            if (!empty($dbOpsLog)) {
+                $debugInfo['db_ops'] = $dbOpsLog;
+            }
+            if (!empty($applyErrLog)) {
+                $debugInfo['apply_errors'] = $applyErrLog;
             }
 
             simRespond(['ok' => true, 'applied' => $applied, 'debug_info' => $debugInfo]);

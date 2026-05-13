@@ -17,6 +17,30 @@ import { apiGetCalendar } from '../api/settings.js';
 import { confirmAiCost } from '../components/AiCostConfirm.js';
 import { MAX_INTAKE_ARRIVALS } from '../constants/intakeLimits.js';
 
+/** LLM may use char1/char2, character1/character2, or *_id — normalize for result UI. */
+function simRelationshipPairLabels(r) {
+  if (!r || typeof r !== 'object') return ['Unknown', 'Unknown'];
+  const pick = (...keys) => {
+    for (const k of keys) {
+      if (r[k] == null) continue;
+      const s = String(r[k]).trim();
+      if (s) return s;
+    }
+    return '';
+  };
+  let left = pick('char1', 'character1', 'character_1', 'name1', 'npc1');
+  let right = pick('char2', 'character2', 'character_2', 'name2', 'npc2');
+  if (!left) {
+    const id = r.character1_id ?? r.char1_id;
+    if (id !== undefined && id !== null && String(id).trim() !== '') left = `Character #${id}`;
+  }
+  if (!right) {
+    const id = r.character2_id ?? r.char2_id;
+    if (id !== undefined && id !== null && String(id).trim() !== '') right = `Character #${id}`;
+  }
+  return [left || 'Unknown', right || 'Unknown'];
+}
+
 export default function SimulationView(container) {
   const state = getState();
 
@@ -33,7 +57,9 @@ export default function SimulationView(container) {
   }
 
   container.innerHTML = `
-    <div class="view-simulation">
+    <div class="view-simulation view-simulation-with-log">
+      <div class="sim-layout">
+        <div class="sim-main-column">
       <header class="view-header">
         <h1>⏩ AI Simulation</h1>
         <button class="btn-secondary btn-sm" id="sim-back-btn">← Back to Town</button>
@@ -95,10 +121,16 @@ export default function SimulationView(container) {
       <!-- Results -->
       <div class="sim-results" id="sim-results" style="display:none;"></div>
 
-      <!-- Debug Log -->
-      <div class="sim-debug-log" id="sim-debug-log">
-        <h3>📋 Debug Log <button class="btn-sm btn-secondary" id="sim-clear-log" style="margin-left:0.5rem;">Clear</button></h3>
-        <div class="sim-log-entries" id="sim-log-entries"></div>
+        </div>
+        <aside class="sim-debug-sidebar" aria-label="Simulation debug log">
+          <div class="sim-debug-log" id="sim-debug-log">
+            <div class="sim-debug-log-header">
+              <h3>📋 Debug Log</h3>
+              <button type="button" class="btn-sm btn-secondary" id="sim-clear-log">Clear</button>
+            </div>
+            <div class="sim-log-entries" id="sim-log-entries"></div>
+          </div>
+        </aside>
       </div>
     </div>
   `;
@@ -106,14 +138,57 @@ export default function SimulationView(container) {
   let selectedMonths = 1;
   let simResult = null;
 
-  // Debug log helper
+  // Debug log helper (textContent to avoid HTML injection from API strings)
   function log(msg, type = 'info') {
     const logEl = container.querySelector('#sim-log-entries');
     if (!logEl) return;
     const time = new Date().toLocaleTimeString();
     const colors = { info: 'var(--text-secondary)', success: 'var(--success)', error: 'var(--error)', warn: 'var(--warning)' };
-    logEl.innerHTML += `<div style="color:${colors[type] || colors.info};font-size:0.8rem;padding:0.15rem 0;border-bottom:1px solid var(--border);font-family:monospace;"><span style="color:var(--text-muted)">[${time}]</span> ${msg}</div>`;
+    const row = document.createElement('div');
+    row.className = 'sim-log-line';
+    row.style.cssText = `color:${colors[type] || colors.info};font-size:0.82rem;padding:0.2rem 0;border-bottom:1px solid var(--border);font-family:monospace;word-break:break-word;`;
+    const ts = document.createElement('span');
+    ts.style.color = 'var(--text-muted)';
+    ts.textContent = `[${time}] `;
+    const body = document.createElement('span');
+    body.textContent = msg;
+    row.appendChild(ts);
+    row.appendChild(body);
+    logEl.appendChild(row);
     logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  /** Append server-side apply trace (db_ops, apply_errors, arrivals_failed) for debugging. */
+  function logApplyDebug(applyRes, batchLabel = '') {
+    if (!applyRes) return;
+    const prefix = batchLabel ? `[${batchLabel}] ` : '';
+    const dbg = applyRes.debug_info || {};
+    const ops = dbg.db_ops;
+    if (Array.isArray(ops) && ops.length) {
+      log(prefix + `── DB trace (${ops.length} lines) ──`, 'info');
+      ops.forEach((line) => {
+        log(prefix + (typeof line === 'string' ? line : JSON.stringify(line)), 'info');
+      });
+    }
+    const errs = dbg.apply_errors;
+    if (Array.isArray(errs) && errs.length) {
+      errs.forEach((e) => {
+        if (typeof e === 'string') {
+          log(prefix + e, 'error');
+        } else {
+          const c = e.context || 'apply';
+          const m = e.message || JSON.stringify(e);
+          log(prefix + `[${c}] ${m}`, 'error');
+        }
+      });
+    }
+    const applied = applyRes.applied || {};
+    (applied.arrivals_failed || []).forEach((msg) => {
+      log(prefix + `Arrival skipped: ${msg}`, 'warn');
+    });
+    (applied.deaths_failed || []).forEach((msg) => {
+      log(prefix + `Death not applied: ${msg}`, 'warn');
+    });
   }
 
   // Back button
@@ -418,17 +493,16 @@ export default function SimulationView(container) {
             try {
               const applyMonthsElapsed = partialDaysArg > 0 ? 0 : batchMonths;
               const applyDaysElapsed = partialDaysArg > 0 ? partialDaysArg : 0;
-              const applyRes = await apiApplySimulation(townId, ch, sim.new_history_entry || null, applyMonthsElapsed, applyDaysElapsed);
+              const applyRes = await apiApplySimulation(townId, ch, sim.new_history_entry || null, applyMonthsElapsed, applyDaysElapsed, {
+                arrivalNamePool: batchResult.arrival_name_pool,
+              });
               log(`  Applied batch ${batch + 1} changes`, 'success');
+              logApplyDebug(applyRes, `batch ${batch + 1}`);
               // Capture level-up details from apply response
               const ad = applyRes.applied || {};
               if (ad.levelup_details && ad.levelup_details.length) {
                 merged.changes.levelup_details.push(...ad.levelup_details);
                 log(`  ⬆️ ${ad.levelup_details.length} level-up(s) this batch`, 'info');
-              }
-              // Log actual vs AI-requested deaths
-              if (ad.deaths_failed && ad.deaths_failed.length) {
-                ad.deaths_failed.forEach(f => log(`  ⚠️ Death not applied: ${f}`, 'warn'));
               }
               if (typeof ad.deaths === 'number') {
                 const aiDeaths = (ch.deaths || []).length;
@@ -560,12 +634,15 @@ export default function SimulationView(container) {
     // 3. Relationships
     if (relationships.length) {
       tabs.push(['social', '💕', 'Social', relationships.length,
-        `<div class="sim-change-list">${relationships.map(r => `
+        `<div class="sim-change-list">${relationships.map(r => {
+          const [n1, n2] = simRelationshipPairLabels(r);
+          return `
           <div class="sim-change-item sim-change-social">
-            <strong>${r.char1}</strong> <span class="sim-rel-arrow">↔</span> <strong>${r.char2}</strong>
+            <strong>${n1}</strong> <span class="sim-rel-arrow">↔</span> <strong>${n2}</strong>
             <span class="sim-rel-type">${r.type}</span>
             ${r.reason ? `<span class="sim-reason">${r.reason}</span>` : ''}
-          </div>`).join('')}</div>`
+          </div>`;
+        }).join('')}</div>`
       ]);
     }
 
@@ -700,11 +777,14 @@ export default function SimulationView(container) {
             changes,
             sim.new_history_entry || null,
             partialDays > 0 ? 0 : selectedMonths,
-            partialDays
+            partialDays,
+            { arrivalNamePool: result.arrival_name_pool }
           );
 
-          // Show what was actually applied
           if (applyRes.debug_info) console.log('Apply debug_info:', applyRes.debug_info);
+          logApplyDebug(applyRes, 'apply');
+
+          // Show what was actually applied
           const a = applyRes.applied || {};
           const applySummary = [];
           if (a.new_characters) applySummary.push(`${a.new_characters} characters added`);
@@ -717,11 +797,10 @@ export default function SimulationView(container) {
           if (a.auto_levelups) applySummary.push(`${a.auto_levelups} auto level-ups`);
           if (a.history) applySummary.push('history updated');
 
-          // Log failed deaths so users can see the discrepancy
+          // Log death match ratio if AI listed more deaths than DB applied
           if (a.deaths_failed && a.deaths_failed.length) {
-            a.deaths_failed.forEach(f => log(`  ⚠️ Death not applied: ${f}`, 'warn'));
             const aiDeaths = (changes.deaths || []).length;
-            log(`  ⚠️ ${a.deaths}/${aiDeaths} deaths actually matched characters in the DB`, 'warn');
+            log(`  ⚠️ ${a.deaths}/${aiDeaths} deaths matched characters in the DB`, 'warn');
           }
 
           // Log level-up details and inject Level Ups tab

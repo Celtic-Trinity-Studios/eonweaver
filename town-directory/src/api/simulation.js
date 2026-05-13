@@ -54,14 +54,18 @@ async function refreshCalendarFromServer() {
 }
 
 export function apiApplySimulation(townId, changes, historyEntry, monthsElapsed = 0, daysElapsed = 0, opts = {}) {
-    return simFetch('apply_simulation', {
+    const body = {
         town_id: townId,
         changes,
         history_entry: historyEntry,
         months_elapsed: monthsElapsed,
         days_elapsed: daysElapsed,
         skip_calendar: opts.skipCalendar === true,
-    }).then(async res => {
+    };
+    if (Array.isArray(opts.arrivalNamePool) && opts.arrivalNamePool.length) {
+        body.arrival_name_pool = opts.arrivalNamePool;
+    }
+    return simFetch('apply_simulation', body).then(async res => {
         mergeCalendarFromApplied(res?.applied);
         await refreshCalendarFromServer();
         return res;

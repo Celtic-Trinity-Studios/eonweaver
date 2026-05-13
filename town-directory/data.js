@@ -195,12 +195,25 @@ async function apiRunSimulation(townId, months, rules, instructions) {
     return data;
 }
 
-async function apiApplySimulation(townId, changes, historyEntry, monthsElapsed = 0) {
+async function apiApplySimulation(townId, changes, historyEntry, monthsElapsed = 0, daysElapsed = 0, opts = {}) {
+    const body = {
+        town_id: townId,
+        changes,
+        history_entry: historyEntry,
+        months_elapsed: monthsElapsed,
+        days_elapsed: daysElapsed || 0,
+    };
+    if (opts && opts.skipCalendar === true) {
+        body.skip_calendar = true;
+    }
+    if (opts && Array.isArray(opts.arrivalNamePool) && opts.arrivalNamePool.length) {
+        body.arrival_name_pool = opts.arrivalNamePool;
+    }
     const res = await fetch(`${SIM_API}?action=apply_simulation`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
-        body: JSON.stringify({ town_id: townId, changes, history_entry: historyEntry, months_elapsed: monthsElapsed })
+        body: JSON.stringify(body)
     });
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || `API error ${res.status}`);
