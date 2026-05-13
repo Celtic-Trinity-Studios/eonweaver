@@ -17,7 +17,9 @@ import {
     apiAdminAllTowns, apiAdminAllCampaigns,
     apiAdminUpdateMeta, apiAdminDeleteMeta,
     apiAdminAdjustCredits,
-    apiAdminCharactersFull,
+    apiAdminCharacterSheetLibrary,
+    apiAdminUpdateCharacterSheetLibrary,
+    apiAdminDeleteCharacterSheetLibrary,
     apiAdminLlmTrainingAnalyze,
 } from '../api/admin.js';
 import {
@@ -46,7 +48,7 @@ export default function AdminDashboardView(container) {
         <button class="admin-tab" data-tab="campaigns">📜 Campaigns</button>
         <button class="admin-tab" data-tab="towns">🏰 Towns</button>
         <button class="admin-tab" data-tab="usage">📈 Token Usage</button>
-        <button class="admin-tab" data-tab="characters-db">🧙 Characters (full DB)</button>
+        <button class="admin-tab" data-tab="sheet-library">📚 Sheet library</button>
         <button class="admin-tab" data-tab="llm-training">📼 LLM training file</button>
         <button class="admin-tab" data-tab="settings">⚙️ Site Settings</button>
       </div>
@@ -83,7 +85,7 @@ export default function AdminDashboardView(container) {
             else if (tab === 'campaigns') await renderAllCampaigns();
             else if (tab === 'towns') await renderAllTowns();
             else if (tab === 'usage') await renderUsage();
-            else if (tab === 'characters-db') await renderCharactersDb();
+            else if (tab === 'sheet-library') await renderSheetLibraryDb();
             else if (tab === 'llm-training') await renderLlmTrainingAnalyze();
             else if (tab === 'settings') await renderSettings();
         } catch (err) {
@@ -1729,160 +1731,158 @@ export default function AdminDashboardView(container) {
     }
 
     // ═══════════════════════════════════════
-    // CHARACTERS — full database (all towns)
+    // CHARACTER SHEET LIBRARY (character_sheet_library)
     // ═══════════════════════════════════════
-    const CHAR_DB_PAGE = 40;
-    let charDbState = { offset: 0, userId: '', nameQ: '' };
+    const SHEET_LIB_PAGE = 40;
+    let sheetLibState = { offset: 0, userId: '', nameQ: '', campaignKey: '' };
 
-    async function renderCharactersDb() {
-        charDbState = { offset: 0, userId: '', nameQ: '' };
-        await refreshCharactersDbView();
+    async function renderSheetLibraryDb() {
+        sheetLibState = { offset: 0, userId: '', nameQ: '', campaignKey: '' };
+        await refreshSheetLibraryDbView();
     }
 
-    async function refreshCharactersDbView() {
+    function formatLibDate(iso) {
+        if (!iso) return '—';
+        const s = String(iso).replace(' ', 'T');
+        const d = new Date(s);
+        if (Number.isNaN(d.getTime())) return esc(String(iso));
+        return esc(d.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }));
+    }
+
+    async function refreshSheetLibraryDbView() {
         try {
-            const params = { limit: CHAR_DB_PAGE, offset: charDbState.offset };
-            if (charDbState.userId) params.user_id = charDbState.userId;
-            if (charDbState.nameQ) params.q = charDbState.nameQ;
-            const listRes = await apiAdminCharactersFull(params);
+            const params = { limit: SHEET_LIB_PAGE, offset: sheetLibState.offset };
+            if (sheetLibState.userId) params.user_id = sheetLibState.userId;
+            if (sheetLibState.nameQ) params.q = sheetLibState.nameQ;
+            if (sheetLibState.campaignKey !== '' && sheetLibState.campaignKey != null) {
+                params.campaign_key = sheetLibState.campaignKey;
+            }
+            const listRes = await apiAdminCharacterSheetLibrary(params);
             const rows = listRes.rows || [];
             const total = listRes.total_matching ?? 0;
-            const prevOff = Math.max(0, charDbState.offset - CHAR_DB_PAGE);
-            const nextOff = charDbState.offset + CHAR_DB_PAGE < total ? charDbState.offset + CHAR_DB_PAGE : charDbState.offset;
+            const prevOff = Math.max(0, sheetLibState.offset - SHEET_LIB_PAGE);
+            const nextOff = sheetLibState.offset + SHEET_LIB_PAGE < total ? sheetLibState.offset + SHEET_LIB_PAGE : sheetLibState.offset;
 
-            const tableRows = rows.map((c) => {
-                const tid = c.town_id;
-                const tnm = (c.town_name && String(c.town_name).trim()) ? esc(c.town_name) : '';
-                const tlabel = tnm ? `${tnm} <small>(${tid})</small>` : String(tid);
-                const stLow = (c.status || 'Alive').toLowerCase().replace(/\s+/g, '-');
-                const owner = esc(c.owner_username || '');
-                const ouid = c.owner_user_id;
-                const cls = esc(c.class || '—');
+            const tableRows = rows.map((r) => {
+                const bytes = r.sheet_json_bytes != null ? Number(r.sheet_json_bytes) : 0;
+                const owner = esc(r.owner_username || '');
+                const uid = r.user_id;
                 return `<tr>
-                  <td class="cell-id">${c.id}</td>
-                  <td class="member-name clickable char-db-detail-link" data-char-id="${c.id}" data-char-name="${esc(c.name || '')}" data-user-id="${ouid}" data-username="${esc(c.owner_username || '')}" data-town-id="${tid}" data-town-name="${esc(c.town_name || '')}">${esc(c.name || '—')}</td>
-                  <td>${esc(c.race || '—')}</td>
-                  <td>${cls}</td>
-                  <td>${c.level != null && c.level !== '' ? c.level : '—'}</td>
-                  <td>${c.hp != null && c.hp !== '' ? esc(String(c.hp)) : '—'}</td>
-                  <td><span class="status-badge status-${stLow}">${esc(c.status || 'Alive')}</span></td>
-                  <td>${esc(c.alignment || '—')}</td>
-                  <td class="cell-truncate">${esc(c.role || '—')}</td>
-                  <td class="cell-truncate">${tlabel}</td>
-                  <td class="cell-truncate"><small>${owner} <span class="admin-subtle">(${ouid})</span></small></td>
+                  <td class="cell-id">${r.id}</td>
+                  <td class="cell-truncate">${esc(r.name || '—')}</td>
+                  <td class="cell-truncate"><small>${esc(r.name_norm || '')}</small></td>
+                  <td>${esc(r.dnd_edition || '—')}</td>
+                  <td>${r.campaign_key != null ? r.campaign_key : '—'}</td>
+                  <td class="cell-truncate"><small>${owner} <span class="admin-subtle">(${uid})</span></small></td>
+                  <td><small>${formatLibDate(r.created_at)}</small></td>
+                  <td><small>${formatLibDate(r.updated_at)}</small></td>
+                  <td>${Number.isFinite(bytes) ? bytes.toLocaleString() : '—'}</td>
                   <td>
-                    <button type="button" class="admin-btn admin-btn-small" data-action="char-db-edit" data-char-id="${c.id}" title="Edit">✏️</button>
-                    <button type="button" class="admin-btn admin-btn-danger admin-btn-small" data-action="char-db-del" data-char-id="${c.id}" data-char-name="${esc(c.name || '')}" title="Delete">🗑️</button>
+                    <button type="button" class="admin-btn admin-btn-small" data-action="sheet-lib-edit" data-lib-id="${r.id}" title="Edit">✏️</button>
+                    <button type="button" class="admin-btn admin-btn-danger admin-btn-small" data-action="sheet-lib-del" data-lib-id="${r.id}" data-lib-name="${esc(r.name || '')}" title="Delete">🗑️</button>
                   </td>
                 </tr>`;
             }).join('');
 
-            const refresh = () => refreshCharactersDbView();
+            const refresh = () => refreshSheetLibraryDbView();
 
             contentEl.innerHTML = `
               <div class="admin-section-header">
-                <h2>Characters (full database)</h2>
-                <p class="admin-subtle">All <code>characters</code> rows (joined to town + owner). Intake checks <strong>exact town + name</strong> (living) before donor pool or AI.</p>
+                <h2>Character sheet library</h2>
+                <p class="admin-subtle">Rows in <code>character_sheet_library</code> (per-user merged NPC snapshots, no <code>town_id</code>). Intake can borrow when the stub name matches and the town has no living resident with that name; see <code>character_sheet_library.php</code>.</p>
               </div>
               <div class="admin-drill-section">
                 <div class="admin-toolbar" style="display:flex;flex-wrap:wrap;gap:0.75rem;align-items:center;margin-bottom:1rem">
-                  <label>Owner user ID <input type="number" id="char-db-user" class="admin-input" value="${esc(charDbState.userId)}" min="0" style="width:7rem" title="0 = all accounts"></label>
-                  <label>Name contains <input type="text" id="char-db-q" class="admin-input" value="${esc(charDbState.nameQ)}" style="width:11rem" placeholder="Search"></label>
-                  <button type="button" class="admin-btn admin-btn-primary" id="char-db-apply">Apply</button>
-                  <button type="button" class="admin-btn" id="char-db-clear">Clear</button>
+                  <label>Owner user ID <input type="number" id="sheet-lib-user" class="admin-input" value="${esc(sheetLibState.userId)}" min="0" style="width:7rem" title="0 = all accounts"></label>
+                  <label>Name contains <input type="text" id="sheet-lib-q" class="admin-input" value="${esc(sheetLibState.nameQ)}" style="width:11rem" placeholder="Search"></label>
+                  <label>Campaign key <input type="number" id="sheet-lib-campaign" class="admin-input" value="${esc(sheetLibState.campaignKey)}" min="0" style="width:6rem" title="Leave empty for all"></label>
+                  <button type="button" class="admin-btn admin-btn-primary" id="sheet-lib-apply">Apply</button>
+                  <button type="button" class="admin-btn" id="sheet-lib-clear">Clear</button>
                   <span class="admin-subtle">Showing ${rows.length} of ${total}</span>
-                  <button type="button" class="admin-btn" id="char-db-prev" ${charDbState.offset <= 0 ? 'disabled' : ''}>Previous</button>
-                  <button type="button" class="admin-btn" id="char-db-next" ${nextOff === charDbState.offset ? 'disabled' : ''}>Next</button>
+                  <button type="button" class="admin-btn" id="sheet-lib-prev" ${sheetLibState.offset <= 0 ? 'disabled' : ''}>Previous</button>
+                  <button type="button" class="admin-btn" id="sheet-lib-next" ${nextOff === sheetLibState.offset ? 'disabled' : ''}>Next</button>
                 </div>
                 <div class="admin-table-wrap">
-                  <table class="admin-table compact" id="char-db-table">
+                  <table class="admin-table compact" id="sheet-lib-table">
                     <thead>
-                      <tr><th>ID</th><th>Name</th><th>Race</th><th>Class</th><th>Lvl</th><th>HP</th><th>Status</th><th>Alignment</th><th>Role</th><th>Town</th><th>Owner</th><th>Actions</th></tr>
+                      <tr><th>ID</th><th>Name</th><th>Name norm</th><th>Edition</th><th>Campaign</th><th>Owner</th><th>Created</th><th>Updated</th><th>JSON bytes</th><th>Actions</th></tr>
                     </thead>
-                    <tbody>${tableRows || '<tr><td colspan="12">No characters</td></tr>'}</tbody>
+                    <tbody>${tableRows || '<tr><td colspan="10">No rows</td></tr>'}</tbody>
                   </table>
                 </div>
               </div>
             `;
 
-            contentEl.querySelector('#char-db-apply')?.addEventListener('click', () => {
-                charDbState.userId = contentEl.querySelector('#char-db-user')?.value?.trim() || '';
-                charDbState.nameQ = contentEl.querySelector('#char-db-q')?.value?.trim() || '';
-                charDbState.offset = 0;
+            contentEl.querySelector('#sheet-lib-apply')?.addEventListener('click', () => {
+                sheetLibState.userId = contentEl.querySelector('#sheet-lib-user')?.value?.trim() || '';
+                sheetLibState.nameQ = contentEl.querySelector('#sheet-lib-q')?.value?.trim() || '';
+                sheetLibState.campaignKey = contentEl.querySelector('#sheet-lib-campaign')?.value?.trim() ?? '';
+                sheetLibState.offset = 0;
                 refresh();
             });
-            contentEl.querySelector('#char-db-clear')?.addEventListener('click', () => {
-                charDbState.userId = '';
-                charDbState.nameQ = '';
-                charDbState.offset = 0;
+            contentEl.querySelector('#sheet-lib-clear')?.addEventListener('click', () => {
+                sheetLibState.userId = '';
+                sheetLibState.nameQ = '';
+                sheetLibState.campaignKey = '';
+                sheetLibState.offset = 0;
                 refresh();
             });
-            contentEl.querySelector('#char-db-prev')?.addEventListener('click', () => {
-                charDbState.offset = prevOff;
+            contentEl.querySelector('#sheet-lib-prev')?.addEventListener('click', () => {
+                sheetLibState.offset = prevOff;
                 refresh();
             });
-            contentEl.querySelector('#char-db-next')?.addEventListener('click', () => {
-                if (nextOff !== charDbState.offset) charDbState.offset = nextOff;
+            contentEl.querySelector('#sheet-lib-next')?.addEventListener('click', () => {
+                if (nextOff !== sheetLibState.offset) sheetLibState.offset = nextOff;
                 refresh();
             });
-            contentEl.querySelectorAll('.char-db-detail-link').forEach((el) => {
-                el.addEventListener('click', () => {
-                    const charId = parseInt(el.dataset.charId, 10);
-                    const charName = el.dataset.charName || '';
-                    const uidDr = parseInt(el.dataset.userId, 10);
-                    const unameDr = el.dataset.username || '';
-                    const tidDr = parseInt(el.dataset.townId, 10);
-                    const tnameDr = el.dataset.townName || '';
-                    if (!charId) return;
-                    breadcrumb.push({
-                        type: 'character',
-                        label: charName,
-                        icon: '🧙',
-                        id: charId,
-                        loader: () => drillCharacter(uidDr, unameDr, tidDr, tnameDr, charId, charName),
-                    });
-                    drillCharacter(uidDr, unameDr, tidDr, tnameDr, charId, charName);
-                });
-            });
-            contentEl.querySelectorAll('[data-action="char-db-edit"]').forEach((btn) => {
+            contentEl.querySelectorAll('[data-action="sheet-lib-edit"]').forEach((btn) => {
                 btn.addEventListener('click', async () => {
-                    const charId = parseInt(btn.dataset.charId, 10);
-                    if (!charId) return;
+                    const libId = parseInt(btn.dataset.libId, 10);
+                    if (!libId) return;
                     try {
-                        const data = await apiAdminCharacterDetail(charId);
-                        const char = data.character;
-                        if (!char) {
-                            alert('Character not found');
+                        const data = await apiAdminCharacterSheetLibrary({ library_id: libId });
+                        const row = data.row;
+                        if (!row) {
+                            alert('Row not found');
                             return;
                         }
-                        showEditModal('Edit Character', [
-                            { key: 'name', label: 'Name', value: char.name },
-                            { key: 'race', label: 'Race', value: char.race },
-                            { key: 'class', label: 'Class', value: char.class },
-                            { key: 'level', label: 'Level', value: char.level, type: 'number' },
-                            { key: 'hp', label: 'HP', value: char.hp, type: 'number' },
-                            { key: 'status', label: 'Status', value: char.status, type: 'select', options: ['Alive', 'Dead', 'Missing', 'Departed', 'Unconscious'] },
-                            { key: 'alignment', label: 'Alignment', value: char.alignment },
-                            { key: 'role', label: 'Role', value: char.role },
-                            { key: 'age', label: 'Age', value: char.age, type: 'number' },
-                            { key: 'gender', label: 'Gender', value: char.gender },
+                        let prettyJson = row.sheet_json || '';
+                        try {
+                            const o = JSON.parse(prettyJson);
+                            prettyJson = JSON.stringify(o, null, 2);
+                        } catch {
+                            /* keep raw */
+                        }
+                        showEditModal('Edit character sheet library row', [
+                            { key: '_id', label: 'Library row ID', value: String(row.id), type: 'info' },
+                            { key: '_owner', label: 'Owner', value: `${row.owner_username || ''} (user_id ${row.user_id})`, type: 'info' },
+                            { key: 'name', label: 'Name', value: row.name },
+                            { key: 'campaign_key', label: 'Campaign key (0 = none / legacy)', value: row.campaign_key, type: 'number' },
+                            { key: 'dnd_edition', label: 'D&D edition', value: row.dnd_edition || '3.5e' },
+                            { key: 'sheet_json', label: 'sheet_json', value: prettyJson, type: 'textarea', rows: 18 },
                         ], async (formData) => {
-                            await apiAdminUpdateCharacter(charId, formData);
-                            await refreshCharactersDbView();
+                            await apiAdminUpdateCharacterSheetLibrary(libId, {
+                                name: formData.name,
+                                campaign_key: parseInt(String(formData.campaign_key), 10) || 0,
+                                dnd_edition: formData.dnd_edition,
+                                sheet_json: formData.sheet_json,
+                            });
+                            await refreshSheetLibraryDbView();
                         });
                     } catch (e) {
                         alert(e.message || String(e));
                     }
                 });
             });
-            contentEl.querySelectorAll('[data-action="char-db-del"]').forEach((btn) => {
+            contentEl.querySelectorAll('[data-action="sheet-lib-del"]').forEach((btn) => {
                 btn.addEventListener('click', async () => {
-                    const charId = parseInt(btn.dataset.charId, 10);
-                    const nm = btn.dataset.charName || '';
-                    if (!charId || !confirm(`Delete character "${nm}"?`)) return;
+                    const libId = parseInt(btn.dataset.libId, 10);
+                    const nm = btn.dataset.libName || '';
+                    if (!libId) return;
+                    if (!confirm(`Delete library row #${libId} "${nm}"? Town residents are unchanged; their library_sheet_id link is cleared if it pointed here.`)) return;
                     try {
-                        await apiAdminDeleteCharacter(charId);
-                        await refreshCharactersDbView();
+                        await apiAdminDeleteCharacterSheetLibrary(libId);
+                        await refreshSheetLibraryDbView();
                     } catch (e) {
                         alert(e.message || String(e));
                     }
@@ -2314,7 +2314,7 @@ export default function AdminDashboardView(container) {
                     ${f.type === 'info'
                         ? `<div class="admin-form-info">${esc(f.value || f.label)}</div>`
                         : f.type === 'textarea'
-                        ? `<textarea class="admin-form-input" data-key="${f.key}" rows="4">${esc(f.value || '')}</textarea>`
+                        ? `<textarea class="admin-form-input" data-key="${f.key}" rows="${f.rows || 4}">${esc(f.value || '')}</textarea>`
                         : f.type === 'select'
                             ? `<select class="admin-form-input" data-key="${f.key}">
                                 ${f.options.map(o => `<option value="${o}" ${f.value === o ? 'selected' : ''}>${o}</option>`).join('')}

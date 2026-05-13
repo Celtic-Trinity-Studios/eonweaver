@@ -21,6 +21,7 @@ When you open a **new agent** and only say **“next step”**, the agent should
    - comes **after** `Last completed ID` (if set), and  
    - still has **`[ ]`** in `QA_FEATURE_CHECKLIST.md` for that row.  
    If `Last completed ID` is empty, start at the first ID in the list (normally **GLB-01**).
+   - **Browser / feature QA (Notes):** If **Notes** says to prioritize in-browser feature testing on the deployed site, **skip `INF-*`** when choosing the next ID (those rows are local build, DB setup, and post-deploy smoke — not product click-through). Resume strict order for all other IDs. The human can say **“include INF”** to cover that block.
 4. Reply with: **next ID**, **phase name**, **feature title**, and the **numbered test procedure** (copy from the checklist table for that ID).
 5. If the user said **`done <ID>`**, set **`Last completed ID`** to that `<ID>` in this file (and remind them to mark `[x]` in the checklist when they have).
 
@@ -32,8 +33,8 @@ When you open a **new agent** and only say **“next step”**, the agent should
 
 | Field | Value |
 |-------|-------|
-| **Last completed ID** | *(empty — next is first unfinished ID in `ORDERED_IDS`, usually `GLB-01`)* |
-| **Notes** | |
+| **Last completed ID** | `AUTH-05` |
+| **Notes** | **Browser feature QA on staging/prod** — ordered “next step” should skip **`INF-*`** unless the human asks for infra/build/DB checks. Goal: click through the website and record what works vs broken. |
 
 ---
 

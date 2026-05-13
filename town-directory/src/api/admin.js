@@ -157,7 +157,21 @@ export function apiAdminLlmTrainingAnalyze(params = {}) {
     return apiFetch('admin_llm_training_analyze', { params });
 }
 
-/** Admin: paginated characters across all towns (town roster columns + owner + town). */
-export function apiAdminCharactersFull(params = {}) {
-    return apiFetch('admin_characters_full', { params });
+/** Admin: `character_sheet_library` — list (paginated) or one row with `library_id`. */
+export function apiAdminCharacterSheetLibrary(params = {}) {
+    return apiFetch('admin_character_sheet_library', { params });
+}
+
+export function apiAdminUpdateCharacterSheetLibrary(libraryId, data) {
+    return apiFetch('admin_update_character_sheet_library', {
+        method: 'POST',
+        body: { library_id: libraryId, data },
+    });
+}
+
+export function apiAdminDeleteCharacterSheetLibrary(libraryId) {
+    return apiFetch('admin_delete_character_sheet_library', {
+        method: 'DELETE',
+        body: { library_id: libraryId },
+    });
 }

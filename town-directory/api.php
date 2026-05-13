@@ -4676,44 +4676,141 @@ try {
             respond($out);
             break;
 
-        case 'admin_characters_full':
+        case 'admin_character_sheet_library':
             requireAdmin();
+            $detailId = (int) ($_GET['library_id'] ?? 0);
+            if ($detailId > 0) {
+                $one = query(
+                    'SELECT l.*, COALESCE(u.username, CONCAT(\'user#\', l.user_id)) AS owner_username
+                     FROM character_sheet_library l
+                     INNER JOIN users u ON u.id = l.user_id
+                     WHERE l.id = ?',
+                    [$detailId],
+                    0
+                );
+                if (empty($one)) {
+                    throw new Exception('Library row not found');
+                }
+                respond(['ok' => true, 'row' => $one[0]]);
+                break;
+            }
             $limit = min(200, max(1, (int) ($_GET['limit'] ?? 40)));
             $offset = max(0, (int) ($_GET['offset'] ?? 0));
             $userFilter = (int) ($_GET['user_id'] ?? 0);
             $q = trim((string) ($_GET['q'] ?? ''));
+            $campaignKeyRaw = isset($_GET['campaign_key']) ? trim((string) $_GET['campaign_key']) : '';
             $where = '1=1';
             $params = [];
             if ($userFilter > 0) {
-                $where .= ' AND t.user_id = ?';
+                $where .= ' AND l.user_id = ?';
                 $params[] = $userFilter;
             }
             if ($q !== '') {
-                $where .= ' AND c.name LIKE ?';
+                $where .= ' AND l.name LIKE ?';
                 $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q) . '%';
                 $params[] = $like;
             }
+            if ($campaignKeyRaw !== '') {
+                $where .= ' AND l.campaign_key = ?';
+                $params[] = (int) $campaignKeyRaw;
+            }
             $cntRow = query(
-                "SELECT COUNT(*) AS c FROM characters c INNER JOIN towns t ON t.id = c.town_id WHERE $where",
+                "SELECT COUNT(*) AS c FROM character_sheet_library l WHERE $where",
                 $params,
                 0
             );
             $fullCount = (int) ($cntRow[0]['c'] ?? 0);
             $qparams = array_merge($params, [$limit, $offset]);
             $rows = query(
-                "SELECT c.id, c.town_id, c.name, c.race, c.class, c.level, c.hp, c.status, c.alignment, c.role,
-                        t.name AS town_name, t.user_id AS owner_user_id,
-                        COALESCE(u.username, CONCAT('user#', t.user_id)) AS owner_username
-                 FROM characters c
-                 INNER JOIN towns t ON t.id = c.town_id
-                 INNER JOIN users u ON u.id = t.user_id
+                "SELECT l.id, l.user_id, l.campaign_key, l.dnd_edition, l.name, l.name_norm, l.created_at, l.updated_at,
+                        CHAR_LENGTH(l.sheet_json) AS sheet_json_bytes,
+                        COALESCE(u.username, CONCAT('user#', l.user_id)) AS owner_username
+                 FROM character_sheet_library l
+                 INNER JOIN users u ON u.id = l.user_id
                  WHERE $where
-                 ORDER BY c.id DESC
+                 ORDER BY l.id DESC
                  LIMIT ? OFFSET ?",
                 $qparams,
                 0
             );
             respond(['ok' => true, 'rows' => $rows ?: [], 'total_matching' => $fullCount, 'limit' => $limit, 'offset' => $offset]);
+            break;
+
+        case 'admin_update_character_sheet_library':
+            requireAdmin();
+            require_once __DIR__ . '/character_sheet_library.php';
+            $libId = (int) ($input['library_id'] ?? 0);
+            if (!$libId) {
+                throw new Exception('Missing library_id');
+            }
+            $d = $input['data'] ?? [];
+            $sets = [];
+            $vals = [];
+            if (array_key_exists('name', $d)) {
+                $nm = trim((string) $d['name']);
+                if ($nm === '') {
+                    throw new Exception('Name cannot be empty');
+                }
+                $sets[] = 'name = ?';
+                $vals[] = $nm;
+                $sets[] = 'name_norm = ?';
+                $vals[] = ew_sheet_lib_name_norm($nm);
+            }
+            if (array_key_exists('campaign_key', $d)) {
+                $sets[] = 'campaign_key = ?';
+                $vals[] = (int) $d['campaign_key'];
+            }
+            if (array_key_exists('dnd_edition', $d)) {
+                $de = trim((string) $d['dnd_edition']);
+                if ($de === '') {
+                    throw new Exception('dnd_edition cannot be empty');
+                }
+                if (strlen($de) > 10) {
+                    throw new Exception('dnd_edition too long');
+                }
+                $sets[] = 'dnd_edition = ?';
+                $vals[] = $de;
+            }
+            if (array_key_exists('sheet_json', $d)) {
+                $sj = (string) $d['sheet_json'];
+                if ($sj === '') {
+                    throw new Exception('sheet_json cannot be empty');
+                }
+                json_decode($sj, true);
+                if (json_last_error() !== JSON_ERROR_NONE) {
+                    throw new Exception('sheet_json must be valid JSON: ' . json_last_error_msg());
+                }
+                $sets[] = 'sheet_json = ?';
+                $vals[] = $sj;
+            }
+            if (empty($sets)) {
+                throw new Exception('No fields to update');
+            }
+            $vals[] = $libId;
+            try {
+                execute('UPDATE character_sheet_library SET ' . implode(', ', $sets) . ' WHERE id = ?', $vals, 0);
+            } catch (Exception $e) {
+                if (strpos($e->getMessage(), 'Duplicate') !== false || strpos($e->getMessage(), '1062') !== false) {
+                    throw new Exception('Update failed: a row with this user, campaign, edition, and normalized name already exists.');
+                }
+                throw $e;
+            }
+            respond(['ok' => true]);
+            break;
+
+        case 'admin_delete_character_sheet_library':
+            requireAdmin();
+            $libId = (int) ($input['library_id'] ?? 0);
+            if (!$libId) {
+                throw new Exception('Missing library_id');
+            }
+            try {
+                execute('UPDATE characters SET library_sheet_id = NULL WHERE library_sheet_id = ?', [$libId], 0);
+            } catch (Exception $e) {
+                /* column may be absent on very old DBs */
+            }
+            execute('DELETE FROM character_sheet_library WHERE id = ?', [$libId], 0);
+            respond(['ok' => true]);
             break;
 
         /* ═══════════════════════════════════════════════════

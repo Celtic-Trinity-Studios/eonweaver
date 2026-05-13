@@ -178,10 +178,10 @@ The headings **How to use this checklist** and **Suggested run order** are meta 
 
 | Done | ID | Feature | Primary surface | Test procedure | Notes |
 |------|-----|---------|-----------------|----------------|-------|
-| [ ] | GLB-01 | App loads and router works | Any route | 1) Open base URL (respect `BASE_URL`: `/` vs `/dev/`). 2) Confirm shell renders (nav, content area). 3) Open `dashboard`, `settings`, `help` from nav. 4) Hard refresh on a deep link (e.g. `/dev/town/123`); confirm no blank page and auth gate behaves. | |
-| [ ] | GLB-02 | Clean URL campaign/town slugs | `router.js` / town | 1) Navigate to `/dev/{campaignSlug}/{townSlug}` (slugified names). 2) Confirm resolve to `town/{id}` without duplicate history entries. 3) Invalid slug: confirm graceful empty or error state. | |
-| [ ] | GLB-03 | Visit metrics ping | Network tab | 1) Open DevTools Network. 2) Change routes. 3) Confirm anonymous `ping_visit` (or equivalent) does not break navigation on failure. | |
-| [ ] | GLB-04 | Bug report submission | Settings or Help (wherever wired) | 1) Open bug report UI. 2) Submit with title only / full form. 3) Confirm success message or clear validation errors. 4) If Discord webhook configured, confirm receipt (optional). | API: `submit_bug_report` |
+| [x] | GLB-01 | App loads and router works | Any route | 1) Open base URL (respect `BASE_URL`: `/` vs `/dev/`). 2) Confirm shell renders (nav, content area). 3) Open `dashboard`, `settings`, `help` from nav. 4) Hard refresh on a deep link (e.g. `/dev/town/123`); confirm no blank page and auth gate behaves. | |
+| [x] | GLB-02 | Clean URL campaign/town slugs | `router.js` / town | 1) Navigate to `/dev/{campaignSlug}/{townSlug}` (slugified names). 2) Confirm resolve to `town/{id}` without duplicate history entries. 3) Invalid slug: confirm graceful empty or error state. | |
+| [x] | GLB-03 | Visit metrics ping | Network tab | 1) Open DevTools Network. 2) Change routes. 3) Confirm anonymous `ping_visit` (or equivalent) does not break navigation on failure. | |
+| [x] | GLB-04 | Bug report submission | Settings or Help (wherever wired) | 1) Open bug report UI. 2) Submit with title only / full form. 3) Confirm success message or clear validation errors. 4) If Discord webhook configured, confirm receipt (optional). | API: `submit_bug_report` |
 
 ---
 
@@ -189,11 +189,11 @@ The headings **How to use this checklist** and **Suggested run order** are meta 
 
 | Done | ID | Feature | Primary surface | Test procedure | Notes |
 |------|-----|---------|-----------------|----------------|-------|
-| [ ] | AUTH-01 | Register | Auth UI | 1) Register new account with valid email/password. 2) Confirm validation on weak/duplicate email. 3) Confirm post-register state (verify email message if enabled). | `register` |
-| [ ] | AUTH-02 | Login / logout | Auth UI | 1) Login with good credentials. 2) Wrong password: clear error, no session. 3) Logout: session cleared; protected routes redirect. | `login`, `logout` |
-| [ ] | AUTH-03 | Session / `me` | App bootstrap | 1) Reload while logged in. 2) Confirm user context and campaign load. 3) Expired/invalid cookie: graceful re-login. | `me` |
-| [ ] | AUTH-04 | Resend verification | Auth UI | If email verification enabled: trigger resend; confirm rate limiting or success messaging. | `resend_verification` |
-| [ ] | AUTH-05 | Usage / subscription awareness | Settings, Subscription | 1) Call or view usage where exposed. 2) Confirm limits match tier (tokens, storage if shown). | `get_usage`, `subscription_catalog` |
+| [x] | AUTH-01 | Register | Auth UI | 1) Register new account with valid email/password. 2) Confirm validation on weak/duplicate email. 3) Confirm post-register state (verify email message if enabled). | `register` |
+| [x] | AUTH-02 | Login / logout | Auth UI | 1) Login with good credentials. 2) Wrong password: clear error, no session. 3) Logout: session cleared; protected routes redirect. | `login`, `logout` |
+| [x] | AUTH-03 | Session / `me` | App bootstrap | 1) Reload while logged in. 2) Confirm user context and campaign load. 3) Expired/invalid cookie: graceful re-login. | `me` |
+| [x] | AUTH-04 | Resend verification | Auth UI | If email verification enabled: trigger resend; confirm rate limiting or success messaging. | `resend_verification` |
+| [x] | AUTH-05 | Usage / subscription awareness | Settings, Subscription | 1) Call or view usage where exposed. 2) Confirm limits match tier (tokens, storage if shown). | `get_usage`, `subscription_catalog` |
 
 ---
 
