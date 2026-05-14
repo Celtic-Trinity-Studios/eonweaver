@@ -95,7 +95,7 @@ if (!function_exists('ew_subscription_tier_ids')) {
 
     /**
      * Short product bullets for checkout / Settings (no HTML).
-     * Tier-specific simulation rules follow tier_policy.php.
+     * Free-tier population cap: tier_policy.php (ew_free_tier_max_residents).
      *
      * @return list<string>
      */
@@ -134,19 +134,17 @@ if (!function_exists('ew_subscription_tier_ids')) {
             'Towns: roster, relationships, buildings, town history, in-game calendar, campaign rules & lore.',
             'Wiki, Scribe, homebrew, world map, trade routes, calendar tooling, and exports where enabled in your build.',
             $aiWalletLine,
+            'AI town and multi-town world simulation use the same platform wallet and token rules as other AI (BYOK optional in Settings).',
         ];
 
         if ($tierId === 'free') {
             $n = ew_free_tier_max_residents();
             return array_merge($core, [
-                'Free demo: AI town and multi-town world simulation are not included (upgrade or use BYOK).',
                 "Free demo towns: up to {$n} residents per town.",
             ]);
         }
 
-        return array_merge($core, [
-            'AI town and multi-town world simulation on the platform wallet (still subject to EC balance + monthly cap, or unlimited via BYOK).',
-        ]);
+        return $core;
     }
 
     /**

@@ -10,7 +10,9 @@
  *   deploy_edition: "both" | "3.5e" | "5e" | … (dev only — which channel(s) to ping)
  *   site_url, site_name — optional; used in title/link (defaults by tier)
  *   description — optional one-line blurb (kept short)
- *   changes?: string[] — optional; if omitted, recent git log is used (noise commits filtered)
+ *   changes?: string[] — optional; if omitted, git shows only commits **since the previous
+ *   `chore(deploy):` snapshot** (this deploy’s delta). Falls back to a few recent commits if
+ *   there is no prior deploy marker or HEAD is not a deploy snapshot.
  *   (legacy keys deploy_target, app_editions, environment are ignored for the embed body)
  *
  * .env.discord:
@@ -91,8 +93,8 @@ function isNoiseCommitLine(line) {
     return false;
 }
 
-/** When deploy scripts omit `-Changes`, scan recent git history and drop noise. */
-function changesFromGit(scriptDir, maxFetch = 50) {
+/** Short fallback when there is no `chore(deploy):..` range (noise filtered). */
+function changesFromGit(scriptDir, maxFetch = 12) {
     const root = gitTopLevel(scriptDir);
     if (!root) {
         return [];
@@ -118,6 +120,86 @@ function changesFromGit(scriptDir, maxFetch = 50) {
     }
 }
 
+/**
+ * Commits included in this deploy: after previous `chore(deploy):` snapshot, up to parent of
+ * the newest deploy commit (HEAD). Avoids spamming the whole branch history in Discord.
+ */
+function changesSincePreviousDeploy(scriptDir, maxLines = 10) {
+    const root = gitTopLevel(scriptDir);
+    if (!root) {
+        return [];
+    }
+    let headSubject = '';
+    try {
+        headSubject = execFileSync('git', ['-C', root, 'log', '-1', '--pretty=format:%s'], {
+            encoding: 'utf8',
+            maxBuffer: 32 * 1024,
+            stdio: ['ignore', 'pipe', 'ignore'],
+        }).trim();
+    } catch {
+        return changesFromGit(scriptDir, 20).slice(0, maxLines);
+    }
+    if (!/^chore\(deploy\)/i.test(headSubject)) {
+        return changesFromGit(scriptDir, 20).slice(0, maxLines);
+    }
+    let shas = [];
+    try {
+        const raw = execFileSync(
+            'git',
+            ['-C', root, 'log', '-2', '--grep=^chore(deploy):', '--pretty=format:%H'],
+            {
+                encoding: 'utf8',
+                maxBuffer: 32 * 1024,
+                stdio: ['ignore', 'pipe', 'ignore'],
+            }
+        );
+        shas = raw
+            .trim()
+            .split(/\r?\n/)
+            .map((l) => l.trim())
+            .filter(Boolean);
+    } catch {
+        return changesFromGit(scriptDir, 20).slice(0, maxLines);
+    }
+    if (shas.length < 2) {
+        return changesFromGit(scriptDir, 20).slice(0, maxLines);
+    }
+    const headDeploy = shas[0];
+    const prevDeploy = shas[1];
+    let rangeOut = '';
+    try {
+        rangeOut = execFileSync(
+            'git',
+            [
+                '-C',
+                root,
+                'log',
+                `${prevDeploy}..${headDeploy}^`,
+                '--pretty=format:%h %s',
+                `--max-count=${Math.max(30, maxLines * 4)}`,
+            ],
+            {
+                encoding: 'utf8',
+                maxBuffer: 256 * 1024,
+                stdio: ['ignore', 'pipe', 'ignore'],
+            }
+        );
+    } catch {
+        return changesFromGit(scriptDir, 20).slice(0, maxLines);
+    }
+    const lines = rangeOut
+        .trim()
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .filter((l) => !isNoiseCommitLine(l))
+        .slice(0, maxLines);
+    if (lines.length) {
+        return lines;
+    }
+    return ['— No new commits since last deploy (snapshot / assets only).'];
+}
+
 function resolveChangeLines(payload) {
     const raw = Array.isArray(payload.changes) ? payload.changes : [];
     const fromPayload = raw
@@ -127,7 +209,7 @@ function resolveChangeLines(payload) {
     if (fromPayload.length) {
         return fromPayload;
     }
-    return changesFromGit(__dirname);
+    return changesSincePreviousDeploy(__dirname);
 }
 
 function truncateField(s, max = 1024) {
@@ -169,7 +251,7 @@ function buildEmbed(payload, tier) {
     );
 
     const changeStrings = resolveChangeLines(payload);
-    const lines = changeStrings.map((c) => `• ${c}`).slice(0, 18);
+    const lines = changeStrings.map((c) => `• ${c}`).slice(0, 10);
     const changeBlock = lines.length
         ? lines.join('\n')
         : '_No recent feature/fix commits in git log (or not in a git repo). Deploy still completed._';

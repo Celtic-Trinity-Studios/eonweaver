@@ -43,7 +43,6 @@ require_once $baseDir . '/config.php';
 require_once $baseDir . '/db.php';
 require_once $baseDir . '/llm_local.php';
 require_once $baseDir . '/helpers.php';
-require_once $baseDir . '/tier_policy.php';
 require_once $baseDir . '/sim_prompt_lib.php';
 require_once $baseDir . '/macro_framework_lib.php';
 ensureMacroFrameworkTables();
@@ -252,11 +251,9 @@ try {
            PLAN SIMULATION — Lightweight AI roadmap for multi-month sim
            ═══════════════════════════════════════════════════════════ */
         case 'plan_simulation':
-            ew_require_non_free_for_major_ai_simulation($userId);
             require __DIR__ . '/sim_plan.php';
             break;
         case 'run_simulation':
-            ew_require_non_free_for_major_ai_simulation($userId);
             require __DIR__ . '/sim_run.php';
             break;
         case 'apply_simulation':
@@ -281,7 +278,6 @@ try {
             $priorContext = trim($input['prior_context'] ?? '');
             if (!$tId)
                 throw new Exception('Missing town_id');
-            ew_require_non_free_for_major_ai_simulation($userId);
             if (!in_array($category, ['story', 'population', 'character_build', 'social', 'stats']))
                 throw new Exception("Unknown category: $category");
 
@@ -534,11 +530,9 @@ Respond ONLY with valid JSON:
 
 
         case 'simulate_single_town':
-            ew_require_non_free_for_major_ai_simulation($userId);
             require __DIR__ . '/sim_single_town.php';
             break;
         case 'simulate_world':
-            ew_require_non_free_for_major_ai_simulation($userId);
             require __DIR__ . '/sim_world.php';
             break;
         case 'generate_portrait_prompt':

@@ -16,19 +16,6 @@ function ew_user_subscription_tier(int $userId): string
     return $t;
 }
 
-/**
- * Town / world / chunked AI simulation — not included on free demo tier.
- */
-function ew_require_non_free_for_major_ai_simulation(int $userId): void
-{
-    if (ew_user_subscription_tier($userId) === 'free') {
-        throw new Exception(
-            'AI town & world simulation is not included on the Free demo tier. '
-            . 'Upgrade for simulation, or keep using calendar, roster, wiki, and manual editing at no cost.'
-        );
-    }
-}
-
 function ew_free_tier_max_residents(): int
 {
     return defined('FREE_TIER_MAX_RESIDENTS') ? max(1, (int) FREE_TIER_MAX_RESIDENTS) : 15;

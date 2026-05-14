@@ -156,7 +156,7 @@ export default function SubscriptionView(container) {
         </section>
         <section class="subscription-foot muted">
           <p><strong>BYOK:</strong> Add your own OpenRouter API key under Settings to skip the platform wallet and monthly EC ceiling on that usage.</p>
-          <p><strong>Free tier:</strong> AI town and world simulation are not included; other AI features still use EC + cap unless you use BYOK.</p>
+          <p><strong>Free tier:</strong> Simulation uses the same EC wallet rules as other AI (no separate paywall); paid tiers add a monthly token ceiling on top of EC.</p>
           <p>EC display uses ${TOKENS_PER_CREDIT.toLocaleString()} raw tokens = 1.00 EC (wallet stores raw tokens).</p>
         </section>`;
     })
