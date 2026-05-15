@@ -25,7 +25,7 @@ Use this order so you **finish the website** (hosting, auth, shell, staging smok
 
 ### New chat: the user only says “next step”
 
-Use **`QA_PROGRESS.md`** as the handoff cursor: it lists **`ORDERED_IDS`** (same order as the phases above) and **`Last completed ID`**. The agent finds the next ID after that marker whose row is still **`[ ]`** here, then pastes that row’s **Test procedure** into the reply. After a real pass, the human says **`done <ID>`** (or edits **`Last completed ID`** in `QA_PROGRESS.md`) and **`next step`** again. See also **`AGENTS.md`** (repo root) for one-line pointer.
+Use **`QA_PROGRESS.md`** as the handoff cursor: it lists **`ORDERED_IDS`** (same order as the phases above) and **`Last completed ID`**. The agent picks the next ID after that marker and replies with **feature work** (what to implement/fix/review in code)—**not** the checklist *Test procedure*. You run browser QA yourself later; mark **`[x]`** here only after that pass. Say **`done <ID>`** when implementation for a row is finished, then **`next step`** again. For explicit QA-only handoff, say **`QA next step`** to get the numbered test steps. See **`AGENTS.md`** (repo root).
 
 #### Phase A — Website & platform (do this block before “features”)
 

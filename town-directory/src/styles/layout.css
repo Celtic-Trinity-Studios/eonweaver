@@ -439,6 +439,15 @@
 
 .settings-actions { display: flex; align-items: center; gap: 1rem; }
 
+.settings-status {
+    font-size: .8rem;
+    color: var(--text-muted);
+}
+
+.settings-status--loading { color: var(--text-secondary); }
+.settings-status--success { color: var(--success); font-weight: 600; }
+.settings-status--error { color: var(--danger, #e57373); }
+
 .homebrew-grid {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));

@@ -2,8 +2,90 @@
  * Eon Weaver — Help & Guide View
  * Tabbed help page — select a topic on the left, view content on the right.
  */
+import { navigate } from '../router.js';
+
+/** Sidebar route labels (keep in sync with `Sidebar.js` NAV_GROUPS). */
+const HELP_ROUTE_META = {
+  dashboard: { icon: '🏠', label: 'Dashboard' },
+  town: { icon: '🏰', label: 'Town Roster' },
+  townstats: { icon: '📈', label: 'Town Stats' },
+  simulation: { icon: '⏩', label: 'Monthly Simulation' },
+  'world-simulate': { icon: '🌍', label: 'World Simulate' },
+  'macro-sim': { icon: '🟣', label: 'Macro Dynamics' },
+  'world-map': { icon: '🗺️', label: 'World Map' },
+  calendar: { icon: '📅', label: 'Calendar' },
+  wiki: { icon: '🔵', label: 'Wiki & Lore' },
+  scribe: { icon: '✍️', label: 'AI Scribe' },
+  'content-library': { icon: '📁', label: 'Content Library' },
+  'player-portal': { icon: '🔶', label: 'Player Portal' },
+  party: { icon: '🛡️', label: 'Party' },
+  encounters: { icon: '⚔️', label: 'Encounters' },
+  'vtt-export': { icon: '📦', label: 'VTT Export' },
+  integrations: { icon: '🤖', label: 'Integrations' },
+  srd: { icon: '📖', label: 'SRD Browser' },
+  homebrew: { icon: '🧪', label: 'Homebrew' },
+  settings: { icon: '⚙️', label: 'Settings' },
+  subscription: { icon: '💎', label: 'Plans' },
+  help: { icon: '❓', label: 'Help & Guide' },
+};
+
+/** Per-topic “Open in app” chips (routes from `main.js` registerRoute). */
+const SECTION_OPEN_ROUTES = {
+  'getting-started': ['dashboard', 'settings', 'town'],
+  dashboard: ['dashboard', 'town', 'townstats', 'simulation'],
+  'town-roster': ['town'],
+  'town-settings': ['town', 'settings'],
+  'macro-dynamics': ['macro-sim', 'world-simulate'],
+  'ai-intake': ['town'],
+  'character-import': ['town'],
+  'world-simulate': ['world-simulate', 'simulation', 'macro-sim'],
+  'world-map': ['world-map', 'world-simulate'],
+  'town-history': ['town'],
+  'character-sheet': ['town'],
+  'level-up': ['town'],
+  'social-system': ['town'],
+  buildings: ['town', 'townstats'],
+  encounters: ['encounters', 'srd'],
+  'ai-scribe': ['scribe', 'content-library'],
+  party: ['party', 'player-portal'],
+  'srd-browser': ['srd', 'homebrew'],
+  homebrew: ['homebrew', 'srd'],
+  'content-library': ['content-library', 'scribe'],
+  calendar: ['calendar', 'world-simulate'],
+  campaigns: ['settings'],
+  settings: ['settings', 'subscription'],
+  'pdf-export': ['town'],
+  'monthly-simulation': ['simulation', 'world-simulate'],
+  'town-stats': ['townstats', 'town'],
+  'wiki-lore': ['wiki', 'scribe'],
+  'player-portal': ['player-portal'],
+  'vtt-export': ['vtt-export'],
+  integrations: ['integrations'],
+  'subscription-plans': ['subscription', 'settings'],
+  tips: ['dashboard', 'settings', 'help'],
+};
+
+function escapeHtmlAttr(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;');
+}
 
 export default function HelpView(container) {
+  function helpRouteBarHtml(routeKeys) {
+    if (!routeKeys?.length) return '';
+    const chips = routeKeys
+      .map((key) => {
+        const meta = HELP_ROUTE_META[key];
+        const label = meta?.label || key;
+        const icon = meta?.icon || '→';
+        return `<button type="button" class="help-go-route" data-route="${escapeHtmlAttr(key)}" data-tip="Open ${escapeHtmlAttr(label)}"><span class="help-go-route-icon" aria-hidden="true">${icon}</span><span class="help-go-route-label">${escapeHtmlAttr(label)}</span></button>`;
+      })
+      .join('');
+    return `<div class="help-route-bar" role="group" aria-label="Open in app">${chips}</div>`;
+  }
+
   const sections = [
     {
       id: 'getting-started',
@@ -961,13 +1043,6 @@ export default function HelpView(container) {
     }
   ];
 
-  function escapeAttr(s) {
-    return String(s)
-      .replace(/&/g, '&amp;')
-      .replace(/"/g, '&quot;')
-      .replace(/</g, '&lt;');
-  }
-
   /** Collapsible groups — each section id appears exactly once. */
   const HELP_GROUPS = [
     { id: 'g-start', label: 'Getting started', sectionIds: ['getting-started', 'dashboard', 'tips'] },
@@ -999,6 +1074,16 @@ export default function HelpView(container) {
     'integrations': 'Discord webhooks and external hooks.',
     'subscription-plans': 'Tiers, monthly AI credit allowances.',
     'tips': 'Shortcuts, refresh, checklist, bug reports.',
+    'character-import': 'Import characters from JSON or other sources.',
+    'level-up': 'Level-up wizard and progression on the sheet.',
+    'social-system': 'NPC relationships and social graph in town.',
+    'buildings': 'Structures built through simulation and town stats.',
+    'homebrew': 'Custom races, classes, feats, spells, and monsters.',
+    'content-library': 'Maps, handouts, PDFs, and campaign assets.',
+    'campaigns': 'Switch campaigns and edition from Settings.',
+    'pdf-export': 'Download a character sheet PDF from the roster.',
+    'encounters': 'SRD monsters, CR totals, initiative tracking.',
+    'party': 'PC roster and cross-town party overview.',
   };
 
   const sectionById = Object.fromEntries(sections.map((s) => [s.id, s]));
@@ -1015,20 +1100,20 @@ export default function HelpView(container) {
           const s = sectionById[sid];
           if (!s) return '';
           const hint = SECTION_HINTS[sid];
-          const tipAttr = hint ? ` data-tip="${escapeAttr(hint)}"` : '';
+          const tipAttr = hint ? ` data-tip="${escapeHtmlAttr(hint)}"` : '';
           return `
-            <button type="button" class="help-tab-btn${s.id === currentId ? ' active' : ''}" data-tab="${escapeAttr(s.id)}"${tipAttr}>
+            <button type="button" class="help-tab-btn${s.id === currentId ? ' active' : ''}" data-tab="${escapeHtmlAttr(s.id)}"${tipAttr}>
               <span class="help-tab-icon">${s.icon}</span>
-              <span class="help-tab-label">${escapeAttr(s.title)}</span>
+              <span class="help-tab-label">${escapeHtmlAttr(s.title)}</span>
             </button>
           `;
         })
         .join('');
       return `
-        <div class="help-nav-group${collapsedClass}" data-help-group="${escapeAttr(group.id)}">
+        <div class="help-nav-group${collapsedClass}" data-help-group="${escapeHtmlAttr(group.id)}">
           <button type="button" class="help-group-toggle" aria-expanded="${expanded}" aria-controls="help-topics-${group.id}" data-tip="Show or hide topics in this section">
             <span class="help-group-chevron" aria-hidden="true">▾</span>
-            <span class="help-group-label">${escapeAttr(group.label)}</span>
+            <span class="help-group-label">${escapeHtmlAttr(group.label)}</span>
           </button>
           <div class="help-group-topics" id="help-topics-${group.id}" role="group">
             ${items}
@@ -1041,12 +1126,15 @@ export default function HelpView(container) {
   function showHelpSection(section) {
     const contentEl = container.querySelector('#help-tab-content');
     if (!contentEl || !section) return;
+    const routes = section.openRoutes || SECTION_OPEN_ROUTES[section.id] || [];
+    const routeBar = helpRouteBarHtml(routes);
     contentEl.innerHTML = `
         <div class="help-content-header">
           <span class="help-content-icon">${section.icon}</span>
           <h2 class="help-content-title">${section.title}</h2>
         </div>
         <div class="help-content-body">
+          ${routeBar}
           ${section.content}
         </div>
       `;
@@ -1057,7 +1145,7 @@ export default function HelpView(container) {
     <div class="view-help">
       <div class="help-header">
         <h1 class="help-title">📚 Eon Weaver Guide</h1>
-        <p class="help-subtitle">Open a section below, then pick a topic. Hover some rows for a quick summary.</p>
+        <p class="help-subtitle">Pick a topic on the left. Use <strong>Open in app</strong> buttons on each page to jump to that screen.</p>
       </div>
       
       <div class="help-tabbed-layout">
@@ -1070,6 +1158,7 @@ export default function HelpView(container) {
             <h2 class="help-content-title">${sections[0].title}</h2>
           </div>
           <div class="help-content-body">
+            ${helpRouteBarHtml(SECTION_OPEN_ROUTES[sections[0].id] || [])}
             ${sections[0].content}
           </div>
         </div>
@@ -1086,6 +1175,14 @@ export default function HelpView(container) {
       const collapsed = group.classList.contains('is-collapsed');
       btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     });
+  });
+
+  container.addEventListener('click', (e) => {
+    const goBtn = e.target.closest('.help-go-route');
+    if (!goBtn || !container.contains(goBtn)) return;
+    e.preventDefault();
+    const route = goBtn.dataset.route;
+    if (route) navigate(route);
   });
 
   // Wire tab clicks

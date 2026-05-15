@@ -5238,7 +5238,7 @@ try {
             respond([
                 'ok' => true,
                 'campaign_id' => $campaignId,
-                'settings' => $settings,
+                'settings' => ew_sanitize_integration_settings_for_client($settings),
                 'jobs' => query(
                     'SELECT id, job_type, status, created_at, updated_at
                      FROM integration_jobs
@@ -5260,7 +5260,13 @@ try {
             if ($key === '') {
                 throw new Exception('Missing key_name.');
             }
-            $valueJson = json_encode($input['value'] ?? null, JSON_UNESCAPED_UNICODE);
+            $value = $input['value'] ?? null;
+            if ($key === 'discord_bot' && is_array($value) && !empty($value['keep_webhook'])) {
+                $prev = ew_integration_setting_value($uid, $campaignId, 'discord_bot');
+                $value['webhook_url'] = trim((string) ($prev['webhook_url'] ?? ''));
+                unset($value['keep_webhook']);
+            }
+            $valueJson = json_encode($value, JSON_UNESCAPED_UNICODE);
             execute(
                 'INSERT INTO integration_settings (user_id, campaign_id, key_name, value_json)
                  VALUES (?, ?, ?, ?)
@@ -5269,6 +5275,41 @@ try {
                 0
             );
             respond(['ok' => true, 'key_name' => $key]);
+            break;
+
+        case 'integration_test_discord':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            $discord = ew_integration_setting_value($uid, $campaignId, 'discord_bot');
+            $webhookUrl = trim((string) ($discord['webhook_url'] ?? ''));
+            $enabled = !empty($discord['enabled']);
+            if ($webhookUrl === '' || !$enabled) {
+                throw new Exception('Save an enabled Discord webhook for this campaign first.');
+            }
+            require_once __DIR__ . '/discord.php';
+            $campaignRows = query('SELECT name FROM campaigns WHERE id = ? AND user_id = ? LIMIT 1', [$campaignId, $uid], 0);
+            $campaignName = $campaignRows[0]['name'] ?? 'Campaign';
+            $payload = [
+                'content' => 'Eon Weaver integration test',
+                'embeds' => [[
+                    'title' => 'Integration test',
+                    'description' => 'If you see this, your campaign Discord webhook is configured correctly.',
+                    'color' => 0x4caf50,
+                    'fields' => [
+                        ['name' => 'Campaign', 'value' => $campaignName, 'inline' => true],
+                        ['name' => 'Time (UTC)', 'value' => gmdate('Y-m-d H:i:s'), 'inline' => true],
+                    ],
+                ]],
+            ];
+            if (function_exists('ew_discord_apply_branded_webhook_profile')) {
+                ew_discord_apply_branded_webhook_profile($payload);
+            }
+            $send = sendDiscordWebhook($webhookUrl, $payload);
+            if (empty($send['ok'])) {
+                throw new Exception($send['error'] ?? 'Discord webhook request failed.');
+            }
+            respond(['ok' => true, 'message' => 'Test message sent to Discord.']);
             break;
 
         case 'integration_queue_discord':

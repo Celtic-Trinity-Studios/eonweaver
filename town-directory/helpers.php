@@ -558,3 +558,52 @@ function resolveApiKey(string $featureKey, int $userId, bool $requireCredits = t
 
     throw new Exception('No OpenRouter API key set. Go to ⚙️ Settings to add your key.');
 }
+
+/**
+ * Redact a Discord webhook URL for API responses (never return full URL to the browser).
+ *
+ * @return array{webhook_configured: bool, webhook_hint: string}
+ */
+function ew_redact_webhook_url_for_api(?string $url): array
+{
+    $url = trim((string) $url);
+    if ($url === '') {
+        return ['webhook_configured' => false, 'webhook_hint' => ''];
+    }
+    $hint = strlen($url) > 12 ? ('…' . substr($url, -8)) : '…configured';
+
+    return ['webhook_configured' => true, 'webhook_hint' => $hint];
+}
+
+/** Strip secrets from integration_settings before JSON to the SPA. */
+function ew_sanitize_integration_settings_for_client(array $settings): array
+{
+    foreach ($settings as $key => &$row) {
+        if ($key !== 'discord_bot' || !is_array($row['value'] ?? null)) {
+            continue;
+        }
+        $url = trim((string) ($row['value']['webhook_url'] ?? ''));
+        $redact = ew_redact_webhook_url_for_api($url);
+        unset($row['value']['webhook_url']);
+        $row['value'] = array_merge($row['value'], $redact);
+    }
+    unset($row);
+
+    return $settings;
+}
+
+/** Load one integration_settings row value for the active campaign. */
+function ew_integration_setting_value(int $userId, int $campaignId, string $keyName): ?array
+{
+    $rows = query(
+        'SELECT value_json FROM integration_settings WHERE user_id = ? AND campaign_id = ? AND key_name = ? LIMIT 1',
+        [$userId, $campaignId, $keyName],
+        0
+    );
+    if (!$rows) {
+        return null;
+    }
+    $decoded = json_decode($rows[0]['value_json'] ?: 'null', true);
+
+    return is_array($decoded) ? $decoded : null;
+}

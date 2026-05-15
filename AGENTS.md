@@ -19,7 +19,7 @@ One-time / rare DB setup: `setup_mysql.php?key=…` on the host you are initiali
 
 **Phases** (intake vs Scribe vs DB vs UI): see `town-directory/PROJECT_PHASES.md`.
 
-**QA “next step” in a new chat:** read `town-directory/QA_PROGRESS.md` (state + ordered IDs) with `town-directory/QA_FEATURE_CHECKLIST.md` (**Systematic pass**). Update **`Last completed ID`** when the user confirms **`done <ID>`**.
+**“next step” in a new chat:** read `town-directory/QA_PROGRESS.md` (cursor + ordered IDs) with `town-directory/QA_FEATURE_CHECKLIST.md` (**Systematic pass**) for feature titles/surfaces—reply with **implementation work**, not browser test steps (human QA later). Update **`Last completed ID`** on **`done <ID>`**. Say **“QA next step”** only if they want test procedures pasted.
 
 ## Where the app lives
 

@@ -25,3 +25,7 @@ export function apiIntegrationProcessJob(jobId) {
   });
 }
 
+export function apiIntegrationTestDiscord() {
+  return apiFetch('integration_test_discord', { method: 'POST', body: {} });
+}
+

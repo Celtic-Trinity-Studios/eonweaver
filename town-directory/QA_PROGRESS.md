@@ -1,15 +1,16 @@
-# QA progress — handoff for new chats
+# Feature progress — handoff for new chats
 
-When you open a **new agent** and only say **“next step”**, the agent should use this file plus `QA_FEATURE_CHECKLIST.md` so work continues in order (**website first**, then features — see *Systematic pass* in the checklist).
+When you open a **new agent** and only say **“next step”**, the agent uses this file plus `QA_FEATURE_CHECKLIST.md` to continue **feature work in order** (website shell → core loop → simulation → …). See *Systematic pass* in the checklist for phase order.
+
+**Browser QA is separate:** you run the checklist yourself when ready. Agents do **not** paste test procedures on “next step” unless you ask for QA mode.
 
 ---
 
 ## For the human
 
-- After you **actually run** a checklist row in the browser (or staging), either:
-  - say **`done GLB-01`** (replace with the real ID), then **`next step`**, or  
-  - edit **`Last completed ID`** below yourself.
-- The checklist **`[x]`** in `QA_FEATURE_CHECKLIST.md` remains the official sign-off; keep it in sync when you can.
+- Say **`done DSH-01`** (replace with the real ID) when feature work for that row is finished (or you want to advance the cursor), then **`next step`**.
+- Or edit **`Last completed ID`** below yourself.
+- Mark **`[x]`** in `QA_FEATURE_CHECKLIST.md` only after **your** end-to-end test pass—not when the agent finishes implementation.
 
 ---
 
@@ -17,15 +18,18 @@ When you open a **new agent** and only say **“next step”**, the agent should
 
 1. Read **`Last completed ID`** below (may be empty).
 2. Load **`ORDERED_IDS`** (same order as *Phase A → F* in `QA_FEATURE_CHECKLIST.md` → **Systematic pass**).
-3. **Next step** = the first ID in `ORDERED_IDS` that:
-   - comes **after** `Last completed ID` (if set), and  
-   - still has **`[ ]`** in `QA_FEATURE_CHECKLIST.md` for that row.  
-   If `Last completed ID` is empty, start at the first ID in the list (normally **GLB-01**).
-   - **Browser / feature QA (Notes):** If **Notes** says to prioritize in-browser feature testing on the deployed site, **skip `INF-*`** when choosing the next ID (those rows are local build, DB setup, and post-deploy smoke — not product click-through). Resume strict order for all other IDs. The human can say **“include INF”** to cover that block.
-4. Reply with: **next ID**, **phase name**, **feature title**, and the **numbered test procedure** (copy from the checklist table for that ID).
-5. If the user said **`done <ID>`**, set **`Last completed ID`** to that `<ID>` in this file (and remind them to mark `[x]` in the checklist when they have).
+3. **Next step** = the first ID in `ORDERED_IDS` that comes **after** `Last completed ID` (if set). If empty, start at **GLB-01**.
+   - **Skip `INF-*`** by default (build/DB/deploy infra—not product features). Human can say **`include INF`** to work that block.
+   - Optionally skip IDs already marked **`[x]`** in the checklist if the human is only doing unfinished rows; default is strict order by cursor regardless of `[x]`.
+4. Reply with:
+   - **Next ID**, **phase name**, **feature title**, **primary surface** (from checklist)
+   - **What to do:** implement, fix, or review the feature in code—key files, APIs, gaps vs `Features_List.md` / `WANT_NEED_BACKLOG.md`
+   - **Do not** paste the checklist *Test procedure* unless the human asks for **QA mode** or **test DSH-01**.
+5. If the user said **`done <ID>`**, set **`Last completed ID`** to that `<ID>` in this file.
 
-**Optional:** If the user says **“skip INTG-01”** (example), treat that ID as done for progression only and record a short note under **Notes**.
+**Optional:** **`skip INTG-01`** (example)—treat as done for progression only; note under **Notes**.
+
+**QA mode (explicit only):** If the human says **“QA next step”** or **“test next”**, use the old behavior: paste the numbered *Test procedure* from the checklist for the next ID.
 
 ---
 
@@ -33,8 +37,8 @@ When you open a **new agent** and only say **“next step”**, the agent should
 
 | Field | Value |
 |-------|-------|
-| **Last completed ID** | `AUTH-05` |
-| **Notes** | **Browser feature QA on staging/prod** — ordered “next step” should skip **`INF-*`** unless the human asks for infra/build/DB checks. Goal: click through the website and record what works vs broken. |
+| **Last completed ID** | `SET-02` |
+| **Notes** | **Feature work mode** — “next step” = implementation/review in repo order; skip **`INF-*`** unless asked. Human runs checklist QA when done. |
 
 ---
 

@@ -1062,18 +1062,51 @@ async function loadUsageMeter(container) {
   }
 }
 
+function setSettingsStatus(container, message, kind = 'muted') {
+  const el = container.querySelector('#settings-status');
+  if (!el) return;
+  el.textContent = message || '';
+  el.className = `settings-status settings-status--${kind}`;
+}
+
+function applyUserSettingsToForm(container, settings) {
+  if (!settings) return;
+  const pool = container.querySelector('#s-npc-pool-opt-in');
+  const use = container.querySelector('#s-use-community-npc-intake');
+  if (pool) pool.checked = Number(settings.npc_sheet_pool_opt_in) === 1;
+  if (use) use.checked = Number(settings.use_community_npc_intake) === 1;
+}
+
 async function loadSettings(container) {
+  setSettingsStatus(container, 'Loading account settings…', 'loading');
   try {
     const res = await apiGetSettings();
     if (res?.ok && res.settings) {
-      const pool = container.querySelector('#s-npc-pool-opt-in');
-      const use = container.querySelector('#s-use-community-npc-intake');
-      if (pool) pool.checked = Number(res.settings.npc_sheet_pool_opt_in) === 1;
-      if (use) use.checked = Number(res.settings.use_community_npc_intake) === 1;
+      applyUserSettingsToForm(container, res.settings);
+      setSettingsStatus(container, '', 'idle');
+      return res.settings;
     }
+    setSettingsStatus(container, 'Could not load account settings.', 'error');
+    return null;
   } catch (e) {
     console.error('Failed to load user settings:', e);
+    setSettingsStatus(container, `Load failed: ${e.message}`, 'error');
+    return null;
   }
+}
+
+async function saveUserSettings(container) {
+  const poolOpt = container.querySelector('#s-npc-pool-opt-in');
+  const useComm = container.querySelector('#s-use-community-npc-intake');
+  const tasks = [];
+  if (poolOpt) tasks.push(apiSaveSetting('npc_sheet_pool_opt_in', poolOpt.checked));
+  if (useComm) tasks.push(apiSaveSetting('use_community_npc_intake', useComm.checked));
+  await Promise.all(tasks);
+  const res = await apiGetSettings();
+  if (!res?.ok || !res.settings) {
+    throw new Error('Saved but could not re-load settings');
+  }
+  applyUserSettingsToForm(container, res.settings);
 }
 
 async function loadCampaignRules(container) {
@@ -1114,11 +1147,15 @@ async function loadCampaignRules(container) {
 }
 
 async function saveSettings(container) {
+  const saveBtn = container.querySelector('#settings-save-btn');
+  if (saveBtn?.disabled) return;
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.setAttribute('aria-busy', 'true');
+  }
+  setSettingsStatus(container, 'Saving…', 'loading');
   try {
-    const poolOpt = container.querySelector('#s-npc-pool-opt-in');
-    const useComm = container.querySelector('#s-use-community-npc-intake');
-    if (poolOpt) await apiSaveSetting('npc_sheet_pool_opt_in', poolOpt.checked);
-    if (useComm) await apiSaveSetting('use_community_npc_intake', useComm.checked);
+    await saveUserSettings(container);
 
     // Save campaign rules, description, homebrew, AND world sim settings together (all campaign-scoped)
     const campDesc = container.querySelector('#s-campaign-desc').value.trim();
@@ -1155,8 +1192,15 @@ async function saveSettings(container) {
 
     await apiSaveCampaignRules(houseRules, campDesc, homebrewSettings, worldSimSettings);
 
+    setSettingsStatus(container, 'Saved', 'success');
     showToast('Settings saved!', 'success');
   } catch (err) {
+    setSettingsStatus(container, `Save failed: ${err.message}`, 'error');
     showToast('Save failed: ' + err.message, 'error');
+  } finally {
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.removeAttribute('aria-busy');
+    }
   }
 }
