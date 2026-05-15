@@ -21,6 +21,8 @@ One-time / rare DB setup: `setup_mysql.php?key=…` on the host you are initiali
 
 **“next step” in a new chat:** read `town-directory/QA_PROGRESS.md` (cursor + ordered IDs) with `town-directory/QA_FEATURE_CHECKLIST.md` (**Systematic pass**) for feature titles/surfaces—reply with **implementation work**, not browser test steps (human QA later). Update **`Last completed ID`** on **`done <ID>`**. Say **“QA next step”** only if they want test procedures pasted.
 
+**Phase A infra (optional automation):** from `town-directory/`, `npm run infra:phase-a` (build + INF-01…04 checks against `SMOKE_BASE_URL`, default worldscribe). Deep login smoke: copy `.env.smoke.example` → `.env.smoke`, then `npm run infra:phase-a:deep`.
+
 ## Where the app lives
 
 - **Frontend + tooling:** `town-directory/`

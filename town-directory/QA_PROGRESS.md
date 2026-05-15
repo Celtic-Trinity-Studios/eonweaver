@@ -37,8 +37,8 @@ When you open a **new agent** and only say **“next step”**, the agent uses t
 
 | Field | Value |
 |-------|-------|
-| **Last completed ID** | `SET-02` |
-| **Notes** | **Feature work mode** — “next step” = implementation/review in repo order; skip **`INF-*`** unless asked. Human runs checklist QA when done. |
+| **Last completed ID** | `INF-04` |
+| **Notes** | **Phase A complete** (incl. optional INF). Infra scripts: `npm run infra:phase-a` (see `.env.smoke.example` for `--deep` login smoke). Next feature cursor: **CMP-01**. Human checklist `[x]` when browser QA done. |
 
 ---
 

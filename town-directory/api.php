@@ -132,6 +132,38 @@ try {
             respond(['ok' => true, 'message' => 'If an unverified account exists for this email, a confirmation message has been sent.']);
             break;
 
+        /* Public — deploy/infra smoke (no secrets). */
+        case 'infra_health':
+            $dbConnected = false;
+            $tables = [];
+            $requiredTables = [
+                'users', 'campaigns', 'towns', 'characters',
+                'integration_settings', 'integration_jobs',
+            ];
+            try {
+                $pdo = getDB();
+                $dbConnected = true;
+                $existing = [];
+                $stmt = $pdo->query('SHOW TABLES');
+                while ($row = $stmt->fetch(PDO::FETCH_NUM)) {
+                    $existing[] = (string) ($row[0] ?? '');
+                }
+                foreach ($requiredTables as $table) {
+                    $tables[$table] = in_array($table, $existing, true);
+                }
+            } catch (Throwable $e) {
+                $dbConnected = false;
+            }
+            $schemaOk = $dbConnected && !in_array(false, $tables, true);
+            respond([
+                'ok' => true,
+                'php' => PHP_VERSION,
+                'db_connected' => $dbConnected,
+                'schema_ok' => $schemaOk,
+                'tables' => $tables,
+            ]);
+            break;
+
         /* Public — anonymous server-side metrics ping (no auth). Each visit is one row. */
         case 'ping_visit':
             require_once __DIR__ . '/metrics_lib.php';

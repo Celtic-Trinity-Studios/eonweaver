@@ -18,6 +18,7 @@ town-directory/config.php
 town-directory/discord.php
 town-directory/llm_local.php
 town-directory/.env.discord
+town-directory/.env.smoke
 
 # ── Deploy manifests ─────────────────────────────────────
 town-directory/.deploy_manifest.json

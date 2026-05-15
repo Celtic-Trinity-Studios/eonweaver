@@ -9,7 +9,15 @@
         "postbuild": "node -e \"require('fs').copyFileSync('.htaccess','live/.htaccess')\"",
         "build:dev": "node ./node_modules/vite/bin/vite.js build",
         "preview": "node ./node_modules/vite/bin/vite.js preview --config vite.config.live.js",
-        "preview:dev": "node ./node_modules/vite/bin/vite.js preview"
+        "preview:dev": "node ./node_modules/vite/bin/vite.js preview",
+        "infra:dev": "node scripts/infra/verify-dev-stack.mjs",
+        "infra:build": "node scripts/infra/verify-live-build.mjs",
+        "infra:db": "node scripts/infra/verify-db-remote.mjs",
+        "infra:smoke": "node scripts/infra/smoke-deploy.mjs",
+        "infra:phase-a": "node scripts/infra/phase-a.mjs",
+        "infra:phase-a:skip-build": "node scripts/infra/phase-a.mjs --skip-build",
+        "infra:phase-a:deep": "node scripts/infra/phase-a.mjs --deep",
+        "infra:phase-a:deep:skip-build": "node scripts/infra/phase-a.mjs --skip-build --deep"
     },
     "devDependencies": {
         "sharp": "^0.34.5",
