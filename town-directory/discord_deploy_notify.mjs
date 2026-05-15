@@ -82,11 +82,19 @@ function gitTopLevel(startDir) {
     }
 }
 
+/** Strip `abc1234 ` prefix from `git log --pretty=%h %s` or pasted lines — Discord list stays human-readable. */
+function stripLeadingGitHash(line) {
+    return String(line || '')
+        .trim()
+        .replace(/^[a-f0-9]{4,40}\s+/i, '')
+        .trim();
+}
+
 /** Automated deploy snapshot commits — hide from "Updates" so real work shows through. */
 function isNoiseCommitLine(line) {
     const s = String(line).trim();
     if (!s) return true;
-    const subject = s.replace(/^[a-f0-9]{4,40}\s+/, '').trim();
+    const subject = stripLeadingGitHash(s);
     if (/^chore\(deploy\)/i.test(subject)) return true;
     if (/^merge branch\b/i.test(subject)) return true;
     if (/^merge pull request\b/i.test(subject)) return true;
@@ -102,7 +110,7 @@ function changesFromGit(scriptDir, maxFetch = 12) {
     try {
         const out = execFileSync(
             'git',
-            ['-C', root, 'log', `-${maxFetch}`, '--pretty=format:%h %s'],
+            ['-C', root, 'log', `-${maxFetch}`, '--pretty=format:%s'],
             {
                 encoding: 'utf8',
                 maxBuffer: 256 * 1024,
@@ -175,7 +183,7 @@ function changesSincePreviousDeploy(scriptDir, maxLines = 10) {
                 root,
                 'log',
                 `${prevDeploy}..${headDeploy}^`,
-                '--pretty=format:%h %s',
+                '--pretty=format:%s',
                 `--max-count=${Math.max(30, maxLines * 4)}`,
             ],
             {
@@ -203,7 +211,7 @@ function changesSincePreviousDeploy(scriptDir, maxLines = 10) {
 function resolveChangeLines(payload) {
     const raw = Array.isArray(payload.changes) ? payload.changes : [];
     const fromPayload = raw
-        .map((c) => String(typeof c === 'object' ? JSON.stringify(c) : c).trim())
+        .map((c) => stripLeadingGitHash(String(typeof c === 'object' ? JSON.stringify(c) : c)))
         .filter(Boolean)
         .filter((c) => !isNoiseCommitLine(c));
     if (fromPayload.length) {
@@ -251,7 +259,11 @@ function buildEmbed(payload, tier) {
     );
 
     const changeStrings = resolveChangeLines(payload);
-    const lines = changeStrings.map((c) => `• ${c}`).slice(0, 10);
+    const lines = changeStrings
+        .map((c) => stripLeadingGitHash(c))
+        .filter(Boolean)
+        .slice(0, 10)
+        .map((c) => `• ${c}`);
     const changeBlock = lines.length
         ? lines.join('\n')
         : '_No recent feature/fix commits in git log (or not in a git repo). Deploy still completed._';

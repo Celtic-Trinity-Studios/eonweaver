@@ -787,8 +787,8 @@ CAL;
 
 ## MULTI-MONTH REQUEST ({$months} calendar months in ONE response):
 - The JSON must stay complete and valid — if you run out of space, shorten prose inside strings; do NOT truncate braces.
-- daily_log: at MOST about 6-10 entries **per simulated month** (skip routine quiet days). Do NOT emit a beat for every calendar day.
-- events: at least one notable row per month; merge minor happenings into "summary" / new_history_entry instead of huge arrays.
+- daily_log: at MOST about 6-10 entries **per simulated month** (skip routine quiet days). Do NOT emit a beat for every calendar day. Each summary MUST name specific roster residents (exact full names from the TOON) whenever people are involved — no anonymous "two prospectors" / "a scholar" / "recent arrivals" headlines.
+- events: at least one notable row per month; merge minor happenings into "summary" / new_history_entry instead of huge arrays. Same naming rule: name real people from the roster (or new arrivals you add this month) in descriptions.
 - Keep building_changes and relationship churn proportional — quality over quantity.
 HINT;
                 }
@@ -944,7 +944,7 @@ New arrivals in new_characters do NOT use character_id — the server assigns id
 You MUST respond with ONLY a valid JSON object (no markdown, no code fences, JUST the raw JSON) in this exact structure:
 {
   "summary": "1-2 paragraph narrative summary",
-  "events": [{"month": 1, "description": "What happened"}],
+  "events": [{"month": 1, "description": "What happened — name specific residents from the roster"}],
   "changes": {
     "new_characters": [{"name":"Full Name","race":"Human","class":"Commoner 1","gender":"M or F","age":25,"alignment":"NG","role":"Farmer","skills_feats":"Craft, Profession","feats":"Skill Focus","reason":"Born to... / Arrived..."}],
     "deaths": [{"reason":"Died of old age, passing peacefully","preferred_class":"Commoner","age_category":"elderly"},{"reason":"Killed by wolves while on patrol","preferred_class":"Warrior","preferred_role":"Guard","age_category":"adult"}],
@@ -955,7 +955,7 @@ You MUST respond with ONLY a valid JSON object (no markdown, no code fences, JUS
     "building_changes": [{"action":"start","name":"Communal Shelter","build_time":2,"description":"A large thatched-roof shelter for the settlers"},{"action":"progress","name":"Well"},{"action":"complete","name":"Palisade Fence"}]
   },
   "new_history_entry": {"heading":"Hammer, 1490 DR: Title of Events","content":"Detailed narrative using calendar month names"},
-  "daily_log": [{"day": 3, "summary": "Raiders spotted"}, {"day": 17, "summary": "Council meets"}]
+  "daily_log": [{"day": 3, "summary": "Mabari Tcheko spots fresh wolf tracks beyond the ditch"}, {"day": 17, "summary": "Suki Tanabe and Bogdan Kreshnik argue over a boundary peg"}]
 }
 
 ## DAILY TIMELINE (required whenever months >= 1 OR partial-day span):
@@ -963,6 +963,8 @@ You MUST respond with ONLY a valid JSON object (no markdown, no code fences, JUS
 - Each entry: {"day": <integer within this month or partial span>, "summary": "<short headline>"}.
 - Day numbers are 1-based within THIS calendar month (max {$daysPerMonth}). For partial-month runs (first {$days} days only), only use days 1–{$days}.
 - Headlines appear in Town History on the matching calendar day; write clear, distinct summaries.
+- **NAMED PEOPLE (CRITICAL):** If a beat involves townsfolk (scouts, builders, lovers, rivals, leaders, arrivals, disputes, mentorship, council), the summary MUST include at least one **exact full name** from the roster TOON above (copy spelling exactly). For two-person drama or romance, prefer **both** names (e.g. "Iris Kowalski and Tahani zo Nkosi settle a grain debt"). Do NOT use anonymous phrasing like "two prospectors", "a scholar and an apprentice", "recent arrivals", "settlers", "tensions between locals" without naming who. Exceptions: pure weather/terrain beats with no actor ("Hail damages the north field") or mass events where you still name the **organizer or witness** from the roster if anyone is highlighted.
+- "new_history_entry"."content" prose should follow the same rule: name residents when you describe social or political beats.
 
 REMINDER: Prefer character_id / character1_id / character2_id from the roster npc_id column (or legacy NPC_<id> tokens). Legacy exact-name fields still work if ids are omitted. Deaths use criteria-based matching (no character id).
 PROMPT;

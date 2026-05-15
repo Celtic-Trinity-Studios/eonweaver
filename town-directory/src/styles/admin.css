@@ -841,6 +841,25 @@ select.admin-form-input {
     gap: .5rem;
     margin-bottom: 1rem;
 }
+.metrics-toolbar-live {
+    flex-wrap: wrap;
+    justify-content: space-between;
+}
+.metrics-toolbar-live--compact {
+    margin-top: 1rem;
+}
+.metrics-live-badge {
+    margin-left: auto;
+    font-size: .8rem;
+    color: var(--text-muted);
+    white-space: nowrap;
+}
+.metrics-live-badge--error {
+    color: #f87171;
+}
+.metrics-grid-overview {
+    margin-top: .5rem;
+}
 .metrics-label {
     color: var(--text-muted);
     font-size: .85rem;
