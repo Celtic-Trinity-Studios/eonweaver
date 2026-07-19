@@ -8,7 +8,7 @@ Use this document as a **working todo**: check boxes when verified, note failure
 
 ## How to use this checklist
 
-1. **Environment:** Record which build you tested (`npm run dev` + PHP, or staging `worldscribe.online`, or production `eonscribe.com`). AI-dependent tests need a **known-good API** (`config.php` / OpenRouter).
+1. **Environment:** Record which build you tested (`npm run dev` + PHP, or staging `worldscribe.online`, or production `eonweaver.com`). AI-dependent tests need a **known-good API** (`config.php` / OpenRouter).
 2. **Prerequisites:** Logged-in user, at least one **campaign** and one **town** with a few **characters** unless the row says otherwise.
 3. **Per row:** Complete **every** numbered step under **Test procedure** before marking done. Use **Notes** for anomalies, browser, and ticket links.
 4. **IDs:** Stable codes (e.g. `SIM-02`) so `WANT_NEED_BACKLOG.md` can reference them.
@@ -60,7 +60,7 @@ Goal: staging (or prod) loads, auth works, build/deploy path is trusted, one hap
 
 #### Phase E — Content, SRD, library, portal, export
 
-`SCR-*` → `SRD-*` → `HB-*` → `LIB-*` → `WIKI-*` → `PLR-*` → `VTT-*`
+`SCR-*` → `SRD-*` → `HB-*` → `LIB-*` → `WIKI-*` → `PLR-*` → `VTT-*` → `EXP-*`
 
 #### Phase F — Admin & LLM extras
 
@@ -126,7 +126,7 @@ Markdown: town-directory/QA_FEATURE_CHECKLIST.md (same heading)
 
 How to post here
 - One comment per issue, start with the checklist ID: **AUTH-02** — short description
-- Add: environment (local / worldscribe / eonscribe), browser, screenshots if UI
+- Add: environment (local / worldscribe / eonweaver), browser, screenshots if UI
 - When fixed: reply with **done** + PR or commit hash if you want traceability
 ```
 
@@ -438,6 +438,13 @@ The headings **How to use this checklist** and **Suggested run order** are meta 
 | Done | ID | Feature | Primary surface | Test procedure | Notes |
 |------|-----|---------|-----------------|----------------|-------|
 | [ ] | VTT-01 | Export formats | VTT export | 1) Export party or encounter. 2) Import into target VTT (if applicable) or validate JSON structure. | |
+
+## Town campaign docket (`TownView` → Export)
+
+| Done | ID | Feature | Primary surface | Test procedure | Notes |
+|------|-----|---------|-----------------|----------------|-------|
+| [ ] | EXP-01 | Town docket PDF | Town roster Export | 1) Open a populated town. 2) Export → Download PDF. 3) Confirm history, NPCs, places, factions appear. | |
+| [ ] | EXP-02 | Town docket Markdown | Town roster Export | 1) Download Markdown or Copy. 2) Paste into an editor/AI; structure readable. | |
 
 ---
 

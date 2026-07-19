@@ -1,6 +1,6 @@
 <?php
 /**
- * Town Directory — API Router
+ * Town Directory ΓÇö API Router
  * All frontend JS calls route through this file.
  *
  * Usage: api.php?action=<action_name>
@@ -115,9 +115,9 @@ try {
 
     switch ($action) {
 
-        /* ═══════════════════════════════════════════════════
-           AUTH — uses shared DB (userId=0)
-           ═══════════════════════════════════════════════════ */
+        /* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+           AUTH ΓÇö uses shared DB (userId=0)
+           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
         case 'register':
             $user = register($input['username'] ?? '', $input['email'] ?? '', $input['password'] ?? '');
             $payload = ['ok' => true, 'user' => $user];
@@ -132,7 +132,7 @@ try {
             respond(['ok' => true, 'message' => 'If an unverified account exists for this email, a confirmation message has been sent.']);
             break;
 
-        /* Public — deploy/infra smoke (no secrets). */
+        /* Public ΓÇö deploy/infra smoke (no secrets). */
         case 'infra_health':
             $dbConnected = false;
             $tables = [];
@@ -164,7 +164,7 @@ try {
             ]);
             break;
 
-        /* Public — anonymous server-side metrics ping (no auth). Each visit is one row. */
+        /* Public ΓÇö anonymous server-side metrics ping (no auth). Each visit is one row. */
         case 'ping_visit':
             require_once __DIR__ . '/metrics_lib.php';
             $route = (string) ($input['route'] ?? 'unknown');
@@ -245,9 +245,9 @@ try {
             ]);
             break;
 
-        /* ═══════════════════════════════════════════════════
-           CAMPAIGNS — multi-campaign support
-           ═══════════════════════════════════════════════════ */
+        /* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+           CAMPAIGNS ΓÇö multi-campaign support
+           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
         case 'campaigns':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -384,9 +384,9 @@ try {
             respond(['ok' => true, 'campaign' => $campData[0] ?? null]);
             break;
 
-        /* ═══════════════════════════════════════════════════
-           TOWNS — per-user, scoped to active campaign
-           ═══════════════════════════════════════════════════ */
+        /* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+           TOWNS ΓÇö per-user, scoped to active campaign
+           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
         case 'towns':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -447,10 +447,10 @@ try {
                 // Create the encounter town (bypasses tier limits)
                 $encTownId = insertAndGetId(
                     'INSERT INTO towns (user_id, campaign_id, name, subtitle, is_encounter_town) VALUES (?, ?, ?, ?, 1)',
-                    [$uid, $campId, '⚔️ Encounter Arena', 'System town for encounter creatures'],
+                    [$uid, $campId, 'ΓÜö∩╕Å Encounter Arena', 'System town for encounter creatures'],
                     $uid
                 );
-                respond(['ok' => true, 'town_id' => (int) $encTownId, 'town_name' => '⚔️ Encounter Arena']);
+                respond(['ok' => true, 'town_id' => (int) $encTownId, 'town_name' => 'ΓÜö∩╕Å Encounter Arena']);
             }
             break;
 
@@ -567,7 +567,7 @@ try {
             if (empty($base)) {
                 $baseId = insertAndGetId(
                     'INSERT INTO towns (user_id, name, subtitle, is_party_base) VALUES (?, ?, ?, 1)',
-                    [$uid, 'Party Camp', 'Home base for the adventuring party — excluded from simulations.'],
+                    [$uid, 'Party Camp', 'Home base for the adventuring party ΓÇö excluded from simulations.'],
                     $uid
                 );
                 $base = [['id' => $baseId, 'name' => 'Party Camp']];
@@ -575,9 +575,9 @@ try {
             respond(['ok' => true, 'party_base' => $base[0]]);
             break;
 
-        /* ═══════════════════════════════════════════════════
+        /* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
            CHARACTERS
-           ═══════════════════════════════════════════════════ */
+           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
         case 'characters':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -684,14 +684,14 @@ try {
             respond(['ok' => true]);
             break;
 
-        /* ═══════════════════════════════════════════════════
+        /* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
                CHARACTER EQUIPMENT
-               ═══════════════════════════════════════════════════ */
+               ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
         case 'get_equipment':
             $user = requireAuth();
             $uid = (int) $user['id'];
             $charId = (int) ($_GET['character_id'] ?? 0);
-            // Verify ownership through character → town → user
+            // Verify ownership through character ΓåÆ town ΓåÆ user
             $charRow = query('SELECT c.town_id FROM characters c JOIN towns t ON c.town_id = t.id WHERE c.id = ? AND t.user_id = ?', [$charId, $uid], $uid);
             if (empty($charRow))
                 respond(['ok' => false, 'error' => 'Character not found']);
@@ -787,9 +787,9 @@ try {
             respond(['ok' => true, 'ac' => $updated[0]['ac'] ?? '', 'atk' => $updated[0]['atk'] ?? '']);
             break;
 
-        /* ═══════════════════════════════════════════════════
+        /* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
            HISTORY
-           ═══════════════════════════════════════════════════ */
+           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
         case 'history':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -822,9 +822,9 @@ try {
             respond(['ok' => true]);
             break;
 
-        /* ═══════════════════════════════════════════════════
+        /* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
            TOWN METADATA
-           ═══════════════════════════════════════════════════ */
+           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
         case 'town_meta':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -849,9 +849,9 @@ try {
             respond(['ok' => true]);
             break;
 
-        /* ═══════════════════════════════════════════════════
+        /* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
            TOWN BUILDINGS & ROOMS
-           ═══════════════════════════════════════════════════ */
+           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
         case 'get_buildings':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -939,7 +939,7 @@ try {
             $user = requireAuth();
             $uid = (int) $user['id'];
             $buildingId = (int) ($_GET['building_id'] ?? 0);
-            // Verify ownership via building → town → user
+            // Verify ownership via building ΓåÆ town ΓåÆ user
             $bRow = query('SELECT tb.town_id FROM town_buildings tb JOIN towns t ON t.id = tb.town_id WHERE tb.id = ? AND t.user_id = ?', [$buildingId, $uid], $uid);
             if (!$bRow) throw new Exception('Building not found');
             $rooms = query('SELECT * FROM building_rooms WHERE building_id = ? ORDER BY sort_order, name', [$buildingId], $uid);
@@ -1001,7 +1001,7 @@ try {
             respond(['ok' => true]);
             break;
 
-        /* ── Character XP Log ─────────────────────────── */
+        /* ΓöÇΓöÇ Character XP Log ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
         case 'get_xp_log':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -1019,7 +1019,7 @@ try {
             respond(['ok' => true, 'xp_log' => $logs ?: []]);
             break;
 
-        /* ── Add Combat XP Log Entry ──────────────────── */
+        /* ΓöÇΓöÇ Add Combat XP Log Entry ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
         case 'add_combat_xp':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -1044,7 +1044,7 @@ try {
             respond(['ok' => true]);
             break;
 
-        /* ── Calendar (per-user) ────────────────────────── */
+        /* ΓöÇΓöÇ Calendar (per-user) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
         case 'get_calendar':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -1053,19 +1053,19 @@ try {
 
             if ($campId) {
                 $rows = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id = ?', [$uid, $campId], $uid);
-                // Legacy row stored before campaign_id existed — attach to active campaign once
+                // Legacy row stored before campaign_id existed ΓÇö attach to active campaign once
                 if (empty($rows)) {
                     $legacy = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id IS NULL LIMIT 1', [$uid], $uid);
                     if (!empty($legacy)) {
                         try {
                             execute('UPDATE calendar SET campaign_id = ? WHERE id = ?', [$campId, (int) $legacy[0]['id']], $uid);
-                        } catch (Exception $e) { /* unique conflict — ignore, fall through to orphan rescue */ }
+                        } catch (Exception $e) { /* unique conflict ΓÇö ignore, fall through to orphan rescue */ }
                         $rows = query('SELECT * FROM calendar WHERE user_id = ? AND campaign_id = ?', [$uid, $campId], $uid);
                     }
                 }
                 // Legacy single-row rescue: legacy schema had PRIMARY KEY on user_id, so there's
                 // only ONE calendar row per user. If campaign_id is stale, reattach to active
-                // campaign. Only do this when the user has exactly ONE calendar row total — once
+                // campaign. Only do this when the user has exactly ONE calendar row total ΓÇö once
                 // they have multiple (post-PK migration), each campaign keeps its own row.
                 if (empty($rows)) {
                     $allRows = query('SELECT * FROM calendar WHERE user_id = ? ORDER BY id ASC', [$uid], $uid);
@@ -1244,7 +1244,7 @@ try {
                         'precipitation' => $det['precipitation'],
                         'wind' => $det['wind'],
                         'odd_event' => $det['odd_event'],
-                        'summary' => trim(($det['temp_display'] ?? '') . ' · ' . ($det['precipitation'] ?? '') . ', ' . ($det['wind'] ?? '')),
+                        'summary' => trim(($det['temp_display'] ?? '') . ' ┬╖ ' . ($det['precipitation'] ?? '') . ', ' . ($det['wind'] ?? '')),
                     ];
                 }
                 $daysOut[] = [
@@ -1312,10 +1312,10 @@ try {
             respond(['ok' => true]);
             break;
 
-        /* ═══════════════════════════════════════════════════
-           SRD REFERENCE — each edition has its own database
+        /* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+           SRD REFERENCE ΓÇö each edition has its own database
            Pass ?edition=5e to override, otherwise uses campaign/user setting
-           ═══════════════════════════════════════════════════ */
+           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
         case 'srd_races':
         case 'srd_classes':
         case 'srd_skills':
@@ -1501,7 +1501,7 @@ try {
             }
             break;
 
-        /* ── Campaign Rules & Description — per-campaign ────────────────────── */
+        /* ΓöÇΓöÇ Campaign Rules & Description ΓÇö per-campaign ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ */
         case 'get_campaign_rules':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -1546,7 +1546,7 @@ try {
             $conflictFreq = $input['conflict_frequency'] ?? 'occasional';
             $sellRate = $input['sell_rate'] ?? '50';
 
-            // Upsert by (user_id, campaign_id) — must handle NULL campaign_id explicitly
+            // Upsert by (user_id, campaign_id) ΓÇö must handle NULL campaign_id explicitly
             // Also handles legacy rows where campaign_id is NULL but should be updated
             if ($campId) {
                 $existing = query('SELECT id FROM campaign_rules WHERE user_id = ? AND campaign_id = ?', [$uid, $campId], 0);
@@ -1589,7 +1589,7 @@ try {
                     execute("DELETE FROM campaign_rules WHERE id IN ($placeholders)", $dupeIds, $uid);
                 }
             } else {
-                // No row exists at all — insert fresh
+                // No row exists at all ΓÇö insert fresh
                 try {
                     execute(
                         'INSERT INTO campaign_rules (user_id, campaign_id, rules_text, campaign_description, homebrew_settings, relationship_speed, birth_rate, death_threshold, child_growth, conflict_frequency, sell_rate, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())',
@@ -1608,7 +1608,7 @@ try {
             respond(['ok' => true]);
             break;
 
-        /* ── Site Settings (per-user) — global user prefs only ── */
+        /* ΓöÇΓöÇ Site Settings (per-user) ΓÇö global user prefs only ΓöÇΓöÇ */
         case 'get_settings':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -1647,11 +1647,11 @@ try {
             respond(['ok' => true]);
             break;
 
-        /* ═══════════════════════════════════════════════════
+        /* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
            ENCOUNTER SYSTEM
-           ═══════════════════════════════════════════════════ */
+           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
 
-        // ── Party (persistent) ─────────────────────────────
+        // ΓöÇΓöÇ Party (persistent) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         case 'get_party':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -1696,7 +1696,7 @@ try {
             respond(['ok' => true]);
             break;
 
-        // ── Encounters ─────────────────────────────────────
+        // ΓöÇΓöÇ Encounters ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         case 'get_encounters':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -1786,7 +1786,7 @@ try {
             respond(['ok' => true]);
             break;
 
-        // ── Encounter Groups ───────────────────────────────
+        // ΓöÇΓöÇ Encounter Groups ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         case 'create_encounter_group':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -1837,7 +1837,7 @@ try {
             respond(['ok' => true]);
             break;
 
-        // ── Encounter Participants ─────────────────────────
+        // ΓöÇΓöÇ Encounter Participants ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         case 'add_participant':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -1906,11 +1906,11 @@ try {
             respond(['ok' => true]);
             break;
 
-        /* ═══════════════════════════════════════════════════
+        /* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
            SOCIAL SYSTEMS
-           ═══════════════════════════════════════════════════ */
+           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
 
-        // ── Bulk fetch all social data for a town ─────────
+        // ΓöÇΓöÇ Bulk fetch all social data for a town ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         case 'get_social_data':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -1975,7 +1975,7 @@ try {
             ]);
             break;
 
-        // ── Character Relationships ────────────────────────
+        // ΓöÇΓöÇ Character Relationships ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         case 'save_relationship':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -2021,7 +2021,7 @@ try {
             respond(['ok' => true]);
             break;
 
-        // ── Family Tree ───────────────────────────────────────
+        // ΓöÇΓöÇ Family Tree ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         case 'get_family_tree':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -2141,7 +2141,7 @@ try {
             respond(['ok' => true]);
             break;
 
-        // ── Character Memories ─────────────────────────────
+        // ΓöÇΓöÇ Character Memories ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         case 'get_memories':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -2210,7 +2210,7 @@ try {
             respond(['ok' => true]);
             break;
 
-        // ── Factions ──────────────────────────────────────
+        // ΓöÇΓöÇ Factions ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         case 'get_factions':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -2363,7 +2363,7 @@ try {
             respond(['ok' => true]);
             break;
 
-        // ── Town Incidents ────────────────────────────────
+        // ΓöÇΓöÇ Town Incidents ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         case 'get_incidents':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -2525,7 +2525,7 @@ try {
             respond(['ok' => true]);
             break;
 
-        // ── PC Reputation ─────────────────────────────────
+        // ΓöÇΓöÇ PC Reputation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
         case 'get_reputation':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -2590,9 +2590,9 @@ try {
             respond(['ok' => true]);
             break;
 
-        // ═══════════════════════════════════════════════════
+        // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
         // Phase 1: Spellcasting System
-        // ═══════════════════════════════════════════════════
+        // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 
         case 'get_spells_known':
             $user = requireAuth();
@@ -2763,9 +2763,9 @@ try {
             respond(['ok' => true]);
             break;
 
-        // ═══════════════════════════════════════════════════
+        // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
         // Phase 1: Active Effects (Conditions/Buffs)
-        // ═══════════════════════════════════════════════════
+        // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 
         case 'get_active_effects':
             $user = requireAuth();
@@ -2825,9 +2825,9 @@ try {
             respond(['ok' => true]);
             break;
 
-        // ═══════════════════════════════════════════════════
+        // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
         // Phase 1: Level History (Multiclassing)
-        // ═══════════════════════════════════════════════════
+        // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 
         case 'get_level_history':
             $user = requireAuth();
@@ -2863,9 +2863,9 @@ try {
             respond(['ok' => true]);
             break;
 
-        // ═══════════════════════════════════════════════════
+        // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
         // Phase 1: Structured Level Up
-        // ═══════════════════════════════════════════════════
+        // ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
 
         case 'apply_level_up':
             $user = requireAuth();
@@ -2980,12 +2980,12 @@ try {
             respond(['ok' => true, 'message' => "Leveled up to $newClass"]);
             break;
 
-        /* ═══════════════════════════════════════════════════════
+        /* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
            MOVE CHARACTER BETWEEN TOWNS
-           ═══════════════════════════════════════════════════════ */
-        /* ═══════════════════════════════════════════════════
-           BUG REPORTS — Discord webhook
-           ═══════════════════════════════════════════════════ */
+           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
+        /* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+           BUG REPORTS ΓÇö Discord webhook
+           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
         case 'submit_bug_report':
             $user = requireAuth();
             $title = trim($input['title'] ?? '');
@@ -3213,7 +3213,7 @@ try {
             $miles = (float) ($input['miles'] ?? 0);
             foreach ([$x1, $y1, $x2, $y2] as $v) {
                 if ($v < 0 || $v > 100)
-                    throw new Exception('Calibration points must use positions on the map (0–100%).');
+                    throw new Exception('Calibration points must use positions on the map (0ΓÇô100%).');
             }
             if ($miles <= 0)
                 throw new Exception('Enter a positive distance in miles.');
@@ -3335,7 +3335,7 @@ try {
                 0
             );
             if (!empty($skipRows)) {
-                throw new Exception('One or both towns are set to “not on map.” Turn that off for those towns or place pins to estimate travel.');
+                throw new Exception('One or both towns are set to ΓÇ£not on map.ΓÇ¥ Turn that off for those towns or place pins to estimate travel.');
             }
 
             $pins = query(
@@ -3373,11 +3373,11 @@ try {
             ]);
             break;
 
-        /* ═══════════════════════════════════════════════════
-           ADMIN — Requires admin role
+        /* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+           ADMIN ΓÇö Requires admin role
            (Primary admin handlers are further below in the
             "cross-account database management" section)
-           ═══════════════════════════════════════════════════ */
+           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
 
         case 'admin_token_usage':
             requireAdmin();
@@ -3398,9 +3398,9 @@ try {
             respond(['ok' => true, 'usage' => $rows]);
             break;
 
-        /* ═══════════════════════════════════════════════════
-           CAMPAIGN RULES — World Context for AI (per-campaign)
-           ═══════════════════════════════════════════════════ */
+        /* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+           CAMPAIGN RULES ΓÇö World Context for AI (per-campaign)
+           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
         case 'get_campaign_rules':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -3466,10 +3466,10 @@ try {
             respond(['ok' => true]);
             break;
 
-        /* ═══════════════════════════════════════════════════
-           CUSTOM CONTENT — Homebrew SRD (per-user SQLite DB)
+        /* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+           CUSTOM CONTENT ΓÇö Homebrew SRD (per-user SQLite DB)
            Each user gets their own content.db file.
-           ═══════════════════════════════════════════════════ */
+           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
         case 'get_custom_content':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -3684,9 +3684,9 @@ try {
             respond(['ok' => true]);
             break;
 
-        /* ═══════════════════════════════════════════════════
-           USER FILES — Per-account content library (SQLite)
-           ═══════════════════════════════════════════════════ */
+        /* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+           USER FILES ΓÇö Per-account content library (SQLite)
+           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
         case 'get_user_files':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -3740,9 +3740,9 @@ try {
             respond(['ok' => true]);
             break;
 
-        /* ═══════════════════════════════════════════════════
-           ADMIN — cross-account database management
-           ═══════════════════════════════════════════════════ */
+        /* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+           ADMIN ΓÇö cross-account database management
+           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
 
         case 'admin_metrics':
             requireAdmin();
@@ -3750,7 +3750,7 @@ try {
             $today = date('Y-m-d');
             $start = date('Y-m-d', strtotime("-" . ($period - 1) . " days"));
 
-            // Helper — fill missing days with zero so chart x-axis is contiguous.
+            // Helper ΓÇö fill missing days with zero so chart x-axis is contiguous.
             $fillDays = function (array $rows, string $valueKey) use ($period) {
                 $byDay = [];
                 foreach ($rows as $r) {
@@ -4514,13 +4514,13 @@ try {
                     $r['char_missing'] = !$present && $cid > 0;
                     if (!empty($r['char_missing'])) {
                         $r['name'] = '(deleted)';
-                        $r['race'] = '—';
-                        $r['class'] = '—';
+                        $r['race'] = 'ΓÇö';
+                        $r['class'] = 'ΓÇö';
                         $r['level'] = 0;
                         $r['hp'] = '';
-                        $r['status'] = '—';
-                        $r['alignment'] = '—';
-                        $r['role'] = '—';
+                        $r['status'] = 'ΓÇö';
+                        $r['alignment'] = 'ΓÇö';
+                        $r['role'] = 'ΓÇö';
                     }
                     foreach (['c_name', 'c_race', 'c_class', 'c_level', 'c_hp', 'c_status', 'c_alignment', 'c_role'] as $ck) {
                         unset($r[$ck]);
@@ -4621,7 +4621,7 @@ try {
                             break;
                         }
                     }
-                    $fpPreview[$fp] = strlen($pv) > 140 ? substr($pv, 0, 140) . '…' : $pv;
+                    $fpPreview[$fp] = strlen($pv) > 140 ? substr($pv, 0, 140) . 'ΓÇª' : $pv;
                 }
                 $byFp[$fp][] = $tu;
             }
@@ -4672,7 +4672,7 @@ try {
             $spacingOk = $violations === 0;
             $out['launch_ready'] = $linesOk && $spacingOk;
             if ($scanTruncated) {
-                $out['notes'] .= ' Scan stopped at the line cap before EOF — raise max lines for a complete pass.';
+                $out['notes'] .= ' Scan stopped at the line cap before EOF ΓÇö raise max lines for a complete pass.';
             }
             $out['checks'] = [
                 'enough_lines' => $linesOk,
@@ -4845,9 +4845,9 @@ try {
             respond(['ok' => true]);
             break;
 
-        /* ═══════════════════════════════════════════════════
-           PHASE FRAMEWORK — Macro sim / player portal / wiki
-           ═══════════════════════════════════════════════════ */
+        /* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
+           PHASE FRAMEWORK ΓÇö Macro sim / player portal / wiki
+           ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
 
         case 'macro_framework_overview':
             $user = requireAuth();
@@ -5169,6 +5169,312 @@ try {
                 0
             );
             respond(['ok' => true, 'token_id' => $tokenId]);
+            break;
+
+        case 'town_campaign_export':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $townId = (int) ($_GET['town_id'] ?? 0);
+            if ($townId <= 0) {
+                throw new Exception('town_id is required.');
+            }
+            verifyTownOwnership($uid, $townId, $uid);
+            $campaignId = getActiveCampaignIdForUser($uid);
+
+            $townRows = query(
+                'SELECT id, name, subtitle, is_party_base, is_encounter_town, campaign_id, updated_at, created_at
+                 FROM towns WHERE id = ? AND user_id = ? LIMIT 1',
+                [$townId, $uid],
+                $uid
+            );
+            if (!$townRows) {
+                throw new Exception('Town not found.');
+            }
+            $town = $townRows[0];
+
+            $campaign = null;
+            if ($campaignId) {
+                $campRows = query(
+                    'SELECT id, name, dnd_edition, description, is_active FROM campaigns WHERE id = ? AND user_id = ? LIMIT 1',
+                    [$campaignId, $uid],
+                    0
+                );
+                $campaign = $campRows[0] ?? null;
+            }
+
+            $metaRows = query('SELECT `key`, value FROM town_meta WHERE town_id = ?', [$townId], $uid);
+            $meta = [];
+            foreach ($metaRows as $m) {
+                $meta[$m['key']] = $m['value'];
+            }
+
+            $history = query(
+                'SELECT heading, content, sort_order FROM history WHERE town_id = ? ORDER BY sort_order ASC',
+                [$townId],
+                $uid
+            ) ?: [];
+
+            $characters = query(
+                'SELECT * FROM characters WHERE town_id = ? ORDER BY
+                   CASE WHEN status = \'Alive\' OR status IS NULL OR status = \'\' THEN 0 ELSE 1 END,
+                   name ASC',
+                [$townId],
+                $uid
+            ) ?: [];
+            // Strip non-narrative / oversized fields from character sheets
+            foreach ($characters as &$chStrip) {
+                unset($chStrip['ai_data'], $chStrip['portrait_url'], $chStrip['portrait_prompt'], $chStrip['sheet_source_character_id']);
+            }
+            unset($chStrip);
+
+            $charIds = array_map(fn($c) => (int) $c['id'], $characters);
+            $memoriesByChar = [];
+            $equipmentByChar = [];
+            if (!empty($charIds)) {
+                $placeholders = implode(',', array_fill(0, count($charIds), '?'));
+                try {
+                    $memRows = query(
+                        "SELECT character_id, memory_type, content, sentiment, related_char_id, related_pc,
+                                faction_id, importance, game_date
+                         FROM character_memories
+                         WHERE character_id IN ($placeholders)
+                         ORDER BY importance DESC, id ASC",
+                        $charIds,
+                        $uid
+                    ) ?: [];
+                    foreach ($memRows as $mem) {
+                        $cid = (int) $mem['character_id'];
+                        unset($mem['character_id']);
+                        $memoriesByChar[$cid][] = $mem;
+                    }
+                } catch (Exception $e) { /* table may be missing on old DBs */ }
+                try {
+                    $eqRows = query(
+                        "SELECT character_id, item_name, item_type, slot, quantity, weight, properties, equipped
+                         FROM character_equipment
+                         WHERE character_id IN ($placeholders)
+                         ORDER BY equipped DESC, item_name ASC",
+                        $charIds,
+                        $uid
+                    ) ?: [];
+                    foreach ($eqRows as $eq) {
+                        $cid = (int) $eq['character_id'];
+                        unset($eq['character_id']);
+                        $equipmentByChar[$cid][] = $eq;
+                    }
+                } catch (Exception $e) { /* optional */ }
+            }
+            foreach ($characters as &$ch) {
+                $cid = (int) $ch['id'];
+                $ch['memories'] = $memoriesByChar[$cid] ?? [];
+                $ch['equipment'] = $equipmentByChar[$cid] ?? [];
+            }
+            unset($ch);
+
+            $buildings = query(
+                'SELECT * FROM town_buildings WHERE town_id = ? ORDER BY sort_order, name',
+                [$townId],
+                $uid
+            ) ?: [];
+            foreach ($buildings as &$b) {
+                $bid = (int) $b['id'];
+                $b['rooms'] = query(
+                    'SELECT name, room_type, description, sort_order FROM building_rooms WHERE building_id = ? ORDER BY sort_order, name',
+                    [$bid],
+                    $uid
+                ) ?: [];
+                if (!empty($b['owner_id'])) {
+                    $ownerRow = query('SELECT name FROM characters WHERE id = ?', [(int) $b['owner_id']], $uid);
+                    $b['owner_name'] = $ownerRow[0]['name'] ?? '';
+                } else {
+                    $b['owner_name'] = '';
+                }
+                $b['residents'] = query(
+                    'SELECT id, name, class, level, role, status FROM characters WHERE building_id = ? AND town_id = ? ORDER BY name',
+                    [$bid, $townId],
+                    $uid
+                ) ?: [];
+            }
+            unset($b);
+
+            // Social graph (same shape as get_social_data)
+            $placeholders = !empty($charIds) ? implode(',', array_fill(0, count($charIds), '?')) : '0';
+            $relationships = !empty($charIds) ? query(
+                "SELECT cr.rel_type, cr.disposition, cr.public_rel, cr.reason, cr.started_date,
+                        c1.name as char1_name, c2.name as char2_name
+                 FROM character_relationships cr
+                 JOIN characters c1 ON c1.id = cr.char1_id
+                 JOIN characters c2 ON c2.id = cr.char2_id
+                 WHERE cr.char1_id IN ($placeholders) OR cr.char2_id IN ($placeholders)
+                 ORDER BY cr.updated_at DESC",
+                array_merge($charIds, $charIds),
+                $uid
+            ) : [];
+
+            $factions = query('SELECT * FROM factions WHERE town_id = ? ORDER BY name', [$townId], $uid) ?: [];
+            foreach ($factions as &$f) {
+                $f['members'] = query(
+                    'SELECT fm.role, fm.loyalty, fm.joined_date, c.name as character_name
+                     FROM faction_members fm JOIN characters c ON c.id = fm.character_id
+                     WHERE fm.faction_id = ? ORDER BY fm.role DESC, c.name',
+                    [(int) $f['id']],
+                    $uid
+                ) ?: [];
+                $f['relations'] = query(
+                    'SELECT fr.disposition, fr.reason, f2.name as target_name
+                     FROM faction_relations fr JOIN factions f2 ON f2.id = fr.target_faction_id
+                     WHERE fr.faction_id = ?',
+                    [(int) $f['id']],
+                    $uid
+                ) ?: [];
+            }
+            unset($f);
+
+            $incidents = query(
+                'SELECT * FROM town_incidents WHERE town_id = ? ORDER BY created_at DESC',
+                [$townId],
+                $uid
+            ) ?: [];
+            foreach ($incidents as &$inc) {
+                $inc['participants'] = query(
+                    'SELECT ip.role, ip.knows_truth, ip.alibi, c.name as character_name
+                     FROM incident_participants ip JOIN characters c ON c.id = ip.character_id
+                     WHERE ip.incident_id = ?',
+                    [(int) $inc['id']],
+                    $uid
+                ) ?: [];
+                $inc['clues'] = query(
+                    'SELECT clue_text, location, points_to, found, skill_check, red_herring
+                     FROM incident_clues WHERE incident_id = ? ORDER BY id',
+                    [(int) $inc['id']],
+                    $uid
+                ) ?: [];
+            }
+            unset($inc);
+
+            $reputation = query(
+                'SELECT pc_name, disposition, reason, faction_id, character_id
+                 FROM pc_reputation WHERE town_id = ? ORDER BY pc_name',
+                [$townId],
+                $uid
+            ) ?: [];
+
+            $rules = [
+                'rules_text' => '',
+                'campaign_description' => '',
+            ];
+            if ($campaignId) {
+                $ruleRows = query(
+                    'SELECT rules_text, campaign_description FROM campaign_rules
+                     WHERE user_id = ? AND campaign_id = ? ORDER BY updated_at DESC LIMIT 1',
+                    [$uid, $campaignId],
+                    $uid
+                );
+                if ($ruleRows) {
+                    $rules['rules_text'] = $ruleRows[0]['rules_text'] ?? '';
+                    $rules['campaign_description'] = $ruleRows[0]['campaign_description'] ?? '';
+                }
+            }
+
+            $calendar = null;
+            if ($campaignId) {
+                $calRows = query(
+                    'SELECT current_year, current_month, current_day, month_names, era_name
+                     FROM calendar WHERE user_id = ? AND campaign_id = ? LIMIT 1',
+                    [$uid, $campaignId],
+                    $uid
+                );
+                $calendar = $calRows[0] ?? null;
+                if ($calendar && !empty($calendar['month_names'])) {
+                    $decoded = json_decode($calendar['month_names'], true);
+                    if (is_array($decoded)) {
+                        $calendar['month_names'] = $decoded;
+                    }
+                }
+            }
+
+            $wiki = [];
+            try {
+                if ($campaignId) {
+                    $wiki = query(
+                        'SELECT slug, title, body, tags_json, updated_at
+                         FROM wiki_articles WHERE user_id = ? AND campaign_id = ?
+                         ORDER BY title ASC',
+                        [$uid, $campaignId],
+                        0
+                    ) ?: [];
+                    foreach ($wiki as &$w) {
+                        $w['tags'] = json_decode($w['tags_json'] ?? '[]', true) ?: [];
+                        unset($w['tags_json']);
+                    }
+                    unset($w);
+                }
+            } catch (Exception $e) {
+                $wiki = [];
+            }
+
+            $scribe = [];
+            try {
+                if ($campaignId) {
+                    $scribe = query(
+                        'SELECT generator_type, title, body, town_id, updated_at
+                         FROM scribe_library
+                         WHERE user_id = ? AND (campaign_id <=> ?)
+                           AND (town_id IS NULL OR town_id = ?)
+                         ORDER BY updated_at DESC
+                         LIMIT 200',
+                        [$uid, $campaignId, $townId],
+                        0
+                    ) ?: [];
+                }
+            } catch (Exception $e) {
+                $scribe = [];
+            }
+
+            $worldLocations = [];
+            try {
+                if ($campaignId) {
+                    $worldLocations = query(
+                        'SELECT location_name, x_pct, y_pct
+                         FROM world_map_locations
+                         WHERE user_id = ? AND campaign_id = ? AND town_id = ?
+                         ORDER BY location_name',
+                        [$uid, $campaignId, $townId],
+                        0
+                    ) ?: [];
+                }
+            } catch (Exception $e) {
+                $worldLocations = [];
+            }
+
+            respond([
+                'ok' => true,
+                'format' => 'eonweaver.town_campaign_export.v1',
+                'generated_at' => gmdate('c'),
+                'campaign' => $campaign,
+                'calendar' => $calendar,
+                'campaign_rules' => $rules,
+                'town' => [
+                    'id' => (int) $town['id'],
+                    'name' => $town['name'],
+                    'subtitle' => $town['subtitle'] ?? '',
+                    'is_party_base' => (int) ($town['is_party_base'] ?? 0),
+                    'is_encounter_town' => (int) ($town['is_encounter_town'] ?? 0),
+                    'meta' => $meta,
+                    'history' => $history,
+                    'buildings' => $buildings,
+                    'characters' => $characters,
+                    'social' => [
+                        'relationships' => $relationships,
+                        'factions' => $factions,
+                        'incidents' => $incidents,
+                        'reputation' => $reputation,
+                    ],
+                    'world_map_locations' => $worldLocations,
+                ],
+                'wiki' => $wiki,
+                'scribe_library' => $scribe,
+            ]);
             break;
 
         case 'vtt_export_payload':
@@ -5595,9 +5901,9 @@ try {
     respond(['error' => $e->getMessage()]);
 }
 
-/* ═══════════════════════════════════════════════════════════════
+/* ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ
    HELPERS
-   ═══════════════════════════════════════════════════════════════ */
+   ΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉΓòÉ */
 
 function respond(array $data): void
 {
