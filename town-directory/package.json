@@ -17,7 +17,12 @@
         "infra:phase-a": "node scripts/infra/phase-a.mjs",
         "infra:phase-a:skip-build": "node scripts/infra/phase-a.mjs --skip-build",
         "infra:phase-a:deep": "node scripts/infra/phase-a.mjs --deep",
-        "infra:phase-a:deep:skip-build": "node scripts/infra/phase-a.mjs --skip-build --deep"
+        "infra:phase-a:deep:skip-build": "node scripts/infra/phase-a.mjs --skip-build --deep",
+        "discord:setup-onboarding": "node discord_setup_onboarding.mjs",
+        "discord:setup-edition-lore": "node discord_setup_edition_lore.mjs",
+        "discord:onboarding-bot": "node discord_onboarding_bot.mjs",
+        "stripe:setup-products": "node scripts/stripe/setup_products.mjs",
+        "stripe:deploy": "node scripts/stripe/deploy_stripe.mjs eonweaver"
     },
     "devDependencies": {
         "sharp": "^0.34.5",
@@ -27,6 +32,7 @@
     "dependencies": {
         "basic-ftp": "^6.0.1",
         "discord.js": "^14.26.4",
+        "docx": "^9.7.1",
         "dotenv": "^17.4.2",
         "pdf-lib": "^1.17.1"
     }

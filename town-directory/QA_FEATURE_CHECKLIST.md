@@ -443,7 +443,7 @@ The headings **How to use this checklist** and **Suggested run order** are meta 
 
 | Done | ID | Feature | Primary surface | Test procedure | Notes |
 |------|-----|---------|-----------------|----------------|-------|
-| [ ] | EXP-01 | Town docket PDF | Town roster Export | 1) Open a populated town. 2) Export → Download PDF. 3) Confirm history, NPCs, places, factions appear. | |
+| [ ] | EXP-01 | Town docket Word (.docx) | Town roster Export | 1) Open a populated town. 2) Export → Download Word. 3) Open in Word/Google Docs; history, NPCs, places editable. | |
 | [ ] | EXP-02 | Town docket Markdown | Town roster Export | 1) Download Markdown or Copy. 2) Paste into an editor/AI; structure readable. | |
 
 ---

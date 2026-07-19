@@ -68,7 +68,7 @@ function Fi(e,t){const s=Z(),a=t.id?parseInt(t.id):s.currentTownId;if(!a){e.inne
           <button class="btn-secondary btn-sm" id="town-buildings-btn" style="border-color:rgba(184,115,51,0.3);color:var(--accent,#B87333)">🏘️ Buildings</button>
           <button class="btn-secondary btn-sm" id="town-social-btn" style="border-color:rgba(245,197,24,0.3);color:var(--accent,#f5c518)">🤝 Social</button>
           <button class="btn-secondary btn-sm" id="town-history-btn">History</button>
-          <button class="btn-secondary btn-sm" id="town-export-btn" title="Export town history and data as PDF or Markdown for campaign planning">Export</button>
+          <button class="btn-secondary btn-sm" id="town-export-btn" title="Export town history and data as Word (.docx) or Markdown for campaign planning">Export</button>
           <button class="btn-secondary btn-sm" id="town-import-btn">Import</button>
           <button class="btn-danger btn-sm" id="town-purge-btn" title="Delete population and/or buildings">☠️ Purge Town Data</button>
           <button class="btn-danger btn-sm" id="town-delete-btn">Delete Town</button>

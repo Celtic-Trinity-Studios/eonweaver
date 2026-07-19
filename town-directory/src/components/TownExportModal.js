@@ -1,11 +1,11 @@
 /**
- * Town campaign docket export — PDF (readable) + Markdown (AI-ready).
+ * Town campaign docket export — Word (.docx, editable) + Markdown (AI-ready).
  */
 import { showModal } from './Modal.js';
 import { showToast } from './Toast.js';
 import { apiTownCampaignExport } from '../api/export.js';
 import { formatTownExportMarkdown, townExportFilenameStem } from '../engine/townExportMarkdown.js';
-import { exportTownCampaignPdf } from '../engine/townExportPdf.js';
+import { exportTownCampaignDocx } from '../engine/townExportDocx.js';
 
 function downloadText(text, filename, mime = 'text/markdown;charset=utf-8') {
   const blob = new Blob([text], { type: mime });
@@ -43,12 +43,12 @@ export async function openTownExportModal(townId, townName = '') {
     content: `
       <p class="muted" style="margin-top:0;">
         Packages this town’s history, places, factions, incidents, characters, scribe notes, and campaign wiki
-        into documents you can read at the table or paste into an AI for session planning.
+        into an editable Word document (or Markdown for AI chats).
       </p>
       <div id="export-status" class="muted" style="margin:0.75rem 0;">Loading town data…</div>
       <div id="export-summary" style="display:none;margin:0.5rem 0;padding:0.75rem;background:rgba(0,0,0,0.15);border-radius:8px;font-size:0.9rem;"></div>
       <div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-top:1rem;">
-        <button class="btn-primary" id="export-pdf-btn" disabled>📄 Download PDF</button>
+        <button class="btn-primary" id="export-docx-btn" disabled>📄 Download Word (.docx)</button>
         <button class="btn-secondary" id="export-md-btn" disabled>📝 Download Markdown</button>
         <button class="btn-secondary" id="export-copy-btn" disabled>📋 Copy Markdown</button>
       </div>
@@ -62,7 +62,7 @@ export async function openTownExportModal(townId, townName = '') {
   const statusEl = el.querySelector('#export-status');
   const summaryEl = el.querySelector('#export-summary');
   const previewEl = el.querySelector('#export-preview');
-  const pdfBtn = el.querySelector('#export-pdf-btn');
+  const docxBtn = el.querySelector('#export-docx-btn');
   const mdBtn = el.querySelector('#export-md-btn');
   const copyBtn = el.querySelector('#export-copy-btn');
 
@@ -82,7 +82,7 @@ export async function openTownExportModal(townId, townName = '') {
       ${c.factions} factions · ${c.incidents} incidents · ${c.scribe} scribe · ${c.wiki} wiki
     `;
     previewEl.textContent = markdown;
-    pdfBtn.disabled = false;
+    docxBtn.disabled = false;
     mdBtn.disabled = false;
     copyBtn.disabled = false;
   } catch (err) {
@@ -94,17 +94,17 @@ export async function openTownExportModal(townId, townName = '') {
 
   const stem = () => townExportFilenameStem(payload);
 
-  pdfBtn.addEventListener('click', async () => {
-    pdfBtn.disabled = true;
-    pdfBtn.textContent = '⏳ Building PDF…';
+  docxBtn.addEventListener('click', async () => {
+    docxBtn.disabled = true;
+    docxBtn.textContent = '⏳ Building Word doc…';
     try {
-      await exportTownCampaignPdf(payload);
-      showToast('PDF downloaded.', 'success');
+      await exportTownCampaignDocx(payload);
+      showToast('Word document downloaded.', 'success');
     } catch (err) {
-      showToast(`PDF failed: ${err.message}`, 'error');
+      showToast(`Word export failed: ${err.message}`, 'error');
     } finally {
-      pdfBtn.disabled = false;
-      pdfBtn.textContent = '📄 Download PDF';
+      docxBtn.disabled = false;
+      docxBtn.textContent = '📄 Download Word (.docx)';
     }
   });
 
