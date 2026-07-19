@@ -11,8 +11,26 @@ const CONTENT_W = PW - M * 2;
 const LINE_H = 13;
 const FOOTER_Y = 28;
 
+/** Map / strip characters StandardFonts cannot encode (WinAnsi). */
+function toWinAnsi(text) {
+  return String(text ?? '')
+    .replace(/\r\n/g, '\n')
+    .replace(/[\u2018\u2019\u201A\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u201E\u2033]/g, '"')
+    .replace(/[\u2013\u2014\u2015]/g, '-')
+    .replace(/\u2026/g, '...')
+    .replace(/[\u2022\u00B7\u2023]/g, '*')
+    .replace(/[\u2190\u2192\u2194\u21D0\u21D2\u21D4]/g, (ch) => {
+      if (ch === '\u2190' || ch === '\u21D0') return '<-';
+      if (ch === '\u2192' || ch === '\u21D2') return '->';
+      return '<->';
+    })
+    .replace(/[\u00A0\u2000-\u200B\u202F\u205F\u3000]/g, ' ')
+    .replace(/[^\n\r\t\x20-\x7E\xA0-\xFF]/g, '?');
+}
+
 function wrapText(font, text, size, maxWidth) {
-  const raw = String(text || '').replace(/\r\n/g, '\n');
+  const raw = toWinAnsi(text);
   const paras = raw.split('\n');
   const lines = [];
   for (const para of paras) {
@@ -89,7 +107,7 @@ export async function exportTownCampaignPdf(payload) {
       thickness: 0.4,
       color: rule,
     });
-    p.drawText(`Eon Weaver — ${townName}`, {
+    p.drawText(toWinAnsi(`Eon Weaver - ${townName}`), {
       x: M,
       y: FOOTER_Y,
       size: 8,
@@ -122,7 +140,7 @@ export async function exportTownCampaignPdf(payload) {
     for (const ln of textLines) {
       ensureSpace(gap);
       if (ln) {
-        page.drawText(ln, { x: M, y, size, font: face, color, maxWidth: CONTENT_W });
+        page.drawText(toWinAnsi(ln), { x: M, y, size, font: face, color, maxWidth: CONTENT_W });
       }
       y -= gap;
     }
@@ -157,7 +175,7 @@ export async function exportTownCampaignPdf(payload) {
       drawLines(wrapText(italic, line.slice(2), 9, CONTENT_W), { size: 9, face: italic, color: muted, gap: 11 });
     } else if (line.startsWith('- ') || line.startsWith('  - ')) {
       const indent = line.startsWith('  - ') ? 14 : 0;
-      const body = line.replace(/^\s*-\s*/, '• ');
+      const body = line.replace(/^\s*-\s*/, '* ');
       const wrapped = wrapText(font, body, 10, CONTENT_W - indent);
       for (let i = 0; i < wrapped.length; i++) {
         ensureSpace(LINE_H);
