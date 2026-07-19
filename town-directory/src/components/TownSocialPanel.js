@@ -289,9 +289,9 @@ function renderRelSummary(relationships) {
   }
   html += '</div>';
 
-  // Show top 10 relationships
+  // Show all relationships, strongest disposition first
   const sorted = [...relationships].sort((a, b) => Math.abs(b.disposition || 0) - Math.abs(a.disposition || 0));
-  html += sorted.slice(0, 10).map(r => {
+  html += sorted.map(r => {
     const icon = REL_ICONS[r.rel_type] || '👋';
     const dVal = parseInt(r.disposition) || 0;
     let dClass = 'neutral';
@@ -308,10 +308,6 @@ function renderRelSummary(relationships) {
       <div class="rel-disposition ${dClass}" title="Disposition: ${dVal}/10">${dVal > 0 ? '+' : ''}${dVal}</div>
     </div>`;
   }).join('');
-
-  if (relationships.length > 10) {
-    html += `<div style="text-align:center;font-size:0.72rem;color:var(--text-secondary);padding:0.5rem;">...and ${relationships.length - 10} more</div>`;
-  }
 
   return html;
 }
