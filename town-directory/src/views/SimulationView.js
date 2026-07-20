@@ -3,7 +3,7 @@
  * Full simulation UI: configure months, rules, instructions, and run AI simulation.
  * Shows progress, preview of changes, and allows apply/reject.
  */
-import { getState, setState } from '../stores/appState.js';
+import { getState, setState, userCanDebug } from '../stores/appState.js';
 import { navigate, appHref } from '../router.js';
 import { apiGetCharacters, normalizeCharacter } from '../api/characters.js';
 import { apiGetTowns, apiGetTownMeta } from '../api/towns.js';
@@ -57,7 +57,7 @@ export default function SimulationView(container) {
   }
 
   container.innerHTML = `
-    <div class="view-simulation view-simulation-with-log">
+    <div class="view-simulation${userCanDebug() ? ' view-simulation-with-log' : ''}">
       <div class="sim-layout">
         <div class="sim-main-column">
       <header class="view-header">
@@ -105,7 +105,7 @@ export default function SimulationView(container) {
 
         <div class="sim-actions">
           <button class="btn-primary" id="sim-run-btn">🎲 Run Simulation</button>
-          <button class="btn-secondary btn-sm" id="sim-debug-btn">🔧 Debug LLM</button>
+          ${userCanDebug() ? '<button class="btn-secondary btn-sm" id="sim-debug-btn">🔧 Debug LLM</button>' : ''}
           <span class="sim-status" id="sim-status"></span>
         </div>
       </div>
@@ -122,6 +122,7 @@ export default function SimulationView(container) {
       <div class="sim-results" id="sim-results" style="display:none;"></div>
 
         </div>
+        ${userCanDebug() ? `
         <aside class="sim-debug-sidebar" aria-label="Simulation debug log">
           <div class="sim-debug-log" id="sim-debug-log">
             <div class="sim-debug-log-header">
@@ -130,7 +131,7 @@ export default function SimulationView(container) {
             </div>
             <div class="sim-log-entries" id="sim-log-entries"></div>
           </div>
-        </aside>
+        </aside>` : ''}
       </div>
     </div>
   `;
@@ -232,12 +233,13 @@ export default function SimulationView(container) {
   })();
 
   // Clear log
-  container.querySelector('#sim-clear-log').addEventListener('click', () => {
-    container.querySelector('#sim-log-entries').innerHTML = '';
+  container.querySelector('#sim-clear-log')?.addEventListener('click', () => {
+    const entries = container.querySelector('#sim-log-entries');
+    if (entries) entries.innerHTML = '';
   });
 
-  // Debug LLM button
-  container.querySelector('#sim-debug-btn').addEventListener('click', async () => {
+  // Debug LLM button (debug accounts only)
+  container.querySelector('#sim-debug-btn')?.addEventListener('click', async () => {
     log('Testing OpenRouter connectivity...');
     try {
       const res = await apiDebugLlm();

@@ -4,6 +4,7 @@
  * Users table lives in the shared MySQL database.
  */
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/app_public_lib.php';
 
 function startSession(): void
 {
@@ -161,7 +162,7 @@ function register(string $username, string $email, string $password): array
     );
 
     if ($needVerify && $verifyTok) {
-        $base = defined('APP_PUBLIC_URL') ? rtrim(APP_PUBLIC_URL, '/') : '';
+        $base = ew_app_public_base_url();
         $link = $base . '/verify_email.php?token=' . rawurlencode($verifyTok);
         $site = defined('APP_PUBLIC_TITLE') ? APP_PUBLIC_TITLE : (defined('APP_NAME') ? APP_NAME : 'Eon Weaver');
         $html = '<p>Confirm your email for <strong>' . htmlspecialchars($site) . '</strong>:</p>'
@@ -212,7 +213,12 @@ function login(string $usernameOrEmail, string $password): array
     startSession();
     $_SESSION['user_id'] = $user['id'];
 
-    return ['id' => $user['id'], 'username' => $user['username'], 'email' => $user['email'], 'role' => $user['role'] ?? 'user'];
+    return [
+        'id' => $user['id'],
+        'username' => $user['username'],
+        'email' => $user['email'],
+        'role' => $user['role'] ?? 'user',
+    ];
 }
 
 /**
@@ -250,7 +256,7 @@ function resendVerificationEmail(string $email): bool
         );
     }
 
-    $base = defined('APP_PUBLIC_URL') ? rtrim(APP_PUBLIC_URL, '/') : '';
+    $base = ew_app_public_base_url();
     $link = $base . '/verify_email.php?token=' . rawurlencode($verifyTok);
     $site = defined('APP_PUBLIC_TITLE') ? APP_PUBLIC_TITLE : (defined('APP_NAME') ? APP_NAME : 'Eon Weaver');
     $html = '<p>Confirm your email for <strong>' . htmlspecialchars($site) . '</strong>:</p>'

@@ -1689,6 +1689,17 @@ try {
         }
     }
 
+    try {
+        $pdo->exec("ALTER TABLE users ADD COLUMN is_debug TINYINT(1) NOT NULL DEFAULT 0");
+        $results[] = '✅ Added is_debug column to users';
+    } catch (Exception $e) {
+        if (strpos($e->getMessage(), 'Duplicate column') !== false) {
+            $results[] = '⏭️ is_debug column already exists';
+        } else {
+            $results[] = '⚠️ is_debug migration: ' . htmlspecialchars($e->getMessage());
+        }
+    }
+
     // -- AI Scribe: saved library (markdown pieces per campaign) --
     try {
         $pdo->exec("CREATE TABLE IF NOT EXISTS scribe_library (

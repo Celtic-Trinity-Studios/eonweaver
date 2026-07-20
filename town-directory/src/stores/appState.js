@@ -41,6 +41,12 @@ export function setState(partial) {
     }
 }
 
+/** True when the signed-in account is an admin (debug tools are admin-only). */
+export function userCanDebug() {
+    const u = state.user;
+    return !!(u && u.role === 'admin');
+}
+
 /**
  * Subscribe to state changes. Returns an unsubscribe function.
  */

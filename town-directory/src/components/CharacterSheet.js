@@ -3,7 +3,7 @@
  * 4 tabs matching the classic D&D 3.5e character sheet layout.
  * Tab 1: Core Stats  |  Tab 2: Inventory & Feats  |  Tab 3: Spells  |  Tab 4: Background
  */
-import { getState, setState } from '../stores/appState.js';
+import { getState, setState, userCanDebug } from '../stores/appState.js';
 import { apiSaveCharacter, apiDeleteCharacter, apiGetCharacters, apiLevelUpCharacter, normalizeCharacter } from '../api/characters.js';
 import { parseClass, calcBAB, abilityMod, parseGearWeapons } from '../engine/rulesAdapter.js';
 import { calcAttackBonuses } from '../engine/rules35e.js'; // 3.5e-specific iterative attacks
@@ -956,7 +956,7 @@ function buildPage2(c, filteredGear, purse, featsList, allTraits, langList, clas
         <div class="cs-languages">${langList.length ? langList.join(', ') : 'Common'}</div>
       </div>
 
-      <div class="cs-block cs-ai-debug">
+      ${userCanDebug() ? `<div class="cs-block cs-ai-debug">
         <div class="cs-block-title cs-debug-toggle" style="cursor:pointer;user-select:none;">🤖 AI Character Data <span class="cs-block-count" style="font-size:0.65rem;">▶ click to expand</span></div>
         <div class="cs-debug-content" style="display:none;">
           <pre class="cs-debug-json" style="font-size:0.65rem;line-height:1.3;background:rgba(0,0,0,0.3);padding:0.5rem;border-radius:4px;overflow-x:auto;max-height:400px;overflow-y:auto;color:var(--text-secondary);white-space:pre-wrap;word-break:break-word;">${JSON.stringify({
@@ -970,7 +970,7 @@ function buildPage2(c, filteredGear, purse, featsList, allTraits, langList, clas
     role: c.role, spouse: c.spouse, cr: c.cr, xp: c.xp
   }, null, 2).replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
         </div>
-      </div>
+      </div>` : ''}
     </div>
 
     <!-- Right: Spells -->
@@ -3178,7 +3178,7 @@ function buildBackgroundTab(c) {
         <div class="cs-block-title">History & Backstory</div>
         <div class="cs-bg-text cs-history-text">${c.history ? c.history.replace(/\n/g, '<br>') : '<span class="cs-muted">No history recorded.</span>'}</div>
       </div>
-      ${c.ai_data ? `
+      ${c.ai_data && userCanDebug() ? `
       <div class="cs-block">
         <div class="cs-block-title" style="cursor:pointer;" onclick="this.nextElementSibling.style.display = this.nextElementSibling.style.display === 'none' ? 'block' : 'none'">🤖 AI Character Data <span style="font-size:0.65rem;color:var(--text-muted);">(click to expand)</span></div>
         <pre class="cs-ai-data" style="display:none;font-size:0.65rem;background:rgba(0,0,0,0.3);padding:0.5rem;border-radius:4px;overflow-x:auto;white-space:pre-wrap;word-break:break-word;color:var(--text-muted);max-height:300px;overflow-y:auto;">${typeof c.ai_data === 'string' ? c.ai_data.replace(/</g, '&lt;') : JSON.stringify(c.ai_data, null, 2)}</pre>

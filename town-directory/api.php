@@ -27,6 +27,7 @@ try { execute('ALTER TABLE users ADD COLUMN stripe_subscription_status VARCHAR(3
 try { execute("ALTER TABLE users ADD COLUMN subscription_ec_seed_tier VARCHAR(20) DEFAULT NULL", [], 0); } catch (Exception $e) { /* already exists */ }
 try { execute('ALTER TABLE users ADD COLUMN subscription_started_at DATETIME DEFAULT NULL', [], 0); } catch (Exception $e) { /* already exists */ }
 try { execute('ALTER TABLE users ADD COLUMN subscription_renews_at DATETIME DEFAULT NULL', [], 0); } catch (Exception $e) { /* already exists */ }
+try { execute('ALTER TABLE users ADD COLUMN is_debug TINYINT(1) NOT NULL DEFAULT 0', [], 0); } catch (Exception $e) { /* already exists */ }
 try {
     $byokRetired = query("SELECT `key` FROM site_settings WHERE `key` = 'byok_retired_v1' LIMIT 1", [], 0);
     if (!$byokRetired) {

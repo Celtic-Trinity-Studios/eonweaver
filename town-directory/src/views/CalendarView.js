@@ -4,7 +4,7 @@
  */
 import { apiGetCalendar, apiGetCalendarWeatherMoon, apiSaveCalendar, calendarToString } from '../api/settings.js';
 import { apiAdvanceCalendar } from '../api/simulation.js';
-import { getState, setState } from '../stores/appState.js';
+import { getState, setState, userCanDebug } from '../stores/appState.js';
 import { apiGetTowns } from '../api/towns.js';
 import { showToast } from '../components/Toast.js';
 
@@ -96,9 +96,9 @@ export default function CalendarView(container) {
 
       <div class="settings-actions" style="display:flex;gap:0.5rem;flex-wrap:wrap;">
         <button class="btn-primary" id="cal-save">💾 Save Calendar</button>
-        <button class="btn-secondary" id="cal-test-advance" type="button" title="Calls advance_calendar with +1 day. If this works but simulation does not, the bug is in the simulation pipeline.">🛠 Test: advance 1 day</button>
+        ${userCanDebug() ? '<button class="btn-secondary" id="cal-test-advance" type="button" title="Calls advance_calendar with +1 day. If this works but simulation does not, the bug is in the simulation pipeline.">🛠 Test: advance 1 day</button>' : ''}
       </div>
-      <pre id="cal-debug" style="margin-top:1rem;padding:0.75rem;background:rgba(0,0,0,0.25);border:1px solid var(--border-color);border-radius:8px;font-size:0.78rem;color:var(--text-muted);white-space:pre-wrap;display:none;"></pre>
+      ${userCanDebug() ? '<pre id="cal-debug" style="margin-top:1rem;padding:0.75rem;background:rgba(0,0,0,0.25);border:1px solid var(--border-color);border-radius:8px;font-size:0.78rem;color:var(--text-muted);white-space:pre-wrap;display:none;"></pre>' : ''}
     </div>`;
 
   let monthsPerYear = 12;
@@ -354,9 +354,10 @@ export default function CalendarView(container) {
     });
   });
 
-  container.querySelector('#cal-test-advance').addEventListener('click', async () => {
+  container.querySelector('#cal-test-advance')?.addEventListener('click', async () => {
     const btn = container.querySelector('#cal-test-advance');
     const debugEl = container.querySelector('#cal-debug');
+    if (!btn || !debugEl) return;
     btn.disabled = true;
     const before = (container.querySelector('#cal-display')?.textContent || '').trim();
     try {

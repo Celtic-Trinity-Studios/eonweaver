@@ -246,6 +246,23 @@
     outline: none;
 }
 
+.admin-debug-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    cursor: pointer;
+    user-select: none;
+}
+
+.admin-inline-checkbox {
+    width: 1rem;
+    height: 1rem;
+    accent-color: var(--gold-primary, #c9a227);
+    cursor: pointer;
+}
+
 .admin-inline-input {
     background: var(--bg-primary);
     border: 1px solid var(--border-subtle);
