@@ -41,9 +41,10 @@ This is **not** the same numbering as intake Phase 1–2 or Scribe Phase 3.
 | **Live / root** (current default for FTP test deploy) | `https://worldscribe.online/` | `/` | `npm run build` → `live/` |
 | **Dev subpath** (if you still maintain it on host) | `https://worldscribe.online/dev/` | `/dev/` | `npm run build:dev` → `dev/` |
 
-Day-to-day **testing / planning** uses **worldscribe.online** (root + `deploy_worldscribe.ps1`). **Production** for players is **eonscribe.com**; OpenRouter headers use `APP_PUBLIC_URL` in `config.php` so they stay on the production domain regardless of which server you hit.
+Day-to-day **testing / planning** uses **worldscribe.online** (root + `deploy_worldscribe.ps1`). **Production** for players is **eonweaver.com**; OpenRouter headers use `APP_PUBLIC_URL` in `config.php` so they stay on the production domain regardless of which server you hit.
 
 ## Related docs
 
 - **`Features_List.md`** — product feature inventory (Ashenholm), includes dev/live note.  
+- **`CAMPAIGN_MANAGER_ROADMAP.md`** — future campaign-manager track (sessions, players, generator gaps vs tools like [WorldSmith](https://www.worldsmith.io/)).  
 - **`AGENTS.md`** (repo root) — local dev, builds, FTP env, deploy commands.

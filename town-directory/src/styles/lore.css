@@ -1,0 +1,300 @@
+/* Lore Codex (Wiki) */
+
+.view-lore .lore-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+  .view-lore .lore-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lore-sidebar-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-bottom: 0.75rem;
+}
+
+.lore-list {
+  max-height: min(70vh, 32rem);
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.lore-list-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.15rem;
+  text-align: left;
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.18);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+}
+
+.lore-list-item:hover {
+  border-color: rgba(196, 163, 90, 0.55);
+}
+
+.lore-list-item.active {
+  border-color: #c4a35a;
+  background: rgba(196, 163, 90, 0.12);
+}
+
+.lore-list-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.lore-list-meta {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+  font-size: 0.72rem;
+  opacity: 0.85;
+}
+
+.lore-cat {
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #c4a35a;
+}
+
+.lore-editor-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin-bottom: 0.65rem;
+}
+
+.lore-field-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.lore-grow {
+  flex: 1;
+  min-width: 10rem;
+}
+
+.lore-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: center;
+}
+
+.lore-check {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.lore-meta-badges {
+  display: inline-flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.lore-badge {
+  font-size: 0.7rem;
+  padding: 0.15rem 0.4rem;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+}
+
+.lore-badge--ai {
+  color: #93c5fd;
+  border-color: rgba(147, 197, 253, 0.4);
+}
+
+.lore-badge--lock {
+  color: #fbbf24;
+}
+
+.lore-badge--player {
+  color: #86efac;
+}
+
+.lore-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.lore-body-split {
+  position: relative;
+}
+
+.lore-body {
+  min-height: 16rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  width: 100%;
+}
+
+.lore-preview {
+  min-height: 16rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.22);
+  line-height: 1.55;
+  overflow: auto;
+  max-height: 28rem;
+}
+
+.lore-preview h1,
+.lore-preview h2,
+.lore-preview h3 {
+  margin: 0.6em 0 0.35em;
+  color: #e8d5a3;
+}
+
+.lore-preview p {
+  margin: 0.4em 0;
+}
+
+.lore-preview ul,
+.lore-preview ol {
+  margin: 0.4em 0 0.4em 1.2em;
+}
+
+.lore-wikilink {
+  color: #93c5fd;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.lore-code {
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0.6rem 0.75rem;
+  border-radius: 6px;
+  overflow: auto;
+  font-size: 0.82rem;
+}
+
+.lore-link-panels {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+@media (max-width: 700px) {
+  .lore-link-panels {
+    grid-template-columns: 1fr;
+  }
+}
+
+.lore-panel-title {
+  margin: 0 0 0.4rem;
+  font-size: 0.95rem;
+}
+
+.lore-link-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.lore-link-chip {
+  display: inline-flex;
+  gap: 0.35rem;
+  align-items: center;
+  padding: 0.25rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.14));
+  background: rgba(0, 0, 0, 0.2);
+  color: inherit;
+  font: inherit;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.lore-link-chip:hover {
+  border-color: #c4a35a;
+}
+
+.lore-pending-panel {
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border-color: rgba(251, 191, 36, 0.35);
+}
+
+.lore-pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.lore-pending-item {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.65rem 0;
+  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.1));
+}
+
+.lore-pending-body {
+  margin: 0.4rem 0 0;
+  max-height: 6rem;
+  overflow: auto;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0.5rem;
+  border-radius: 6px;
+}
+
+.lore-pending-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: flex-start;
+}
+
+.lore-graph-card {
+  padding: 1rem;
+}
+
+.lore-graph-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.lore-graph-svg {
+  width: 100%;
+  height: 280px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.w-full {
+  width: 100%;
+}

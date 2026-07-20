@@ -15,6 +15,8 @@ import {
 } from '../utils/scribeRosterImport.js';
 import { apiIntakeCreature } from '../api/simulation.js';
 import { getState, setState, subscribe } from '../stores/appState.js';
+import { navigate } from '../router.js';
+import { apiWikiList } from '../api/wiki.js';
 import { showToast } from '../components/Toast.js';
 import { confirmAiCost } from '../components/AiCostConfirm.js';
 
@@ -155,6 +157,7 @@ export default function ScribeView(container) {
                         <h3 class="scribe-library-heading">Your library</h3>
                         <p class="muted scribe-library-help">Pieces saved from AI Scribe for this campaign. Open one to view or edit markdown, or delete it.</p>
                         <button type="button" class="btn-secondary w-full" id="scribe-save-to-library-btn" disabled>💾 Save current output</button>
+                        <button type="button" class="btn-secondary w-full mt-2" id="scribe-open-lore-btn" disabled>🔵 Open in Lore Codex</button>
                         <div id="scribe-library-list" class="scribe-library-list" aria-live="polite"></div>
                     </div>
                 </div>
@@ -204,6 +207,7 @@ export default function ScribeView(container) {
     const rosterBtn = container.querySelector('#scribe-add-roster-btn');
     const rosterHint = container.querySelector('#scribe-roster-hint');
     const saveToLibraryBtn = container.querySelector('#scribe-save-to-library-btn');
+    const openLoreBtn = container.querySelector('#scribe-open-lore-btn');
     const libraryListEl = container.querySelector('#scribe-library-list');
     const viewBar = container.querySelector('#scribe-library-view-bar');
     const viewTitle = container.querySelector('#scribe-library-view-title');
@@ -246,7 +250,9 @@ export default function ScribeView(container) {
 
     function updateSaveToLibraryBtn() {
         const raw = getCurrentMarkdownSync();
-        saveToLibraryBtn.disabled = !String(raw || '').trim();
+        const has = Boolean(String(raw || '').trim());
+        saveToLibraryBtn.disabled = !has;
+        if (openLoreBtn) openLoreBtn.disabled = !has;
     }
 
     async function loadLibrary() {
@@ -453,13 +459,40 @@ export default function ScribeView(container) {
         try {
             const townId = getState().currentTown?.id || 0;
             const gen = viewingLibraryId ? (viewingGenType || currentTab) : currentTab;
-            await apiScribeSave(townId, 0, gen, raw);
+            const res = await apiScribeSave(townId, 0, gen, raw);
             showToast('Saved to library.', 'success');
+            const li = res.lore_ingest;
+            if (li?.status === 'created' || li?.status === 'updated') {
+                showToast('Also filed in Lore Codex.', 'success');
+            } else if (li?.status === 'pending') {
+                showToast('Lore update queued — review in Lore Codex.', 'info');
+            }
             await loadLibrary();
         } catch (err) {
             showToast(err.message || 'Save failed.', 'error');
         } finally {
             updateSaveToLibraryBtn();
+        }
+    });
+
+    openLoreBtn?.addEventListener('click', async () => {
+        const raw = getCurrentMarkdownSync().trim();
+        if (!raw) return;
+        try {
+            const titleMatch = raw.match(/^#\s+(.+)$/m);
+            const title = (titleMatch ? titleMatch[1] : raw.split('\n')[0] || '').replace(/^#+\s*/, '').trim();
+            const list = await apiWikiList({ q: title.slice(0, 80) });
+            const hit = (list.articles || []).find(
+                (a) => a.title === title || (title && a.title && a.title.toLowerCase() === title.toLowerCase()),
+            ) || (list.articles || [])[0];
+            if (hit?.id) {
+                navigate(`wiki?article=${hit.id}`);
+            } else {
+                navigate('wiki');
+                showToast('Open Lore Codex and search for this title — generate/save to create the page.', 'info');
+            }
+        } catch (err) {
+            showToast(err.message || 'Could not open lore.', 'error');
         }
     });
 
@@ -742,6 +775,16 @@ export default function ScribeView(container) {
             outputContent.innerHTML = formatOutput(res.content);
             updateRosterBarVisibility();
             updateSaveToLibraryBtn();
+            const li = res.lore_ingest;
+            if (li?.status === 'created') {
+                showToast('Added to Lore Codex.', 'success');
+            } else if (li?.status === 'updated') {
+                showToast('Lore Codex page updated.', 'success');
+            } else if (li?.status === 'pending') {
+                showToast('Lore update queued (page locked or DM-edited). Review in Lore Codex.', 'info');
+            } else if (li?.status === 'error') {
+                showToast(`Lore ingest: ${li.message || 'failed'}`, 'error');
+            }
         } catch (err) {
             showToast(err.message, 'error');
             outputContent.innerHTML = `<div class="error-msg" style="color:var(--danger); font-family:sans-serif; text-align:center; margin-top:2rem;">Error: ${err.message}</div>`;

@@ -185,7 +185,7 @@ PROMPT;
                     CURLOPT_POSTFIELDS => $payload,
                     CURLOPT_HTTPHEADER => [
                         "Authorization: Bearer {$apiKey}",
-                        "HTTP-Referer: https://worldscribe.online",
+                        "HTTP-Referer: https://eonweaver.com",
                         "X-Title: Ashenholm",
                         "Content-Type: application/json"
                     ],

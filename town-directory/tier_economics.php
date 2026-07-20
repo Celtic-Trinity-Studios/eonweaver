@@ -134,23 +134,38 @@ function ew_monthly_platform_cap_exceeded(int $userId, string $tier): bool
 }
 
 /**
+ * Raw wallet tokens to add when a user moves to a higher paid tier (delta of monthly caps).
+ * Free → Apprentice grants the Apprentice monthly cap; upgrades grant the cap increase only.
+ */
+function ew_tier_subscription_wallet_seed_delta_raw(string $fromTier, string $toTier): int
+{
+    require_once __DIR__ . '/tier_limits.php';
+    $from = ew_normalize_subscription_tier($fromTier);
+    $to = ew_normalize_subscription_tier($toTier);
+    $ids = ew_subscription_tier_ids();
+    $fromRank = array_search($from, $ids, true);
+    $toRank = array_search($to, $ids, true);
+    if ($to === 'free' || $toRank === false || $fromRank === false || $toRank <= $fromRank) {
+        return 0;
+    }
+    $fromCap = ew_monthly_raw_cap_for_tier($from);
+    $toCap = ew_monthly_raw_cap_for_tier($to);
+    return max(0, $toCap - $fromCap);
+}
+
+/**
  * If platform-wallet AI should be blocked, return a user-facing reason; otherwise null.
- * BYOK (OpenRouter key in Settings) → never blocked here.
  */
 function ew_platform_wallet_blocked(int $userId, string $tier): ?string
 {
     try {
-        $rows = query('SELECT credit_balance, gemini_api_key FROM users WHERE id = ?', [$userId], 0);
+        $rows = query('SELECT credit_balance FROM users WHERE id = ?', [$userId], 0);
         $balance = $rows ? (int) ($rows[0]['credit_balance'] ?? 0) : 0;
-        $userKey = trim($rows ? (string) ($rows[0]['gemini_api_key'] ?? '') : '');
-        if ($userKey !== '') {
-            return null;
-        }
         if ($balance <= 0) {
-            return 'No Eon Credits left on your platform wallet. Add your OpenRouter API key under ⚙️ Settings to use your own account, or top up credits.';
+            return 'No Eon Credits left on your platform wallet. Top up credits or upgrade your plan on 💎 Plans.';
         }
         if (ew_monthly_platform_cap_exceeded($userId, $tier)) {
-            return 'Monthly AI usage limit reached for your subscription tier. Try again next calendar month, upgrade, add more Eon Credits if your plan allows, or use your own OpenRouter API key under ⚙️ Settings.';
+            return 'Monthly AI usage limit reached for your subscription tier. Try again next calendar month, upgrade, or add more Eon Credits if your plan allows.';
         }
         return null;
     } catch (Throwable $e) {

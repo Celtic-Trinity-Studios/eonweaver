@@ -31,7 +31,7 @@ const unMatch = discordPhp.match(/define\('DISCORD_BUG_WEBHOOK_USERNAME',\s*'([^
 const webhookUsername = unMatch ? unMatch[1].trim() : 'Eon Weaver';
 const avMatch = discordPhp.match(/define\('DISCORD_BUG_WEBHOOK_AVATAR_URL',\s*'([^']*)'\)/);
 const webhookAvatarExplicit = avMatch ? avMatch[1].trim() : '';
-const publicBase = (process.env.APP_PUBLIC_URL || 'https://eonscribe.com').replace(/\/$/, '');
+const publicBase = (process.env.APP_PUBLIC_URL || 'https://eonweaver.com').replace(/\/$/, '');
 const defaultSpiderPng = `${publicBase}/eon-weaver-spider.png`;
 const webhookAvatar =
   webhookAvatarExplicit && webhookAvatarExplicit.startsWith('https://')

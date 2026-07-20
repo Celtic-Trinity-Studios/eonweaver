@@ -14,7 +14,7 @@ const HELP_ROUTE_META = {
   'macro-sim': { icon: '🟣', label: 'Macro Dynamics' },
   'world-map': { icon: '🗺️', label: 'World Map' },
   calendar: { icon: '📅', label: 'Calendar' },
-  wiki: { icon: '🔵', label: 'Wiki & Lore' },
+  wiki: { icon: '🔵', label: 'Lore Codex' },
   scribe: { icon: '✍️', label: 'AI Scribe' },
   'content-library': { icon: '📁', label: 'Content Library' },
   'player-portal': { icon: '🔶', label: 'Player Portal' },
@@ -948,12 +948,16 @@ export default function HelpView(container) {
     {
       id: 'wiki-lore',
       icon: '🔵',
-      title: 'Wiki & Lore',
+      title: 'Lore Codex',
       content: `
-        <p>Campaign wiki pages for places, factions, and lore — <strong>markdown</strong> articles scoped to your campaign. Use it as a player-facing or DM prep reference alongside <strong>AI Scribe</strong> output.</p>
+        <p>Campaign <strong>lore pages</strong> with markdown editing, <code>[[wikilinks]]</code>, automatic cross-links, a relationship graph, and <strong>AI ingest</strong> from Scribe (queued when a page is locked or DM-edited).</p>
         <div class="help-feature">
-          <strong>Editing</strong>
-          <p>Create and edit articles from the Wiki view; search helps find pages as the library grows.</p>
+          <strong>Editing &amp; links</strong>
+          <p>Create or edit pages in <strong>Lore Codex</strong>. Use <code>[[Page Title]]</code> to cross-reference; stubs are created for new link targets on save. Mark <strong>Player visible</strong> for the portal; <strong>Lock</strong> so AI cannot overwrite.</p>
+        </div>
+        <div class="help-feature">
+          <strong>AI Scribe</strong>
+          <p>Generations file into the codex automatically and read existing lore as context. Review pending merges at the top of Lore Codex.</p>
         </div>
       `
     },
@@ -986,7 +990,7 @@ export default function HelpView(container) {
       icon: '💎',
       title: 'Plans & credits',
       content: `
-        <p>Open <strong>💎 Plans</strong> for tier catalog, monthly <strong>Eon Credits</strong> allowances, and subscription context. Checkout may be manual today — tiers can still be adjusted by admins.</p>
+        <p>Open <strong>💎 Plans</strong> for tier catalog, monthly <strong>Eon Credits</strong> allowances, and Stripe checkout when billing is enabled on the server.</p>
         <div class="help-feature">
           <strong>Credits</strong>
           <p>The sidebar shows balance (🪙) and usage. AI-heavy flows (scribe, simulation, some imports) consume credits; procedural roster intake does not.</p>
@@ -1068,7 +1072,7 @@ export default function HelpView(container) {
     'settings': 'House rules, campaign blurb, simulation speeds, credits.',
     'calendar': 'Custom months and weekdays; advances with world simulation.',
     'ai-scribe': 'Lore, quests, dungeons — uses campaign context; may use EC.',
-    'wiki-lore': 'Campaign markdown wiki — places, factions, lore.',
+    'wiki-lore': 'Lore pages with [[cross-links]]; AI Scribe auto-ingests.',
     'player-portal': 'Player-facing read views for your table.',
     'vtt-export': 'Export structures for virtual tabletop tools.',
     'integrations': 'Discord webhooks and external hooks.',

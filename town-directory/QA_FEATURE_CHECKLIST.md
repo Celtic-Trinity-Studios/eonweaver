@@ -421,7 +421,11 @@ The headings **How to use this checklist** and **Suggested run order** are meta 
 
 | Done | ID | Feature | Primary surface | Test procedure | Notes |
 |------|-----|---------|-----------------|----------------|-------|
-| [ ] | WIKI-01 | Wiki CRUD / links | Wiki UI | 1) Create article. 2) Edit markdown/text. 3) Search. 4) Delete if supported. | (Wiki API cases in `api.php` / wiki module) |
+| [ ] | WIKI-01 | Lore page CRUD | Lore Codex | 1) Create article with category/tags. 2) Edit markdown + preview. 3) Search/filter. 4) Delete. | `wiki_save`, `wiki_list`, `wiki_get`, `wiki_delete` |
+| [ ] | WIKI-02 | Cross-links | Lore Codex | 1) Body contains `[[Other Page]]`. 2) Save creates stub + manual link. 3) Title mention creates auto link. 4) Refresh links / graph. | `wiki_autolink_refresh`, `wiki_graph` |
+| [ ] | WIKI-03 | AI → lore ingest | Scribe → Lore | 1) Generate Scribe lore. 2) Page appears in Lore Codex. 3) Lock page; regenerate → pending. 4) Accept/Append/Skip. | `lore_ingest`, `wiki_pending_*` |
+| [ ] | WIKI-04 | Player-visible lore | Portal | 1) Flag page player-visible. 2) Portal snapshot includes it. | `player_portal_snapshot` → `lore` |
+| [ ] | WIKI-05 | Entity lore page | Character sheet | 1) Background → Lore page. 2) Creates/opens linked article. | `wiki_entity_page` |
 
 ---
 

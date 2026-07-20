@@ -1376,17 +1376,10 @@
         // App Settings modal
         document.getElementById('settings-btn').addEventListener('click', async () => {
             document.getElementById('settings-status').textContent = '';
-            document.getElementById('settings-gemini-key').value = '';
-            document.getElementById('settings-gemini-key').placeholder = 'AIza...';
             try {
                 const res = await apiGetSettings();
                 if (res.settings) {
                     const s = res.settings;
-                    // Show masked key as placeholder, NOT as the input value
-                    if (s.gemini_api_key) {
-                        document.getElementById('settings-gemini-key').placeholder = s.gemini_api_key + ' (saved)';
-                        document.getElementById('settings-gemini-key').value = '';
-                    }
                     if (s.dnd_edition) document.getElementById('settings-dnd-edition').value = s.dnd_edition;
                     if (s.xp_speed) document.getElementById('settings-xp-speed').value = s.xp_speed;
                     if (s.relationship_speed) document.getElementById('settings-relationship-speed').value = s.relationship_speed;
@@ -1402,11 +1395,6 @@
         document.getElementById('settings-save-btn').addEventListener('click', async () => {
             const status = document.getElementById('settings-status');
             try {
-                const key = document.getElementById('settings-gemini-key').value.trim();
-                // Only save API key if user typed a new one (not empty, not masked)
-                if (key && !key.includes('•')) {
-                    await apiSaveSetting('gemini_api_key', key);
-                }
                 await apiSaveSetting('dnd_edition', document.getElementById('settings-dnd-edition').value);
                 await apiSaveSetting('xp_speed', document.getElementById('settings-xp-speed').value);
                 await apiSaveSetting('relationship_speed', document.getElementById('settings-relationship-speed').value);

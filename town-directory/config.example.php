@@ -14,7 +14,7 @@ define('SESSION_LIFETIME', 86400 * 7);  // 7 days
 // ── App Settings ─────────────────────────────────────────
 define('APP_NAME', 'Eon Weaver');
 // OpenRouter attribution (production site — keep accurate for their ToS)
-define('APP_PUBLIC_URL', 'https://eonscribe.com');
+define('APP_PUBLIC_URL', 'https://eonweaver.com');
 define('APP_PUBLIC_TITLE', 'Eon Weaver');
 define('ALLOW_REGISTRATION', true);     // Set false to lock signups
 
@@ -50,6 +50,19 @@ define('FREE_SIGNUP_CREDIT_GRANT_RAW', 300000);
 // Legacy retail anchor for top-ups: US$0.22 / 1.5 EC.
 // Max NPCs/residents per town on Free tier (manual adds + imports enforce server-side).
 define('FREE_TIER_MAX_RESIDENTS', 15);
+
+// ── Stripe subscriptions (optional — self-serve Plans checkout) ──
+// Dashboard → Products: create recurring monthly prices for apprentice / adventurer / guild_master / world_builder.
+// Map Stripe price_… ids to tier keys (must match tier_limits.php). Webhook → /stripe_webhook.php on this host.
+// Test keys: sk_test_… / whsec_… . Live: sk_live_… after you verify the webhook endpoint.
+// define('STRIPE_SECRET_KEY', 'sk_test_…');
+// define('STRIPE_WEBHOOK_SECRET', 'whsec_…');
+// define(
+//     'STRIPE_PRICE_IDS_JSON',
+//     '{"apprentice":"price_…","adventurer":"price_…","guild_master":"price_…","world_builder":"price_…"}'
+// );
+// One-time helper (local): npm run stripe:setup-products — prints price ids from tier list prices.
+// Or keep secrets in gitignored config.stripe.php (auto-loaded by stripe_billing_lib.php); deploy uploads it.
 
 // ── Free-tier ads (Google AdSense) ───────────────────────
 // Get ca-pub-… from AdSense; create a display unit for the sidebar slot.
@@ -152,6 +165,16 @@ define(
     'DISCORD_TIER_ROLE_IDS_JSON',
     '{"free":"","apprentice":"","adventurer":"","guild_master":"","world_builder":""}'
 );
+
+// #onboarding edition buttons (discord_interactions.php — no Node listener required on the host).
+// Developer Portal → General → Public Key + Application ID; Interactions Endpoint URL → /discord_interactions.php
+// Role IDs from `node discord_setup_onboarding.mjs` (or Server Settings → Roles → Copy ID).
+// define('DISCORD_PUBLIC_KEY', '');
+// define('DISCORD_APPLICATION_ID', '');
+// define(
+//     'DISCORD_EDITION_ROLE_IDS_JSON',
+//     '{"35e":"1504842446679576656","5e":"1504842450357715114","5e2024":"1504842454086586412"}'
+// );
 
 // In-app “Report Bug” → Discord webhook (defaults are in discord.php; override here if needed).
 // If bug-reports is a **forum** and posts must have a tag: Server Settings → Forums → bug-reports → Tags,

@@ -54,5 +54,15 @@ This document tracks all the custom features, mechanics, and UI additions we've 
 *   **Safe Column Migrations:** Database setup script automatically adds new columns to existing tables without data loss.
 *   **FTP Deploy Scripts:** One-command deploy for both dev and live environments.
 
+## 📖 Lore Codex
+*   **Editable lore pages:** Title, slug, category, tags, aliases, markdown body with preview, DM-only notes.
+*   **Cross-references:** Manual `[[Page Title]]` wikilinks (create stubs on save) plus automatic title/alias mention links; backlinks panel and clickable lore graph.
+*   **AI ingest:** Scribe generations auto-create/update lore pages; locked or DM-edited pages queue a pending merge (replace / append / skip).
+*   **Player visibility:** Per-page flag exposed on player portal snapshots; character sheets can open/create a linked lore page.
+
+## 🗺️ Planned — full campaign manager
+
+Living towns + Scribe + **Lore Codex** cover prep and setting continuity. Remaining campaign-manager gaps (sessions, invites, battlemaps, etc.) stay in **`CAMPAIGN_MANAGER_ROADMAP.md`**.
+
 ---
-*(Last updated: 2026-03-29)*
+*(Last updated: 2026-07-20)*

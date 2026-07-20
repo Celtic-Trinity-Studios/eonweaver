@@ -152,15 +152,24 @@ export default function PlayerPortalView(container) {
       availableTowns = towns;
       const chars = res.characters || [];
       const history = res.history || [];
+      const lore = res.lore || [];
       target.innerHTML = `
         <div style="display:flex;gap:1rem;flex-wrap:wrap;margin-bottom:0.75rem;">
           <span><strong>Towns:</strong> ${towns.length}</span>
           <span><strong>Visible Characters:</strong> ${chars.length}</span>
           <span><strong>Recent History Entries:</strong> ${history.length}</span>
+          <span><strong>Player lore pages:</strong> ${lore.length}</span>
         </div>
         <div class="help-tip" style="margin:0 0 0.75rem 0;">
-          Read-only payload endpoint is active. Next step is auth-scoped share links and per-player permission filtering.
+          Player-visible lore pages (flagged in Lore Codex) are included in portal snapshots.
         </div>
+        ${lore.length ? `
+        <div style="margin-bottom:0.75rem;">
+          <h4 style="margin:0 0 0.35rem;">Lore (player-visible)</h4>
+          <ul style="margin:0;padding-left:1.2rem;">
+            ${lore.slice(0, 40).map((a) => `<li><strong>${String(a.title || '').replace(/</g, '&lt;')}</strong> <span class="muted">(${String(a.category || 'other')})</span></li>`).join('')}
+          </ul>
+        </div>` : ''}
         <div style="overflow:auto;max-height:22rem;border:1px solid var(--border);border-radius:8px;">
           <table class="srd-table srd-table-sm">
             <thead><tr><th>Town</th><th>Name</th><th>Class</th><th>Level</th><th>Status</th></tr></thead>

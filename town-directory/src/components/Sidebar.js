@@ -55,7 +55,7 @@ const NAV_GROUPS = [
     id: 'prep',
     label: 'Prep & lore',
     items: [
-      { route: 'wiki', icon: '🔵', label: 'Wiki & Lore', hint: 'Campaign wiki pages for places, factions, and lore (markdown).' },
+      { route: 'wiki', icon: '🔵', label: 'Lore Codex', hint: 'Editable lore pages with cross-links; AI Scribe can auto-fill them.' },
       { route: 'scribe', icon: '✍️', label: 'AI Scribe', hint: 'Arcane Workshop: AI-generated lore, quests, dungeons, items, and traps.' },
       { route: 'content-library', icon: '📁', label: 'Content Library', hint: 'Upload maps, handouts, PDFs, and other assets for your table.' },
     ],

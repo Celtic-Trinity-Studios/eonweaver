@@ -90,7 +90,7 @@ function parseWebhookProfile(php) {
   const username = unMatch ? unMatch[1].trim() : 'Eon Weaver';
   const avMatch = php.match(/define\('DISCORD_BUG_WEBHOOK_AVATAR_URL',\s*'([^']*)'\)/);
   const explicit = avMatch ? avMatch[1].trim() : '';
-  const publicBase = (process.env.APP_PUBLIC_URL || 'https://worldscribe.online').replace(/\/$/, '');
+  const publicBase = (process.env.APP_PUBLIC_URL || 'https://eonweaver.com').replace(/\/$/, '');
   const fallback = `${publicBase}/eon-weaver-spider.png`;
   const avatar_url =
     explicit && explicit.startsWith('https://') ? explicit.slice(0, 2048) : fallback;
@@ -188,7 +188,7 @@ function buildEmbeds(postTitle, sectionInDoc, idPrefixes, checklistRows) {
     `**ID prefixes:** ${idPrefixes}`,
     '',
     '**How to comment:** Reply on this post; start with the checklist **ID** — short summary (e.g. **SIM-03** — …).',
-    'Add environment (local / worldscribe.online / eonscribe.com), browser, screenshots when useful.',
+    'Add environment (local / worldscribe.online / eonweaver.com), browser, screenshots when useful.',
     '',
     '---',
     '',

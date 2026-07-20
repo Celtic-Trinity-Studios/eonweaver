@@ -298,29 +298,17 @@ export function confirmAiCost(operationType, params = {}) {
             // and avoid floating-point boundary glitches around small balances.
             const rawBalance = Number(usage.credit_balance) || 0;
             const balanceTc = rawBalance / TOKENS_PER_CREDIT;
-            const hasByok = !!usage.has_byok_key;
             balanceEl.querySelector('.ai-cost-balance-value').textContent =
-                `${formatWalletTc(balanceTc)} EC` + (hasByok ? ' (using your own OpenRouter key)' : '');
+                `${formatWalletTc(balanceTc)} EC`;
 
-            // Default: allow proceed once we know the balance. Only the hard-empty
-            // branch below re-disables it.
             proceedBtn.disabled = false;
 
-            if (hasByok) {
-                // Pays from their own account; never gate.
-                return;
-            }
-
-            // Hard gate: ONLY block when the wallet is actually empty. The backend
-            // refuses any call with balance <= 0 (helpers.php resolveApiKey), and
-            // estimates are advisory only — they're routinely off by 2–5×, so we
-            // never want to lock someone out who has *some* credit.
             if (rawBalance <= 0) {
                 proceedBtn.disabled = true;
                 proceedBtn.textContent = '🚫 Insufficient credits';
                 warnEl.style.display = '';
                 warnEl.innerHTML =
-                    `Your wallet is empty. Add credits, or set your own OpenRouter key under <strong>⚙️ Settings</strong> to use your own account (no platform charge).`;
+                    'Your wallet is empty. Top up credits or upgrade your plan on <strong>💎 Plans</strong>.';
                 balanceEl.classList.add('ai-cost-balance-low');
                 return;
             }

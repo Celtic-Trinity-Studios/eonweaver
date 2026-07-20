@@ -273,6 +273,16 @@ async function run() {
                 break;
             }
 
+            case 'setup-onboarding':
+                console.log(
+                    'Edition roles + #onboarding are managed by discord_setup_onboarding.mjs (not this CLI).\n' +
+                        'From town-directory/ run:\n' +
+                        '  npm run discord:setup-onboarding\n' +
+                        '  npm run discord:onboarding-bot\n' +
+                        'See .env.discord.example for DISCORD_ROLE_EDITION_* and related IDs.'
+                );
+                break;
+
             case 'setup-standard':
                 console.log('🏗️ Starting Standard Server Setup...');
                 const infoCat = await guild.channels.create({ name: '📢 INFORMATION', type: ChannelType.GuildCategory });
@@ -292,7 +302,7 @@ async function run() {
 
             default:
                 console.log(
-                    'Commands: list-channels | list-tree | list-roles | set-bot-nickname <name|empty> | hoist-member-roles | grant-admin-full [role-id|role-name] | delete-role <id|name> | create-category <name> | create-channel <name> <parentId> [voice] | delete-channel <id> | rename-channel <id> <new-name> | move-channel <id> <parentCategoryId> | setup-standard'
+                    'Commands: list-channels | list-tree | list-roles | set-bot-nickname <name|empty> | hoist-member-roles | grant-admin-full [role-id|role-name] | delete-role <id|name> | create-category <name> | create-channel <name> <parentId> [voice] | delete-channel <id> | rename-channel <id> <new-name> | move-channel <id> <parentCategoryId> | setup-onboarding | setup-standard'
                 );
                 console.log('Set DISCORD_GUILD_ID in .env.discord when the bot is in multiple servers.');
         }

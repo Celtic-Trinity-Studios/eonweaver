@@ -88,7 +88,27 @@ if ($action === 'scribe_generate') {
     $generatedText = $data["choices"][0]["message"]["content"] ?? "";
     $generatedText = trim($generatedText);
 
-    simRespond(['ok' => true, 'content' => $generatedText]);
+    $ingest = null;
+    $autoIngest = !isset($input['auto_ingest_lore']) || !empty($input['auto_ingest_lore']);
+    if ($autoIngest && $campId > 0 && $generatedText !== '') {
+        require_once __DIR__ . '/lore_lib.php';
+        $ingestTitle = scribeExtractTitle($generatedText, 'Untitled lore');
+        try {
+            $ingest = loreIngestFromAi(
+                $userId,
+                $campId,
+                $ingestTitle,
+                $generatedText,
+                (string) $generatorType,
+                null,
+                null
+            );
+        } catch (Exception $e) {
+            $ingest = ['status' => 'error', 'message' => $e->getMessage()];
+        }
+    }
+
+    simRespond(['ok' => true, 'content' => $generatedText, 'lore_ingest' => $ingest]);
 }
 
 function scribeExtractTitle(string $body, string $fallback = 'Untitled'): string
@@ -211,6 +231,11 @@ function buildWorldContext($userId, $campId, $townId) {
         }
     } else {
         $context .= "(No ⚙️ Settings / campaign_rules row found — use settlements + NPCs + user prompt only; do NOT fabricate continents or major factions.)\n\n";
+    }
+
+    if ($campId > 0) {
+        require_once __DIR__ . '/lore_lib.php';
+        $context .= loreBuildContextForAi($userId, $campId);
     }
 
     if ($campId > 0) {
@@ -361,6 +386,7 @@ function buildGeneratorPrompt($type, $params, $context, $userId = 0, $campId = 0
 
     $prompt .= "You are the 'AI Scribe', an expert Dungeon Master assistant for THIS campaign only.\n";
     $prompt .= "GROUNDING: The CANON CONTEXT block above is the source of truth for geography, themes, and existing people. Tie names, tensions, and locations to that text.\n";
+    $prompt .= "When you mention an existing lore page or invent a named subject that deserves its own entry, use wiki syntax [[Page Title]] so the lore codex can cross-link.\n";
     if (!$invent) {
         $prompt .= "STRICT MODE: Do NOT invent major new regions, kingdoms, continent-scale politics, villainous organizations, or signature NPCs that never appear in the CONTEXT. ";
         $prompt .= "If you need a minor site (a cellar, alley, barn, stretch of road, minor cave) you may add it only if it fits next to a named settlement or feature already in CONTEXT — label it clearly as local and small-scale.\n";
@@ -460,7 +486,12 @@ if ($action === 'scribe_save') {
             $uid
         );
         resetDB();
-        simRespond(['ok' => true, 'id' => $contentId]);
+        $ingest = null;
+        if (!empty($input['ingest_lore']) && $campId > 0) {
+            require_once __DIR__ . '/lore_lib.php';
+            $ingest = loreIngestFromAi($userId, (int) $campId, $title, $body, $generatorType, 'scribe:' . $contentId, null);
+        }
+        simRespond(['ok' => true, 'id' => $contentId, 'lore_ingest' => $ingest]);
     }
 
     $newId = insertAndGetId(
@@ -469,7 +500,16 @@ if ($action === 'scribe_save') {
         $uid
     );
     resetDB();
-    simRespond(['ok' => true, 'id' => $newId]);
+    $ingest = null;
+    if ((!isset($input['ingest_lore']) || !empty($input['ingest_lore'])) && $campId > 0) {
+        require_once __DIR__ . '/lore_lib.php';
+        try {
+            $ingest = loreIngestFromAi($userId, (int) $campId, $title, $body, $generatorType, 'scribe:' . $newId, null);
+        } catch (Exception $e) {
+            $ingest = ['status' => 'error', 'message' => $e->getMessage()];
+        }
+    }
+    simRespond(['ok' => true, 'id' => $newId, 'lore_ingest' => $ingest]);
 }
 
 if ($action === 'scribe_get_history') {

@@ -5079,6 +5079,13 @@ try {
                     0
                 );
             }
+            $lore = [];
+            try {
+                require_once __DIR__ . '/lore_lib.php';
+                $lore = lorePlayerVisibleArticles($uid, $campaignId);
+            } catch (Exception $e) {
+                $lore = [];
+            }
             respond([
                 'ok' => true,
                 'campaign_id' => $campaignId,
@@ -5086,6 +5093,7 @@ try {
                 'towns' => $towns,
                 'characters' => $characters,
                 'history' => $history,
+                'lore' => $lore,
             ]);
             break;
 
@@ -5157,6 +5165,14 @@ try {
                 0
             );
 
+            $lore = [];
+            try {
+                require_once __DIR__ . '/lore_lib.php';
+                $lore = lorePlayerVisibleArticles($uid, $campaignId);
+            } catch (Exception $e) {
+                $lore = [];
+            }
+
             respond([
                 'ok' => true,
                 'campaign_id' => $campaignId,
@@ -5165,6 +5181,7 @@ try {
                 'towns' => $towns,
                 'characters' => $characters,
                 'history' => $history,
+                'lore' => $lore,
             ]);
             break;
 
@@ -5780,23 +5797,61 @@ try {
             $user = requireAuth();
             $uid = (int) $user['id'];
             $campaignId = getActiveCampaignIdForUser($uid);
-            $articles = query(
-                'SELECT id, slug, title, tags_json, is_auto_generated, created_at, updated_at
-                 FROM wiki_articles
-                 WHERE user_id = ? AND campaign_id = ?
-                 ORDER BY updated_at DESC',
-                [$uid, $campaignId],
-                0
-            );
-            respond(['ok' => true, 'campaign_id' => $campaignId, 'articles' => $articles]);
+            require_once __DIR__ . '/lore_lib.php';
+            loreEnsureSchema();
+            $q = trim((string) ($_GET['q'] ?? ''));
+            $category = trim((string) ($_GET['category'] ?? ''));
+            $sql = 'SELECT id, slug, title, category, tags_json, aliases_json, is_auto_generated,
+                           player_visible, is_locked, entity_type, entity_id, source_generator,
+                           created_at, updated_at
+                    FROM wiki_articles
+                    WHERE user_id = ? AND campaign_id = ?';
+            $params = [$uid, $campaignId];
+            if ($category !== '') {
+                $sql .= ' AND category = ?';
+                $params[] = loreNormalizeCategory($category);
+            }
+            if ($q !== '') {
+                $sql .= ' AND (title LIKE ? OR slug LIKE ? OR body LIKE ? OR COALESCE(aliases_json, \'\') LIKE ?)';
+                $like = '%' . $q . '%';
+                $params[] = $like;
+                $params[] = $like;
+                $params[] = $like;
+                $params[] = $like;
+            }
+            $sql .= ' ORDER BY updated_at DESC LIMIT 500';
+            $articles = query($sql, $params, 0) ?: [];
+            $formatted = [];
+            foreach ($articles as $a) {
+                $formatted[] = loreFormatArticleRow($a);
+            }
+            $pendingCount = 0;
+            try {
+                $pc = query(
+                    'SELECT COUNT(*) AS c FROM wiki_pending_ingest WHERE user_id = ? AND campaign_id = ? AND status = \'pending\'',
+                    [$uid, $campaignId],
+                    0
+                );
+                $pendingCount = (int) ($pc[0]['c'] ?? 0);
+            } catch (Exception $e) {
+                $pendingCount = 0;
+            }
+            respond([
+                'ok' => true,
+                'campaign_id' => $campaignId,
+                'articles' => $formatted,
+                'pending_count' => $pendingCount,
+            ]);
             break;
 
         case 'wiki_get':
             $user = requireAuth();
             $uid = (int) $user['id'];
             $campaignId = getActiveCampaignIdForUser($uid);
-            $articleId = (int) ($_GET['article_id'] ?? 0);
-            $slug = trim((string) ($_GET['slug'] ?? ''));
+            require_once __DIR__ . '/lore_lib.php';
+            loreEnsureSchema();
+            $articleId = (int) ($_GET['article_id'] ?? (($input ?? [])['article_id'] ?? 0));
+            $slug = trim((string) ($_GET['slug'] ?? (($input ?? [])['slug'] ?? '')));
             if ($articleId <= 0 && $slug === '') {
                 throw new Exception('Provide article_id or slug.');
             }
@@ -5816,52 +5871,43 @@ try {
             if (!$rows) {
                 throw new Exception('Article not found.');
             }
-            respond(['ok' => true, 'article' => $rows[0]]);
+            $article = loreFormatArticleRow($rows[0]);
+            $backlinks = loreGetBacklinks($uid, $campaignId, (string) $article['slug']);
+            $outlinks = loreGetOutlinks($uid, $campaignId, (string) $article['slug']);
+            respond([
+                'ok' => true,
+                'article' => $article,
+                'backlinks' => $backlinks,
+                'outlinks' => $outlinks,
+            ]);
             break;
 
         case 'wiki_save':
             $user = requireAuth();
             $uid = (int) $user['id'];
             $campaignId = getActiveCampaignIdForUser($uid);
-            $article = $input['article'] ?? [];
-            $title = trim((string) ($article['title'] ?? ''));
-            $body = (string) ($article['body'] ?? '');
-            if ($title === '') {
-                throw new Exception('Article title is required.');
+            require_once __DIR__ . '/lore_lib.php';
+            $articleIn = $input['article'] ?? [];
+            if (!is_array($articleIn)) {
+                throw new Exception('Invalid article payload.');
             }
-            $slug = trim((string) ($article['slug'] ?? ''));
-            if ($slug === '') {
-                $slug = strtolower(preg_replace('/[^a-z0-9]+/i', '-', $title));
-                $slug = trim($slug, '-');
-            }
-            $tagsJson = json_encode($article['tags'] ?? [], JSON_UNESCAPED_UNICODE);
-            $isAuto = !empty($article['is_auto_generated']) ? 1 : 0;
-            $articleId = (int) ($article['id'] ?? 0);
-
-            if ($articleId > 0) {
-                execute(
-                    'UPDATE wiki_articles
-                     SET slug = ?, title = ?, body = ?, tags_json = ?, is_auto_generated = ?
-                     WHERE id = ? AND user_id = ? AND campaign_id = ?',
-                    [$slug, $title, $body, $tagsJson, $isAuto, $articleId, $uid, $campaignId],
-                    0
-                );
-            } else {
-                $articleId = insertAndGetId(
-                    'INSERT INTO wiki_articles (user_id, campaign_id, slug, title, body, tags_json, is_auto_generated)
-                     VALUES (?, ?, ?, ?, ?, ?, ?)',
-                    [$uid, $campaignId, $slug, $title, $body, $tagsJson, $isAuto],
-                    0
-                );
-            }
-            $saved = query('SELECT * FROM wiki_articles WHERE id = ? LIMIT 1', [$articleId], 0);
-            respond(['ok' => true, 'article' => $saved[0] ?? null]);
+            $saved = loreSaveArticle($uid, $campaignId, $articleIn);
+            $backlinks = loreGetBacklinks($uid, $campaignId, (string) ($saved['slug'] ?? ''));
+            $outlinks = loreGetOutlinks($uid, $campaignId, (string) ($saved['slug'] ?? ''));
+            respond([
+                'ok' => true,
+                'article' => $saved,
+                'backlinks' => $backlinks,
+                'outlinks' => $outlinks,
+            ]);
             break;
 
         case 'wiki_delete':
             $user = requireAuth();
             $uid = (int) $user['id'];
             $campaignId = getActiveCampaignIdForUser($uid);
+            require_once __DIR__ . '/lore_lib.php';
+            loreEnsureSchema();
             $articleId = (int) ($input['article_id'] ?? 0);
             if ($articleId <= 0) {
                 throw new Exception('Missing article_id.');
@@ -5881,6 +5927,12 @@ try {
                 [$uid, $campaignId, $slug, $slug],
                 0
             );
+            execute(
+                'UPDATE wiki_pending_ingest SET status = \'skipped\', resolved_at = NOW()
+                 WHERE user_id = ? AND campaign_id = ? AND article_id = ? AND status = \'pending\'',
+                [$uid, $campaignId, $articleId],
+                0
+            );
             respond(['ok' => true, 'article_id' => $articleId]);
             break;
 
@@ -5888,64 +5940,32 @@ try {
             $user = requireAuth();
             $uid = (int) $user['id'];
             $campaignId = getActiveCampaignIdForUser($uid);
-            $articles = query(
-                'SELECT slug, title, body FROM wiki_articles WHERE user_id = ? AND campaign_id = ?',
-                [$uid, $campaignId],
-                0
-            );
-            execute(
-                'DELETE FROM wiki_links WHERE user_id = ? AND campaign_id = ? AND auto_generated = 1',
-                [$uid, $campaignId],
-                0
-            );
-            $bySlug = [];
-            foreach ($articles as $a) {
-                $bySlug[$a['slug']] = $a;
-            }
-            foreach ($articles as $from) {
-                $body = strtolower((string) ($from['body'] ?? ''));
-                foreach ($articles as $to) {
-                    if ($from['slug'] === $to['slug']) {
-                        continue;
-                    }
-                    $title = trim((string) ($to['title'] ?? ''));
-                    if ($title === '') {
-                        continue;
-                    }
-                    $needle = strtolower($title);
-                    if (strpos($body, $needle) !== false) {
-                        execute(
-                            'INSERT INTO wiki_links (user_id, campaign_id, from_slug, to_slug, weight, auto_generated)
-                             VALUES (?, ?, ?, ?, 1.0, 1)
-                             ON DUPLICATE KEY UPDATE weight = VALUES(weight)',
-                            [$uid, $campaignId, $from['slug'], $to['slug']],
-                            0
-                        );
-                    }
-                }
-            }
-            $links = query(
-                'SELECT from_slug, to_slug, weight, auto_generated FROM wiki_links WHERE user_id = ? AND campaign_id = ? ORDER BY from_slug, to_slug',
-                [$uid, $campaignId],
-                0
-            );
-            respond(['ok' => true, 'links' => $links]);
+            require_once __DIR__ . '/lore_lib.php';
+            $result = loreAutolinkRefreshCampaign($uid, $campaignId);
+            respond($result);
             break;
 
         case 'wiki_graph':
             $user = requireAuth();
             $uid = (int) $user['id'];
             $campaignId = getActiveCampaignIdForUser($uid);
-            $articles = query(
-                'SELECT slug, title, is_auto_generated, updated_at FROM wiki_articles WHERE user_id = ? AND campaign_id = ? ORDER BY title',
-                [$uid, $campaignId],
-                0
-            );
+            require_once __DIR__ . '/lore_lib.php';
+            loreEnsureSchema();
+            $category = trim((string) ($_GET['category'] ?? ''));
+            $sql = 'SELECT id, slug, title, category, is_auto_generated, player_visible, is_locked, updated_at
+                    FROM wiki_articles WHERE user_id = ? AND campaign_id = ?';
+            $params = [$uid, $campaignId];
+            if ($category !== '') {
+                $sql .= ' AND category = ?';
+                $params[] = loreNormalizeCategory($category);
+            }
+            $sql .= ' ORDER BY title';
+            $articles = query($sql, $params, 0) ?: [];
             $links = query(
                 'SELECT from_slug, to_slug, weight, auto_generated FROM wiki_links WHERE user_id = ? AND campaign_id = ? ORDER BY from_slug, to_slug',
                 [$uid, $campaignId],
                 0
-            );
+            ) ?: [];
             $relWeb = query(
                 "SELECT cr.char1_id, cr.char2_id, cr.relationship_type, cr.disposition,
                         c1.name AS char1_name, c2.name AS char2_name
@@ -5958,7 +5978,7 @@ try {
                  LIMIT 600",
                 [$campaignId],
                 0
-            );
+            ) ?: [];
             respond([
                 'ok' => true,
                 'campaign_id' => $campaignId,
@@ -5966,6 +5986,67 @@ try {
                 'links' => $links,
                 'relationship_web' => $relWeb,
             ]);
+            break;
+
+        case 'wiki_pending_list':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            require_once __DIR__ . '/lore_lib.php';
+            respond([
+                'ok' => true,
+                'campaign_id' => $campaignId,
+                'pending' => loreListPending($uid, $campaignId),
+            ]);
+            break;
+
+        case 'wiki_pending_resolve':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            require_once __DIR__ . '/lore_lib.php';
+            $pendingId = (int) ($input['pending_id'] ?? 0);
+            $resolution = (string) ($input['resolution'] ?? '');
+            if ($pendingId <= 0) {
+                throw new Exception('Missing pending_id.');
+            }
+            $result = loreResolvePending($uid, $campaignId, $pendingId, $resolution);
+            respond($result);
+            break;
+
+        case 'wiki_ingest':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            require_once __DIR__ . '/lore_lib.php';
+            $title = trim((string) ($input['title'] ?? ''));
+            $body = (string) ($input['body'] ?? '');
+            $gen = trim((string) ($input['generator_type'] ?? 'lore'));
+            $cat = isset($input['category']) ? (string) $input['category'] : null;
+            $ref = isset($input['source_ref']) ? (string) $input['source_ref'] : null;
+            if ($body === '') {
+                throw new Exception('body is required.');
+            }
+            $result = loreIngestFromAi($uid, $campaignId, $title, $body, $gen, $ref, $cat);
+            respond(array_merge(['ok' => true], $result));
+            break;
+
+        case 'wiki_entity_page':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            $campaignId = getActiveCampaignIdForUser($uid);
+            require_once __DIR__ . '/lore_lib.php';
+            $entityType = trim((string) (($input ?? [])['entity_type'] ?? $_GET['entity_type'] ?? ''));
+            $entityId = (int) (($input ?? [])['entity_id'] ?? $_GET['entity_id'] ?? 0);
+            $title = trim((string) (($input ?? [])['title'] ?? $_GET['title'] ?? ''));
+            if ($entityType === '' || $entityId <= 0) {
+                throw new Exception('entity_type and entity_id are required.');
+            }
+            if ($title === '') {
+                $title = ucfirst($entityType) . ' #' . $entityId;
+            }
+            $article = loreGetOrCreateForEntity($uid, $campaignId, $entityType, $entityId, $title);
+            respond(['ok' => true, 'article' => $article]);
             break;
 
         default:

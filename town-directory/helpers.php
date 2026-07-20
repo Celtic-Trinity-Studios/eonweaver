@@ -4,6 +4,7 @@
  * Reusable functions used by both api.php and simulate.php.
  */
 
+require_once __DIR__ . '/app_public_lib.php';
 require_once __DIR__ . '/tier_economics.php';
 require_once __DIR__ . '/pricing.php';
 require_once __DIR__ . '/llm_training_dataset.php';
@@ -16,7 +17,7 @@ require_once __DIR__ . '/llm_training_dataset.php';
  */
 function openRouterAppHeaders(?string $xTitle = null): array
 {
-    $url = defined('APP_PUBLIC_URL') ? APP_PUBLIC_URL : 'https://eonscribe.com';
+    $url = ew_app_public_base_url();
     $title = ($xTitle !== null && $xTitle !== '')
         ? $xTitle
         : (defined('APP_PUBLIC_TITLE') ? APP_PUBLIC_TITLE : (defined('APP_NAME') ? APP_NAME : 'Eon Weaver'));
@@ -361,15 +362,10 @@ function ew_ai_log_usage_analytics_row(int $userId, array $usage, ?string $featu
 
 /**
  * Deduct an exact raw amount from the platform wallet (no per-0.01-EC bucket rounding).
- * BYOK users skip wallet entirely.
  */
 function ew_wallet_deduct_exact_raw(int $userId, int $rawTokens): void
 {
-    global $OPENROUTER_USING_USER_KEY;
     if (!$userId || $rawTokens <= 0) {
-        return;
-    }
-    if (!empty($OPENROUTER_USING_USER_KEY)) {
         return;
     }
 
@@ -514,38 +510,29 @@ function applyLevelToClass($classStr, $newLevel)
 }
 
 /**
- * Resolve the API key for a specific feature.
- * Order: user's Settings key (BYOK) → per-feature constant → global OPENROUTER_API_KEY.
- * When the user's own key is used, $OPENROUTER_USING_USER_KEY is set so wallet deduction is skipped.
+ * Resolve the OpenRouter API key for a platform AI call.
+ * Order: per-feature constant → global OPENROUTER_API_KEY.
  *
- * If $requireCredits is true (default), users on the platform wallet must have credit_balance > 0
+ * If $requireCredits is true (default), users must have credit_balance > 0
  * or the call is rejected here — gating EVERY paid AI call site through one function.
  * Pass false only for free connectivity tests like `debug_llm`.
  */
 function resolveApiKey(string $featureKey, int $userId, bool $requireCredits = true): string {
-    global $LAST_RESOLVED_FEATURE_KEY, $OPENROUTER_USING_USER_KEY;
+    global $LAST_RESOLVED_FEATURE_KEY;
     $LAST_RESOLVED_FEATURE_KEY = str_replace('OPENROUTER_KEY_', '', $featureKey);
-    $OPENROUTER_USING_USER_KEY = false;
 
-    $rows = query("SELECT gemini_api_key, credit_balance, subscription_tier FROM users WHERE id = ?", [$userId], 0);
-    $userKey = trim($rows ? ($rows[0]['gemini_api_key'] ?? '') : '');
-    if ($userKey !== '') {
-        $OPENROUTER_USING_USER_KEY = true;
-        return $userKey;
-    }
-
-    // Wallet gate for any paid action — uniform across every AI feature.
     if ($requireCredits) {
+        $rows = query('SELECT credit_balance, subscription_tier FROM users WHERE id = ?', [$userId], 0);
         $balance = $rows ? (int) ($rows[0]['credit_balance'] ?? 0) : 0;
         if ($balance <= 0) {
-            throw new Exception('Insufficient Eon Credits — your wallet is empty. Top up credits, or add your own OpenRouter API key under ⚙️ Settings to use your own account.');
+            throw new Exception('Insufficient Eon Credits — your wallet is empty. Top up credits or upgrade your plan on 💎 Plans.');
         }
         $subTier = trim((string) ($rows[0]['subscription_tier'] ?? 'free'));
         if ($subTier === '') {
             $subTier = 'free';
         }
         if (ew_monthly_platform_cap_exceeded($userId, $subTier)) {
-            throw new Exception('Monthly AI usage limit reached for your subscription tier. Try again next calendar month, upgrade, or add your own OpenRouter API key under ⚙️ Settings.');
+            throw new Exception('Monthly AI usage limit reached for your subscription tier. Try again next calendar month or upgrade on 💎 Plans.');
         }
     }
 
@@ -556,7 +543,7 @@ function resolveApiKey(string $featureKey, int $userId, bool $requireCredits = t
         return OPENROUTER_API_KEY;
     }
 
-    throw new Exception('No OpenRouter API key set. Go to ⚙️ Settings to add your key.');
+    throw new Exception('Platform AI is not configured on this server. Please contact support.');
 }
 
 /**

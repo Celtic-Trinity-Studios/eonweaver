@@ -502,6 +502,15 @@ export function renderCharacterSheet(el, c, options = {}) {
     reader.readAsDataURL(file);
   });
 
+  el.querySelector('#cs-open-lore')?.addEventListener('click', async () => {
+    try {
+      const { openLoreForEntity } = await import('../views/WikiView.js');
+      await openLoreForEntity('character', c.id, c.name || `Character ${c.id}`);
+    } catch (err) {
+      console.error(err);
+    }
+  });
+
   // ── Wire header portrait click-to-upload ────────────
   const headerPortrait = el.querySelector('#cs-portrait-click');
   const headerFileInput = el.querySelector('#cs-portrait-header-file');
@@ -3169,6 +3178,7 @@ function buildBackgroundTab(c) {
           ${c.portrait_url ? `<img class="cs-bg-portrait" src="${c.portrait_url}" alt="${c.name}">` : '<div class="cs-empty">No portrait</div>'}
           <div class="cs-portrait-actions">
             <label class="btn-secondary btn-sm"><span>📷 Upload</span><input type="file" id="cs-portrait-file" accept="image/*" style="display:none"></label>
+            <button type="button" class="btn-secondary btn-sm" id="cs-open-lore">🔵 Lore page</button>
           </div>
         </div>
       </div>

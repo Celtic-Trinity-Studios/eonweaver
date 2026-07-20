@@ -29,7 +29,7 @@ if (!function_exists('ew_metrics_referrer_host')) {
         }
         $host = parse_url($referrer, PHP_URL_HOST) ?: '';
         $host = strtolower($host);
-        if ($host === '' || str_ends_with($host, 'worldscribe.online') || str_ends_with($host, 'eonscribe.com')
+        if ($host === '' || str_ends_with($host, 'worldscribe.online') || str_ends_with($host, 'eonweaver.com')
             || str_ends_with($host, 'eonweaver.com')) {
             return '(internal)';
         }

@@ -1,7 +1,19 @@
 php_value max_execution_time 300
 php_value memory_limit 256M
 
+<IfModule mod_headers.c>
+  <FilesMatch "^index\.html$">
+    Header set Cache-Control "no-cache, no-store, must-revalidate"
+    Header set Pragma "no-cache"
+    Header set Expires "0"
+  </FilesMatch>
+</IfModule>
+
 RewriteEngine On
+# Retired staging host — send visitors to production (does not affect eonweaver.com).
+RewriteCond %{HTTP_HOST} ^(www\.)?worldscribe\.online$ [NC]
+RewriteRule ^ https://eonweaver.com%{REQUEST_URI} [L,R=301]
+
 # Force canonical host + HTTPS.
 RewriteCond %{HTTPS} !=on [OR]
 RewriteCond %{HTTP_HOST} ^www\.eonweaver\.com$ [NC]

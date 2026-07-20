@@ -15,10 +15,14 @@ town-directory/src/live_build/
 
 # ── Secrets & credentials (NEVER commit) ─────────────────
 town-directory/config.php
+town-directory/config.stripe.php
 town-directory/discord.php
 town-directory/llm_local.php
 town-directory/.env.discord
 town-directory/.env.smoke
+town-directory/.env.stripe
+town-directory/discord_bot.out.log
+town-directory/discord_bot.err.log
 
 # ── Deploy manifests ─────────────────────────────────────
 town-directory/.deploy_manifest.json

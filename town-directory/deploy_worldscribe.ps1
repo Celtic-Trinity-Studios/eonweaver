@@ -75,8 +75,8 @@ if (-not $ftpHost -or -not $ftpUser -or -not $ftpPass) {
 # Safety guard: refuse to run if credentials look like the eonweaver.com production user.
 # Hostinger domain-scoped FTP users have the form uNNNNNNNN.<domain>. If we see eonweaver here we'd
 # silently upload the worldscribe build to the eonweaver chroot and leave worldscribe stale.
-if ($ftpUser -match '\.eonweaver\.com$' -or $ftpUser -match '\.eonscribe\.com$') {
-    Write-Host "REFUSING TO DEPLOY: EW_FTP_USER='$ftpUser' looks like an eonweaver/eonscribe FTP user." -ForegroundColor Red
+if ($ftpUser -match '\.eonweaver\.com$') {
+    Write-Host "REFUSING TO DEPLOY: EW_FTP_USER='$ftpUser' looks like an eonweaver production FTP user." -ForegroundColor Red
     Write-Host "deploy_worldscribe.ps1 must use the worldscribe.online FTP login (e.g. uNNNNNNNN.worldscribe.online)." -ForegroundColor Red
     Write-Host "Fix: put worldscribe creds in deploy.env.worldscribe, OR replace deploy.env with worldscribe creds." -ForegroundColor Yellow
     exit 1
@@ -139,7 +139,7 @@ Write-Host "Target: $ftpUri" -ForegroundColor Gray
 
 # 1. Upload PHP backend files
 Write-Host "`n[1/6] Uploading PHP backend files..." -ForegroundColor Yellow
-$phpFiles = @("api.php", "db.php", "user_db.php", "setup_mysql.php", "config.php", "simulate.php", "sim_apply.php", "sim_run.php", "sim_plan.php", "sim_prompt_lib.php", "sim_arrival_name_pool.php", "toon_lib.php", "weather_daily_lib.php", "sim_single_town.php", "sim_world.php", "sim_level_up.php", "intake_actions.php", "scribe_actions.php", "roster_generator.php", "auth.php", "upload_portrait.php", "upload_world_map.php", "upload_content.php", "helpers.php", "llm_training_dataset.php", "npc_flavor_pool.php", "character_sheet_library.php", "pricing.php", "llm_local.php", "import_srd.php", "import_5e_srd.php", "setup_srd_dbs.php", "migrate_srd.php", "reset_app_data.php", "discord.php", "discord_member_sync_lib.php", "macro_framework_lib.php", "tier_policy.php", "tier_limits.php", "tier_economics.php", "signup_policy.php", "smtp_mail.php", "verify_email.php", "calendar_advance_lib.php", "calendar_display_lib.php", "metrics_lib.php", "sitemap.php")
+$phpFiles = @("api.php", "db.php", "user_db.php", "setup_mysql.php", "config.php", "simulate.php", "sim_apply.php", "sim_run.php", "sim_plan.php", "sim_prompt_lib.php", "sim_arrival_name_pool.php", "toon_lib.php", "weather_daily_lib.php", "sim_single_town.php", "sim_world.php", "sim_level_up.php", "intake_actions.php", "scribe_actions.php", "lore_lib.php", "roster_generator.php", "auth.php", "upload_portrait.php", "upload_world_map.php", "upload_content.php", "helpers.php", "llm_training_dataset.php", "npc_flavor_pool.php", "character_sheet_library.php", "pricing.php", "llm_local.php", "import_srd.php", "import_5e_srd.php", "setup_srd_dbs.php", "migrate_srd.php", "reset_app_data.php", "discord.php", "discord_member_sync_lib.php", "macro_framework_lib.php", "tier_policy.php", "tier_limits.php", "tier_economics.php", "signup_policy.php", "smtp_mail.php", "verify_email.php", "calendar_advance_lib.php", "calendar_display_lib.php", "metrics_lib.php", "sitemap.php", "stripe_billing_lib.php", "stripe_webhook.php")
 foreach ($f in $phpFiles) {
     $path = Join-Path $localRoot $f
     if (Test-Path $path) {

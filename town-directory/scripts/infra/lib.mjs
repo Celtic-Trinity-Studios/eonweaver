@@ -32,7 +32,7 @@ export function resolveBaseUrl() {
   const fromEnv =
     process.env.SMOKE_BASE_URL ||
     process.env.APP_PUBLIC_URL ||
-    'https://worldscribe.online';
+    'https://eonweaver.com';
   return String(fromEnv).replace(/\/$/, '');
 }
 

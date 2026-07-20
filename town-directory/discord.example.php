@@ -23,7 +23,7 @@ define('DISCORD_BUG_WEBHOOK_AVATAR_URL', ''); // optional https URL to PNG/JPG; 
 
 function ew_discord_bug_default_avatar_url(): string
 {
-    $base = defined('APP_PUBLIC_URL') ? rtrim((string) APP_PUBLIC_URL, '/') : 'https://eonscribe.com';
+    $base = defined('APP_PUBLIC_URL') ? rtrim((string) APP_PUBLIC_URL, '/') : 'https://eonweaver.com';
     return $base . '/eon-weaver-spider.png';
 }
 

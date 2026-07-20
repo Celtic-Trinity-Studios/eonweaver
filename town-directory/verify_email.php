@@ -5,9 +5,10 @@
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/app_public_lib.php';
 
 $token = isset($_GET['token']) ? trim((string) $_GET['token']) : '';
-$base = defined('APP_PUBLIC_URL') ? rtrim(APP_PUBLIC_URL, '/') : '';
+$base = ew_app_public_base_url();
 
 function ew_redirect(string $path): void
 {

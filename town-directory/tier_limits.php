@@ -125,8 +125,8 @@ if (!function_exists('ew_subscription_tier_ids')) {
 
         $aiWalletLine =
             $tierId === 'free'
-                ? 'Free tier: ~1.5 EC starter grant after email verification; no monthly platform AI allowance—usage draws only from your EC wallet until empty (EC top-ups planned). BYOK (your OpenRouter key in Settings) skips the platform wallet.'
-                : 'Platform AI uses your Eon Credits (EC) wallet and a per-calendar-month raw-token ceiling; BYOK (your OpenRouter key in Settings) skips the platform wallet and that ceiling.';
+                ? 'Free tier: ~1.5 EC starter grant after email verification; no monthly platform AI allowance—usage draws only from your EC wallet until empty (EC top-ups planned).'
+                : 'Platform AI uses your Eon Credits (EC) wallet and a per-calendar-month raw-token ceiling; new subscriptions seed your wallet with that tier’s monthly EC allowance (upgrades add the difference).';
 
         $core = [
             $quota,
@@ -134,7 +134,7 @@ if (!function_exists('ew_subscription_tier_ids')) {
             'Towns: roster, relationships, buildings, town history, in-game calendar, campaign rules & lore.',
             'Wiki, Scribe, homebrew, world map, trade routes, calendar tooling, and exports where enabled in your build.',
             $aiWalletLine,
-            'AI town and multi-town world simulation use the same platform wallet and token rules as other AI (BYOK optional in Settings).',
+            'AI town and multi-town world simulation use the same platform wallet and token rules as other AI.',
         ];
 
         if ($tierId === 'free') {

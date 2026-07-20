@@ -44,6 +44,7 @@ import './styles/theme.css';
 import './styles/admin.css';
 import './styles/homebrew.css';
 import './styles/scribe.css';
+import './styles/lore.css';
 import './styles/mobile-framework.css';
 
 let routesRegistered = false;
