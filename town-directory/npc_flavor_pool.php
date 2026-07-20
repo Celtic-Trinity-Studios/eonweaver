@@ -402,8 +402,8 @@ function ew_npc_flavor_character_db_try_borrow(
 }
 
 /**
- * Same as ew_npc_flavor_character_db_try_borrow but donors are other accounts who opted in
- * (`users.npc_sheet_pool_opt_in`). Still matches edition + profile hash; stub keeps roster name/role.
+ * Same as ew_npc_flavor_character_db_try_borrow but donors are other accounts.
+ * Always on (no per-user opt-in). Still matches edition + profile hash; stub keeps roster name/role.
  *
  * @param array<string, bool> $usedFlavorHashes
  * @param array<int, bool>     $usedCharacterDonorIds
@@ -436,10 +436,8 @@ function ew_npc_flavor_community_character_try_borrow(
             'SELECT c.*, COALESCE(camp.dnd_edition, \'3.5e\') AS _campaign_dnd_edition
              FROM characters c
              INNER JOIN towns t ON t.id = c.town_id
-             INNER JOIN users u ON u.id = t.user_id
              LEFT JOIN campaigns camp ON camp.id = t.campaign_id
-             WHERE u.npc_sheet_pool_opt_in = 1
-               AND t.user_id <> ?
+             WHERE t.user_id <> ?
                AND COALESCE(TRIM(c.status), \'\') <> ?
                AND NOT (c.town_id = ? AND LOWER(TRIM(c.name)) = ?)
                AND CHAR_LENGTH(TRIM(COALESCE(c.history, \'\'))) >= 12

@@ -200,14 +200,14 @@ try {
     } catch (Exception $e) { /* already exists */
     }
 
-    // Migration: community NPC sheet pool (cross-account intake donors + consumers)
+    // Migration: community NPC sheet pool columns (legacy; pool is always on in code now)
     try {
-        $pdo->exec("ALTER TABLE users ADD COLUMN npc_sheet_pool_opt_in TINYINT(1) NOT NULL DEFAULT 0");
+        $pdo->exec("ALTER TABLE users ADD COLUMN npc_sheet_pool_opt_in TINYINT(1) NOT NULL DEFAULT 1");
         $results[] = '✅ Added npc_sheet_pool_opt_in column';
     } catch (Exception $e) { /* already exists */
     }
     try {
-        $pdo->exec("ALTER TABLE users ADD COLUMN use_community_npc_intake TINYINT(1) NOT NULL DEFAULT 0");
+        $pdo->exec("ALTER TABLE users ADD COLUMN use_community_npc_intake TINYINT(1) NOT NULL DEFAULT 1");
         $results[] = '✅ Added use_community_npc_intake column';
     } catch (Exception $e) { /* already exists */
     }

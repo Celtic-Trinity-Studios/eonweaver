@@ -3,7 +3,7 @@
  * Campaign management + simulation settings.
  * Edition is set per-campaign, not globally.
  */
-import { apiGetSettings, apiGetUsage, apiSaveSetting } from '../api/settings.js';
+import { apiGetUsage } from '../api/settings.js';
 import { apiGetCampaigns, apiCreateCampaign, apiUpdateCampaign, apiDeleteCampaign, apiSwitchCampaign } from '../api/campaigns.js';
 import { showToast } from '../components/Toast.js';
 import { getState, setState } from '../stores/appState.js';
@@ -60,7 +60,7 @@ function formatSubscriptionCatalogHtml(catalog, currentTierId) {
       <td>${qty(t.max_towns_per_campaign)}</td>
       <td>${fmtFileMb(t.content_max_file_bytes)}</td>
       <td>${fmtStorage(t.content_max_storage_bytes)}</td>
-      <td title="Platform-wallet AI, calendar month (BYOK excluded). Free: no monthly cap—starter EC wallet only.">${
+      <td title="Platform-wallet AI, calendar month. Free: no monthly cap—starter EC wallet only.">${
         t.id === 'free' && cap <= 0 ? aiStr : `~${aiStr} EC`
       }</td>
     </tr>`;
@@ -76,7 +76,7 @@ function formatSubscriptionCatalogHtml(catalog, currentTierId) {
   return `
     <details class="tier-catalog-details">
       <summary class="tier-catalog-summary">Compare subscription plans</summary>
-      <p class="tier-catalog-note">Prices are the retail targets in <code>Price_Analysis.md</code>; checkout is not wired yet (tiers are set manually or by admin). Paid tiers get a monthly <strong>Eon Credits (EC)</strong> cap on the platform AI wallet; <strong>Free</strong> has no monthly cap—only the starter EC wallet (BYOK always skips the platform wallet).</p>
+      <p class="tier-catalog-note">Prices match the retail tiers in <code>Price_Analysis.md</code>. When Stripe is configured on the server, use <strong>💎 Plans</strong> for self-serve checkout; otherwise tiers are set manually by admin. Paid tiers get a monthly <strong>Eon Credits (EC)</strong> cap on the platform AI wallet; <strong>Free</strong> has no monthly cap—only the starter EC wallet.</p>
       <div class="tier-catalog-scroll">
         <table class="tier-catalog-table">
           <thead>
@@ -116,28 +116,6 @@ export default function SettingsView(container) {
           </p>
           <div id="campaigns-panel">Loading campaigns...</div>
           <div id="usage-meter-panel"></div>
-        </section>
-
-        <section class="settings-section-card">
-          <h3 class="settings-section">🤝 NPC sheet community pool</h3>
-          <p class="muted" style="margin:0 0 0.75rem;font-size:0.8rem;line-height:1.5;">
-            Optional cross-account reuse for <strong>town intake flesh</strong> only: donors opt in to share anonymized sheet text;
-            consumers who opt in may borrow a matching sheet from another account’s town (same edition and mechanical profile) before spending an AI flesh call.
-            Your town still gets a <strong>new character row</strong>; nothing in the UI marks it as a copy.
-          </p>
-          <div class="form-group" style="margin-bottom:0.5rem;">
-            <label class="settings-checkbox-label" style="display:flex;align-items:flex-start;gap:0.5rem;cursor:pointer;">
-              <input type="checkbox" id="s-npc-pool-opt-in" style="margin-top:0.15rem;" />
-              <span>Let other accounts borrow from my NPC sheets during their intake (opt-in donor pool).</span>
-            </label>
-          </div>
-          <div class="form-group">
-            <label class="settings-checkbox-label" style="display:flex;align-items:flex-start;gap:0.5rem;cursor:pointer;">
-              <input type="checkbox" id="s-use-community-npc-intake" style="margin-top:0.15rem;" />
-              <span>Allow my intakes to try the community pool after my own towns and before AI flesh (opt-in consumer).</span>
-            </label>
-          </div>
-          <small class="settings-hint" style="display:block;margin-top:0.5rem;">Saved with the main <strong>Save settings</strong> button below.</small>
         </section>
 
         <section class="settings-section-card">
@@ -593,7 +571,6 @@ export default function SettingsView(container) {
   `;
 
   // Load current settings
-  loadSettings(container);
   loadCampaigns(container);
   loadCampaignRules(container);
   loadUsageMeter(container);
@@ -960,7 +937,7 @@ async function loadUsageMeter(container) {
     if (!res.ok) return;
 
     const {
-      tier, tier_label, tokens_used, token_limit, percentage, call_count, year_month, has_byok_key: hasByok,
+      tier, tier_label, tokens_used, token_limit, percentage, call_count, year_month,
     } = res;
 
     // Format numbers for display
@@ -990,31 +967,13 @@ async function loadUsageMeter(container) {
       world_builder: '',
     };
 
-    if (hasByok) {
-      panel.innerHTML = `
-      <div class="usage-meter-card">
-        <div class="usage-meter-header">
-          <span class="usage-meter-title">📊 AI Usage This Month</span>
-          <span class="usage-meter-period">${year_month}</span>
-        </div>
-        <p class="usage-byok-note" style="margin:0.75rem 0;color:var(--muted);font-size:0.9rem;line-height:1.45">
-          You're using your own OpenRouter API key. Usage is tracked below for your records; Eon Weaver does not apply subscription monthly caps to BYOK accounts.
-        </p>
-        <div class="usage-meter-details">
-          <span class="usage-detail-item">🔮 ${call_count.toLocaleString()} AI calls</span>
-          <span class="usage-detail-item">📦 ${formatTokens(tokens_used || 0)} tokens</span>
-        </div>
-      </div>`;
-      return;
-    }
-
     if (!token_limit || token_limit <= 0) {
       const freeNote =
         tier === 'free'
-          ? `<p class="usage-byok-note" style="margin:0.75rem 0;color:var(--muted);font-size:0.9rem;line-height:1.45">
-          <strong>Free tier:</strong> you get a <strong>~1.5 EC</strong> starter grant after email verification. There is <strong>no monthly platform AI cap</strong>—each call draws from your EC wallet until it is empty. EC top-ups are planned; use <strong>BYOK</strong> (OpenRouter key below) or upgrade for more runway.
+          ? `<p class="usage-note" style="margin:0.75rem 0;color:var(--muted);font-size:0.9rem;line-height:1.45">
+          <strong>Free tier:</strong> you get a <strong>~1.5 EC</strong> starter grant after email verification. There is <strong>no monthly platform AI cap</strong>—each call draws from your EC wallet until it is empty. EC top-ups are planned, or upgrade on <strong>💎 Plans</strong> for more runway.
         </p>`
-          : `<p class="usage-byok-note" style="margin:0.75rem 0;color:var(--muted);font-size:0.9rem;line-height:1.45">
+          : `<p class="usage-note" style="margin:0.75rem 0;color:var(--muted);font-size:0.9rem;line-height:1.45">
           This plan has no monthly raw-token ceiling configured—platform AI is limited by your EC wallet only.
         </p>`;
       panel.innerHTML = `
@@ -1069,46 +1028,6 @@ function setSettingsStatus(container, message, kind = 'muted') {
   el.className = `settings-status settings-status--${kind}`;
 }
 
-function applyUserSettingsToForm(container, settings) {
-  if (!settings) return;
-  const pool = container.querySelector('#s-npc-pool-opt-in');
-  const use = container.querySelector('#s-use-community-npc-intake');
-  if (pool) pool.checked = Number(settings.npc_sheet_pool_opt_in) === 1;
-  if (use) use.checked = Number(settings.use_community_npc_intake) === 1;
-}
-
-async function loadSettings(container) {
-  setSettingsStatus(container, 'Loading account settings…', 'loading');
-  try {
-    const res = await apiGetSettings();
-    if (res?.ok && res.settings) {
-      applyUserSettingsToForm(container, res.settings);
-      setSettingsStatus(container, '', 'idle');
-      return res.settings;
-    }
-    setSettingsStatus(container, 'Could not load account settings.', 'error');
-    return null;
-  } catch (e) {
-    console.error('Failed to load user settings:', e);
-    setSettingsStatus(container, `Load failed: ${e.message}`, 'error');
-    return null;
-  }
-}
-
-async function saveUserSettings(container) {
-  const poolOpt = container.querySelector('#s-npc-pool-opt-in');
-  const useComm = container.querySelector('#s-use-community-npc-intake');
-  const tasks = [];
-  if (poolOpt) tasks.push(apiSaveSetting('npc_sheet_pool_opt_in', poolOpt.checked));
-  if (useComm) tasks.push(apiSaveSetting('use_community_npc_intake', useComm.checked));
-  await Promise.all(tasks);
-  const res = await apiGetSettings();
-  if (!res?.ok || !res.settings) {
-    throw new Error('Saved but could not re-load settings');
-  }
-  applyUserSettingsToForm(container, res.settings);
-}
-
 async function loadCampaignRules(container) {
   try {
     const res = await apiGetCampaignRules();
@@ -1155,8 +1074,6 @@ async function saveSettings(container) {
   }
   setSettingsStatus(container, 'Saving…', 'loading');
   try {
-    await saveUserSettings(container);
-
     // Save campaign rules, description, homebrew, AND world sim settings together (all campaign-scoped)
     const campDesc = container.querySelector('#s-campaign-desc').value.trim();
     const houseRules = container.querySelector('#s-house-rules').value.trim();

@@ -1256,17 +1256,8 @@ elseif ($action === 'intake_flesh') {
     }
     $seedFlavorPool = filter_var($input['seed_master_npc_pool'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
-    $useCommunityIntake = false;
-    try {
-        $uIntakeRow = query('SELECT COALESCE(use_community_npc_intake, 0) AS uc FROM users WHERE id = ?', [$userId], 0);
-        if (!empty($uIntakeRow[0]['uc'])) {
-            $useCommunityIntake = true;
-        }
-    } catch (Throwable $e) {
-    }
-    if (array_key_exists('use_community_npc_pool', $input)) {
-        $useCommunityIntake = $useCommunityIntake || filter_var($input['use_community_npc_pool'], FILTER_VALIDATE_BOOLEAN);
-    }
+    // Always try cross-account NPC sheet reuse before AI flesh (builds shared pool / cuts cost).
+    $useCommunityIntake = true;
 
     require_once __DIR__ . '/npc_flavor_pool.php';
     require_once __DIR__ . '/character_sheet_library.php';
