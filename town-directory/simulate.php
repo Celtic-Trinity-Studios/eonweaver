@@ -195,11 +195,11 @@ try {
 
     switch ($action) {
 
-        /* -- DEBUG: LLM connectivity test (admin accounts only) -- */
+        /* -- DEBUG: LLM connectivity test (is_debug accounts only; set by admin) -- */
         case 'debug_llm':
-            $roleRows = query('SELECT role FROM users WHERE id = ?', [$userId], 0);
-            if (($roleRows[0]['role'] ?? 'user') !== 'admin') {
-                throw new Exception('Debug tools are admin-only.');
+            $dbgRows = query('SELECT COALESCE(is_debug, 0) AS is_debug FROM users WHERE id = ?', [$userId], 0);
+            if (empty($dbgRows[0]['is_debug'])) {
+                throw new Exception('Debug tools are not enabled for this account.');
             }
             // Check OpenRouter API key
             $apiKey = '';

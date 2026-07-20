@@ -203,13 +203,16 @@ try {
             if ($user) {
                 // Add subscription tier + role + active campaign
                 $udata = query(
-                    'SELECT subscription_tier, role, COALESCE(email_verified, 1) AS email_verified FROM users WHERE id = ?',
+                    'SELECT subscription_tier, role, COALESCE(email_verified, 1) AS email_verified,
+                            COALESCE(is_debug, 0) AS is_debug
+                     FROM users WHERE id = ?',
                     [(int) $user['id']],
                     0
                 );
                 $user['subscription_tier'] = $udata[0]['subscription_tier'] ?? 'free';
                 $user['role'] = $udata[0]['role'] ?? 'user';
                 $user['email_verified'] = (int) ($udata[0]['email_verified'] ?? 1);
+                $user['is_debug'] = (int) ($udata[0]['is_debug'] ?? 0) === 1;
                 $tier = $user['subscription_tier'];
                 $user['show_free_tier_ads'] = ($tier === 'free' && defined('ADSENSE_FREE_TIER_CLIENT') && ADSENSE_FREE_TIER_CLIENT);
                 $user['adsense_client_id'] = (defined('ADSENSE_FREE_TIER_CLIENT') && ADSENSE_FREE_TIER_CLIENT) ? ADSENSE_FREE_TIER_CLIENT : '';
@@ -4032,6 +4035,7 @@ try {
             $members = query(
                 "SELECT u.id, u.username, u.email, u.subscription_tier, u.role, u.credit_balance, u.created_at, u.discord_user_id,
                     u.subscription_started_at, u.subscription_renews_at, u.stripe_subscription_status,
+                    COALESCE(u.is_debug, 0) AS is_debug,
                     (SELECT COUNT(*) FROM campaigns WHERE user_id = u.id) as campaign_count,
                     (SELECT COUNT(*) FROM towns WHERE user_id = u.id) as town_count,
                     COALESCE((SELECT SUM(tokens_used) FROM user_token_usage WHERE user_id = u.id AND `year_month` = ?), 0) as tokens_this_month,
@@ -4041,6 +4045,7 @@ try {
                 0
             );
             foreach ($members as &$m) {
+                $m['is_debug'] = (int) ($m['is_debug'] ?? 0) === 1;
                 $m['subscription_started_at'] = !empty($m['subscription_started_at'])
                     ? gmdate('c', strtotime($m['subscription_started_at'] . ' UTC'))
                     : null;
@@ -4067,6 +4072,10 @@ try {
             if (isset($input['role'])) {
                 $updates[] = 'role = ?';
                 $params[] = $input['role'];
+            }
+            if (array_key_exists('is_debug', $input)) {
+                $updates[] = 'is_debug = ?';
+                $params[] = filter_var($input['is_debug'], FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
             }
             if (isset($input['username'])) {
                 $updates[] = 'username = ?';

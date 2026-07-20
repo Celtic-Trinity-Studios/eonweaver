@@ -218,6 +218,7 @@ function login(string $usernameOrEmail, string $password): array
         'username' => $user['username'],
         'email' => $user['email'],
         'role' => $user['role'] ?? 'user',
+        'is_debug' => (int) ($user['is_debug'] ?? 0) === 1,
     ];
 }
 

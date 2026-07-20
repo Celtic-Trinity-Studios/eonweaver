@@ -587,6 +587,7 @@ export default function AdminDashboardView(container) {
                 <th>Subscribed</th>
                 <th>Renews</th>
                 <th>Role</th>
+                <th title="Admin-only: grant debug windows (Debug LLM, sim log, calendar test, AI JSON) to a normal play account">Debug</th>
                 <th>Campaigns</th>
                 <th>Towns</th>
                 <th>🪙 Eon Credits</th>
@@ -623,6 +624,12 @@ export default function AdminDashboardView(container) {
                         <option value="user" ${(m.role || 'user') === 'user' ? 'selected' : ''}>User</option>
                         <option value="admin" ${m.role === 'admin' ? 'selected' : ''}>Admin</option>
                     </select>
+                </td>
+                <td>
+                    <label class="admin-debug-toggle" title="Grant debug UI to this play account (admins set this; players cannot)">
+                        <input type="checkbox" class="admin-inline-checkbox" data-field="is_debug" data-user-id="${m.id}" ${m.is_debug ? 'checked' : ''}>
+                        <span>${m.is_debug ? 'On' : 'Off'}</span>
+                    </label>
                 </td>
                 <td class="clickable" data-action="drill" data-user-id="${m.id}" data-username="${esc(m.username)}">${m.campaign_count}</td>
                 <td>${m.town_count ?? 0}</td>
@@ -662,6 +669,23 @@ export default function AdminDashboardView(container) {
                 } catch (err) {
                     alert('Error: ' + err.message);
                     renderMembers(); // reload
+                }
+            });
+        });
+
+        // Admin-only: flag a normal account for debug UI (players cannot self-enable)
+        contentEl.querySelectorAll('.admin-inline-checkbox').forEach(cb => {
+            cb.addEventListener('change', async () => {
+                const uid = parseInt(cb.dataset.userId, 10);
+                const field = cb.dataset.field;
+                const label = cb.parentElement?.querySelector('span');
+                try {
+                    await apiAdminUpdateMember(uid, { [field]: cb.checked });
+                    if (label) label.textContent = cb.checked ? 'On' : 'Off';
+                    flashSuccess(cb.parentElement || cb);
+                } catch (err) {
+                    alert('Error: ' + err.message);
+                    cb.checked = !cb.checked;
                 }
             });
         });

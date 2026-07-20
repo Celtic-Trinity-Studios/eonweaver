@@ -41,10 +41,11 @@ export function setState(partial) {
     }
 }
 
-/** True when the signed-in account is an admin (debug tools are admin-only). */
+/** True when the signed-in account is flagged debug (Admin → Members → Debug). */
 export function userCanDebug() {
     const u = state.user;
-    return !!(u && u.role === 'admin');
+    if (!u) return false;
+    return u.is_debug === true || u.is_debug === 1 || u.is_debug === '1';
 }
 
 /**
