@@ -4561,8 +4561,22 @@
 
 .subscription-you {
     font-size: 0.85rem;
+    margin: 0 0 0.35rem;
+    color: var(--text-secondary);
+}
+
+.subscription-dates {
+    font-size: 0.82rem;
     margin: 0 0 1rem;
     color: var(--text-secondary);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem 0.5rem;
+    align-items: baseline;
+}
+
+.subscription-dates-sep {
+    opacity: 0.55;
 }
 
 .subscription-cards {
@@ -4747,6 +4761,21 @@
 
 .subscription-error {
     color: var(--error);
+}
+
+.subscription-checkout-banner {
+    margin: 0 0 1.25rem;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid var(--border);
+    font-size: 0.9rem;
+    line-height: 1.45;
+}
+
+.subscription-checkout-success {
+    border-color: rgba(72, 187, 120, 0.45);
+    background: rgba(72, 187, 120, 0.08);
 }
 
 /* Integrations */

@@ -101,6 +101,8 @@ try {
         'stripe_subscription_id VARCHAR(255) DEFAULT NULL',
         "stripe_subscription_status VARCHAR(32) DEFAULT NULL",
         "subscription_ec_seed_tier VARCHAR(20) DEFAULT NULL",
+        'subscription_started_at DATETIME DEFAULT NULL',
+        'subscription_renews_at DATETIME DEFAULT NULL',
     ] as $stripeCol) {
         try {
             $pdo->exec("ALTER TABLE users ADD COLUMN $stripeCol");

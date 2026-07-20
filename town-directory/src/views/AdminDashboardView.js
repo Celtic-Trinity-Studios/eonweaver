@@ -584,6 +584,8 @@ export default function AdminDashboardView(container) {
                 <th>Email</th>
                 <th title="Discord: Settings → Advanced → Developer Mode, then right‑click the user → Copy User ID">Discord user ID</th>
                 <th>Tier</th>
+                <th>Subscribed</th>
+                <th>Renews</th>
                 <th>Role</th>
                 <th>Campaigns</th>
                 <th>Towns</th>
@@ -614,6 +616,8 @@ export default function AdminDashboardView(container) {
                         <option value="world_builder" ${m.subscription_tier === 'world_builder' ? 'selected' : ''}>World Builder</option>
                     </select>
                 </td>
+                <td title="${m.subscription_started_at ? esc(m.subscription_started_at) : ''}">${m.subscription_started_at ? new Date(m.subscription_started_at).toLocaleDateString() : '—'}</td>
+                <td title="${m.subscription_renews_at ? esc(m.subscription_renews_at) : ''}">${m.subscription_renews_at ? new Date(m.subscription_renews_at).toLocaleDateString() : '—'}</td>
                 <td>
                     <select class="admin-inline-select role-select" data-field="role" data-user-id="${m.id}">
                         <option value="user" ${(m.role || 'user') === 'user' ? 'selected' : ''}>User</option>

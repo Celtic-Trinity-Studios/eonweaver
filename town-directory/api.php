@@ -25,6 +25,8 @@ try { execute('ALTER TABLE users ADD COLUMN stripe_customer_id VARCHAR(255) DEFA
 try { execute('ALTER TABLE users ADD COLUMN stripe_subscription_id VARCHAR(255) DEFAULT NULL', [], 0); } catch (Exception $e) { /* already exists */ }
 try { execute('ALTER TABLE users ADD COLUMN stripe_subscription_status VARCHAR(32) DEFAULT NULL', [], 0); } catch (Exception $e) { /* already exists */ }
 try { execute("ALTER TABLE users ADD COLUMN subscription_ec_seed_tier VARCHAR(20) DEFAULT NULL", [], 0); } catch (Exception $e) { /* already exists */ }
+try { execute('ALTER TABLE users ADD COLUMN subscription_started_at DATETIME DEFAULT NULL', [], 0); } catch (Exception $e) { /* already exists */ }
+try { execute('ALTER TABLE users ADD COLUMN subscription_renews_at DATETIME DEFAULT NULL', [], 0); } catch (Exception $e) { /* already exists */ }
 try {
     $byokRetired = query("SELECT `key` FROM site_settings WHERE `key` = 'byok_retired_v1' LIMIT 1", [], 0);
     if (!$byokRetired) {
@@ -323,6 +325,8 @@ try {
                 'billing_enabled' => $billing['billing_enabled'],
                 'stripe_subscription_status' => $billing['stripe_subscription_status'],
                 'has_active_subscription' => $billing['has_active_subscription'],
+                'subscription_started_at' => $billing['subscription_started_at'],
+                'subscription_renews_at' => $billing['subscription_renews_at'],
             ]);
             break;
 
@@ -4029,6 +4033,7 @@ try {
             requireAdmin();
             $members = query(
                 "SELECT u.id, u.username, u.email, u.subscription_tier, u.role, u.credit_balance, u.created_at, u.discord_user_id,
+                    u.subscription_started_at, u.subscription_renews_at, u.stripe_subscription_status,
                     (SELECT COUNT(*) FROM campaigns WHERE user_id = u.id) as campaign_count,
                     (SELECT COUNT(*) FROM towns WHERE user_id = u.id) as town_count,
                     COALESCE((SELECT SUM(tokens_used) FROM user_token_usage WHERE user_id = u.id AND `year_month` = ?), 0) as tokens_this_month,
@@ -4037,6 +4042,15 @@ try {
                 [date('Y-m'), date('Y-m')],
                 0
             );
+            foreach ($members as &$m) {
+                $m['subscription_started_at'] = !empty($m['subscription_started_at'])
+                    ? gmdate('c', strtotime($m['subscription_started_at'] . ' UTC'))
+                    : null;
+                $m['subscription_renews_at'] = !empty($m['subscription_renews_at'])
+                    ? gmdate('c', strtotime($m['subscription_renews_at'] . ' UTC'))
+                    : null;
+            }
+            unset($m);
             respond(['ok' => true, 'members' => $members]);
             break;
 
