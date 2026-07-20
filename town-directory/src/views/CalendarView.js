@@ -287,7 +287,10 @@ export default function CalendarView(container) {
     renderMonthList(monthsPerYear - 1, names, days);
   });
 
-  loadCal(container, renderMonthList, renderWeekList);
+  loadCal(container, renderMonthList, renderWeekList, (cal) => {
+    syncWxControlsFromCalendar(cal);
+    refreshWxMoonGrid().catch(() => {});
+  });
 
   apiGetTowns()
     .then((r) => {
@@ -338,7 +341,10 @@ export default function CalendarView(container) {
   });
 
   container.querySelector('#cal-save').addEventListener('click', () => {
-    saveCal(container, collectMonthNames, collectMonthDays, collectWeekData, monthsPerYear);
+    saveCal(container, collectMonthNames, collectMonthDays, collectWeekData, monthsPerYear, (cal) => {
+      syncWxControlsFromCalendar(cal);
+      refreshWxMoonGrid().catch(() => {});
+    });
   });
 
   container.querySelector('#cal-test-advance').addEventListener('click', async () => {
@@ -382,7 +388,7 @@ export default function CalendarView(container) {
   });
 }
 
-async function loadCal(c, renderMonthFn, renderWeekFn) {
+async function loadCal(c, renderMonthFn, renderWeekFn, onLoaded) {
   try {
     const res = await apiGetCalendar();
     const cal = res.calendar;
@@ -411,8 +417,7 @@ async function loadCal(c, renderMonthFn, renderWeekFn) {
     const wabbrev = Array.isArray(cal.weekday_abbrev) ? cal.weekday_abbrev : [];
     renderWeekFn(dpw, wnames, wabbrev);
 
-    syncWxControlsFromCalendar(cal);
-    refreshWxMoonGrid().catch(() => {});
+    if (typeof onLoaded === 'function') onLoaded(cal);
 
     setState({ calendar: cal });
   } catch (e) {
@@ -422,7 +427,7 @@ async function loadCal(c, renderMonthFn, renderWeekFn) {
   }
 }
 
-async function saveCal(c, collectNamesFn, collectDaysFn, collectWeekFn, mpy) {
+async function saveCal(c, collectNamesFn, collectDaysFn, collectWeekFn, mpy, onSaved) {
   try {
     const monthNames = collectNamesFn();
     const monthDays = collectDaysFn();
@@ -442,8 +447,7 @@ async function saveCal(c, collectNamesFn, collectDaysFn, collectWeekFn, mpy) {
     await apiSaveCalendar(cal);
     setState({ calendar: cal });
     c.querySelector('#cal-display').textContent = calendarToString(cal);
-    syncWxControlsFromCalendar(cal);
-    refreshWxMoonGrid().catch(() => {});
+    if (typeof onSaved === 'function') onSaved(cal);
     showToast('Calendar saved!', 'success');
   } catch (err) {
     showToast('Save failed: ' + err.message, 'error');
