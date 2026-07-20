@@ -12,6 +12,13 @@ const DEFAULT_MONTH_NAMES = ['Hammer', 'Alturiak', 'Ches', 'Tarsakh', 'Mirtul', 
 const DEFAULT_DAYS = 30;
 const DEFAULT_WEEK_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const DEFAULT_WEEK_ABBREV = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+/** Campaign epoch / empty-calendar default: 1st day of 1st month of year 0. */
+const DEFAULT_CAL_YEAR = 0;
+
+function parseCalInt(value, fallback) {
+  const n = parseInt(value, 10);
+  return Number.isFinite(n) ? n : fallback;
+}
 
 export default function CalendarView(container) {
   container.innerHTML = `
@@ -21,7 +28,7 @@ export default function CalendarView(container) {
 
       <section class="settings-section-card" style="margin-bottom:1rem;">
         <h3>Weather &amp; moon</h3>
-        <p class="settings-hint" style="margin-bottom:0.75rem;">Month grid: world-level yearly climate + local daily drift (derived from town map position/biome), plus lunar phase. Moon cycle starts from campaign epoch (year 1, month 1, day 1).</p>
+        <p class="settings-hint" style="margin-bottom:0.75rem;">Month grid: world-level yearly climate + local daily drift (derived from town map position/biome), plus lunar phase. Moon cycle starts from campaign epoch (year 0, month 1, day 1).</p>
         <div class="form-row" style="flex-wrap:wrap;gap:0.75rem;align-items:flex-end;margin-bottom:0.75rem;">
           <div class="form-group" style="min-width:200px;">
             <label>Town</label>
@@ -29,7 +36,7 @@ export default function CalendarView(container) {
           </div>
           <div class="form-group" style="max-width:110px;">
             <label>Year</label>
-            <input type="number" id="cal-wx-year" class="form-input" min="1" value="1490">
+            <input type="number" id="cal-wx-year" class="form-input" min="0" value="0">
           </div>
           <div class="form-group" style="max-width:100px;">
             <label>Month</label>
@@ -109,7 +116,7 @@ export default function CalendarView(container) {
     calendarMpyCache = mpy;
     wm.max = String(mpy);
     wm.min = '1';
-    wy.value = String(cal.current_year ?? 1490);
+    wy.value = String(cal.current_year ?? DEFAULT_CAL_YEAR);
     wm.value = String(cal.current_month ?? 1);
   }
 
@@ -151,8 +158,8 @@ export default function CalendarView(container) {
     const sel = container.querySelector('#cal-wx-town');
     if (!host) return;
     const townId = parseInt(sel?.value || '0', 10);
-    const year = parseInt(container.querySelector('#cal-wx-year')?.value || '1490', 10);
-    const month = parseInt(container.querySelector('#cal-wx-month')?.value || '1', 10);
+    const year = parseCalInt(container.querySelector('#cal-wx-year')?.value, DEFAULT_CAL_YEAR);
+    const month = parseCalInt(container.querySelector('#cal-wx-month')?.value, 1);
     const lunar = Math.max(4, Math.min(64, parseInt(container.querySelector('#cal-wx-lunar')?.value || '28', 10)));
     if (!townId) {
       host.innerHTML = '<p class="muted">Choose a town to load the grid.</p>';
@@ -309,8 +316,8 @@ export default function CalendarView(container) {
   container.querySelector('#cal-wx-refresh')?.addEventListener('click', () => refreshWxMoonGrid());
 
   container.querySelector('#cal-wx-prev')?.addEventListener('click', () => {
-    let m = parseInt(container.querySelector('#cal-wx-month')?.value || '1', 10);
-    let y = parseInt(container.querySelector('#cal-wx-year')?.value || '1490', 10);
+    let m = parseCalInt(container.querySelector('#cal-wx-month')?.value, 1);
+    let y = parseCalInt(container.querySelector('#cal-wx-year')?.value, DEFAULT_CAL_YEAR);
     const mpy = calendarMpyCache || 12;
     m -= 1;
     if (m < 1) {
@@ -325,8 +332,8 @@ export default function CalendarView(container) {
   });
 
   container.querySelector('#cal-wx-next')?.addEventListener('click', () => {
-    let m = parseInt(container.querySelector('#cal-wx-month')?.value || '1', 10);
-    let y = parseInt(container.querySelector('#cal-wx-year')?.value || '1490', 10);
+    let m = parseCalInt(container.querySelector('#cal-wx-month')?.value, 1);
+    let y = parseCalInt(container.querySelector('#cal-wx-year')?.value, DEFAULT_CAL_YEAR);
     const mpy = calendarMpyCache || 12;
     m += 1;
     if (m > mpy) {
@@ -359,9 +366,9 @@ export default function CalendarView(container) {
       if (cal) {
         setState({ calendar: cal });
         container.querySelector('#cal-display').textContent = calendarToString(cal);
-        container.querySelector('#cal-day').value = cal.current_day || 1;
-        container.querySelector('#cal-month').value = cal.current_month || 1;
-        container.querySelector('#cal-year').value = cal.current_year || 1490;
+        container.querySelector('#cal-day').value = cal.current_day ?? 1;
+        container.querySelector('#cal-month').value = cal.current_month ?? 1;
+        container.querySelector('#cal-year').value = cal.current_year ?? DEFAULT_CAL_YEAR;
       }
       const after = container.querySelector('#cal-display')?.textContent.trim();
       const dbg = {
@@ -394,9 +401,9 @@ async function loadCal(c, renderMonthFn, renderWeekFn, onLoaded) {
     const cal = res.calendar;
     if (!cal) return;
     c.querySelector('#cal-display').textContent = calendarToString(cal);
-    c.querySelector('#cal-day').value = cal.current_day || 1;
-    c.querySelector('#cal-month').value = cal.current_month || 1;
-    c.querySelector('#cal-year').value = cal.current_year || 1490;
+    c.querySelector('#cal-day').value = cal.current_day ?? 1;
+    c.querySelector('#cal-month').value = cal.current_month ?? 1;
+    c.querySelector('#cal-year').value = cal.current_year ?? DEFAULT_CAL_YEAR;
     c.querySelector('#cal-era').value = cal.era_name || 'DR';
     const mpy = cal.months_per_year || 12;
 
@@ -433,9 +440,9 @@ async function saveCal(c, collectNamesFn, collectDaysFn, collectWeekFn, mpy, onS
     const monthDays = collectDaysFn();
     const w = collectWeekFn();
     const cal = {
-      current_day: parseInt(c.querySelector('#cal-day').value, 10) || 1,
-      current_month: parseInt(c.querySelector('#cal-month').value, 10) || 1,
-      current_year: parseInt(c.querySelector('#cal-year').value, 10) || 1490,
+      current_day: parseCalInt(c.querySelector('#cal-day').value, 1) || 1,
+      current_month: parseCalInt(c.querySelector('#cal-month').value, 1) || 1,
+      current_year: parseCalInt(c.querySelector('#cal-year').value, DEFAULT_CAL_YEAR),
       era_name: c.querySelector('#cal-era').value || 'DR',
       months_per_year: mpy,
       days_per_month: monthDays,

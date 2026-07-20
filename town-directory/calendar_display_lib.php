@@ -3,12 +3,12 @@
  * Calendar display helpers: absolute day index (campaign epoch), lunar phase, decoded calendar rows.
  */
 
-/** Epoch: Year 1, Month 1, Day 1 = absolute day 1. */
+/** Epoch: Year 0, Month 1, Day 1 = absolute day 1. */
 function ew_calendar_absolute_day(int $year, int $month1, int $day, array $dpm, int $mpy): int
 {
     $mpy = max(1, $mpy);
     $total = 0;
-    for ($y = 1; $y < $year; $y++) {
+    for ($y = 0; $y < $year; $y++) {
         for ($m = 0; $m < $mpy; $m++) {
             $total += (int) ($dpm[$m] ?? 30);
         }
@@ -117,7 +117,7 @@ function ew_calendar_load_for_user(int $uid): array
         }
     }
     $cal = $rows[0] ?? [
-        'current_year' => 1490,
+        'current_year' => 0,
         'current_month' => 1,
         'current_day' => 1,
         'era_name' => 'DR',

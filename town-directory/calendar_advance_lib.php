@@ -65,7 +65,7 @@ function ew_advance_campaign_calendar(int $uid, int $monthsElapsed, int $daysEla
     if (!$cal) {
         try {
             execute(
-                'INSERT IGNORE INTO calendar (user_id, campaign_id, current_year, current_month, current_day, era_name, months_per_year, month_names, days_per_month) VALUES (?, ?, 1490, 1, 1, ?, 12, ?, ?)',
+                'INSERT IGNORE INTO calendar (user_id, campaign_id, current_year, current_month, current_day, era_name, months_per_year, month_names, days_per_month) VALUES (?, ?, 0, 1, 1, ?, 12, ?, ?)',
                 [$uid, $campIdApply, 'DR', '["Hammer","Alturiak","Ches","Tarsakh","Mirtul","Kythorn","Flamerule","Eleasis","Eleint","Marpenoth","Uktar","Nightal"]', '[30,30,30,30,30,30,30,30,30,30,30,30]']
             );
             $debugInfo['calendar_inserted'] = true;
@@ -86,7 +86,7 @@ function ew_advance_campaign_calendar(int $uid, int $monthsElapsed, int $daysEla
     }
 
     $mpy = (int) ($cal[0]['months_per_year'] ?? 12);
-    $year = (int) ($cal[0]['current_year'] ?? 1490);
+    $year = (int) ($cal[0]['current_year'] ?? 0);
     $month = (int) ($cal[0]['current_month'] ?? 1);
     $day = (int) ($cal[0]['current_day'] ?? 1);
     $debugInfo['calendar_before'] = ['year' => $year, 'month' => $month, 'day' => $day, 'mpy' => $mpy];

@@ -21,6 +21,17 @@ require_once __DIR__ . '/auth.php';
 try { execute('ALTER TABLE towns ADD COLUMN is_encounter_town TINYINT(1) NOT NULL DEFAULT 0', [], 0); } catch (Exception $e) { /* already exists */ }
 // Admin Accounts + Discord tier sync; see setup_mysql.php users migrations
 try { execute('ALTER TABLE users ADD COLUMN discord_user_id VARCHAR(32) DEFAULT NULL', [], 0); } catch (Exception $e) { /* already exists */ }
+try { execute('ALTER TABLE users ADD COLUMN stripe_customer_id VARCHAR(255) DEFAULT NULL', [], 0); } catch (Exception $e) { /* already exists */ }
+try { execute('ALTER TABLE users ADD COLUMN stripe_subscription_id VARCHAR(255) DEFAULT NULL', [], 0); } catch (Exception $e) { /* already exists */ }
+try { execute('ALTER TABLE users ADD COLUMN stripe_subscription_status VARCHAR(32) DEFAULT NULL', [], 0); } catch (Exception $e) { /* already exists */ }
+try { execute("ALTER TABLE users ADD COLUMN subscription_ec_seed_tier VARCHAR(20) DEFAULT NULL", [], 0); } catch (Exception $e) { /* already exists */ }
+try {
+    $byokRetired = query("SELECT `key` FROM site_settings WHERE `key` = 'byok_retired_v1' LIMIT 1", [], 0);
+    if (!$byokRetired) {
+        execute("UPDATE users SET gemini_api_key = '' WHERE TRIM(COALESCE(gemini_api_key, '')) <> ''", [], 0);
+        execute("INSERT INTO site_settings (`key`, value, updated_at) VALUES ('byok_retired_v1', '1', NOW())", [], 0);
+    }
+} catch (Exception $e) { /* non-fatal */ }
 try {
     execute(
         'CREATE TABLE IF NOT EXISTS world_maps (
@@ -210,10 +221,20 @@ try {
         case 'get_usage':
             $user = requireAuth();
             $uid = (int) $user['id'];
-            $udata = query('SELECT subscription_tier, credit_balance, gemini_api_key FROM users WHERE id = ?', [$uid], 0);
+            $udata = query(
+                'SELECT subscription_tier, credit_balance, stripe_subscription_status FROM users WHERE id = ?',
+                [$uid],
+                0
+            );
             $tier = $udata[0]['subscription_tier'] ?? 'free';
+            require_once __DIR__ . '/stripe_billing_lib.php';
+            ew_stripe_maybe_grant_subscription_wallet_seed(
+                $uid,
+                ew_normalize_subscription_tier((string) $tier),
+                (string) ($udata[0]['stripe_subscription_status'] ?? '')
+            );
+            $udata = query('SELECT credit_balance FROM users WHERE id = ?', [$uid], 0);
             $creditBalance = (int) ($udata[0]['credit_balance'] ?? 0);
-            $hasByok = trim((string) ($udata[0]['gemini_api_key'] ?? '')) !== '';
             $yearMonth = date('Y-m');
 
             // Get usage this month (for analytics display)
@@ -224,8 +245,8 @@ try {
             $tokensUsed = (int) ($usageRows[0]['tokens_used'] ?? 0);
             $callCount = (int) ($usageRows[0]['call_count'] ?? 0);
 
-            $tokenLimit = $hasByok ? 0 : ew_monthly_raw_cap_for_tier($tier);
-            $percentage = (!$hasByok && $tokenLimit > 0)
+            $tokenLimit = ew_monthly_raw_cap_for_tier($tier);
+            $percentage = ($tokenLimit > 0)
                 ? (int) min(100, floor(($tokensUsed * 100) / $tokenLimit))
                 : 0;
 
@@ -235,7 +256,6 @@ try {
                 'tier' => $tier,
                 'tier_label' => $tierLabels[$tier] ?? $tier,
                 'credit_balance' => $creditBalance,
-                'has_byok_key' => $hasByok,
                 'tokens_used_this_month' => $tokensUsed,
                 'tokens_used' => $tokensUsed,
                 'token_limit' => $tokenLimit,
@@ -277,18 +297,53 @@ try {
         case 'subscription_catalog':
             $user = requireAuth();
             $uid = (int) $user['id'];
-            $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
+            $udata = query(
+                'SELECT subscription_tier, stripe_subscription_status FROM users WHERE id = ?',
+                [$uid],
+                0
+            );
             $tier = ew_normalize_subscription_tier((string) ($udata[0]['subscription_tier'] ?? 'free'));
+            require_once __DIR__ . '/stripe_billing_lib.php';
+            ew_stripe_maybe_grant_subscription_wallet_seed(
+                $uid,
+                $tier,
+                (string) ($udata[0]['stripe_subscription_status'] ?? '')
+            );
             $tierCatalog = ew_tier_public_catalog();
             foreach ($tierCatalog as &$tcRow) {
                 $tcRow['monthly_raw_token_cap'] = ew_monthly_raw_cap_for_tier($tcRow['id']);
             }
             unset($tcRow);
+            require_once __DIR__ . '/stripe_billing_lib.php';
+            $billing = ew_stripe_billing_public_status($uid);
             respond([
                 'ok' => true,
                 'tier' => $tier,
                 'tier_catalog' => $tierCatalog,
+                'billing_enabled' => $billing['billing_enabled'],
+                'stripe_subscription_status' => $billing['stripe_subscription_status'],
+                'has_active_subscription' => $billing['has_active_subscription'],
             ]);
+            break;
+
+        case 'billing_checkout':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            require_once __DIR__ . '/stripe_billing_lib.php';
+            $targetTier = trim((string) ($input['tier'] ?? ''));
+            if ($targetTier === '') {
+                throw new Exception('Missing tier');
+            }
+            $result = ew_stripe_begin_checkout($uid, $targetTier);
+            respond(['ok' => true, 'url' => $result['url'], 'mode' => $result['mode']]);
+            break;
+
+        case 'billing_portal':
+            $user = requireAuth();
+            $uid = (int) $user['id'];
+            require_once __DIR__ . '/stripe_billing_lib.php';
+            $result = ew_stripe_billing_portal_url($uid);
+            respond(['ok' => true, 'url' => $result['url']]);
             break;
 
         case 'create_campaign':
@@ -1083,7 +1138,7 @@ try {
                 }
             }
             $cal = $rows[0] ?? [
-                'current_year' => 1490,
+                'current_year' => 0,
                 'current_month' => 1,
                 'current_day' => 1,
                 'era_name' => 'DR',
@@ -1139,7 +1194,7 @@ try {
             require_once __DIR__ . '/weather_daily_lib.php';
 
             $townId = (int) ($_GET['town_id'] ?? $input['town_id'] ?? 0);
-            $year = max(1, (int) ($_GET['year'] ?? $input['year'] ?? 1490));
+            $year = (int) ($_GET['year'] ?? $input['year'] ?? 0);
             $month = max(1, (int) ($_GET['month'] ?? $input['month'] ?? 1));
             $lunarCycle = max(4, min(64, (int) ($_GET['lunar_cycle_days'] ?? $input['lunar_cycle_days'] ?? 28)));
 
@@ -1203,7 +1258,7 @@ try {
                 }
             }
 
-            $cy = (int) ($cal['current_year'] ?? 1490);
+            $cy = (int) ($cal['current_year'] ?? 0);
             $cm = (int) ($cal['current_month'] ?? 1);
             $cd = (int) ($cal['current_day'] ?? 1);
 
@@ -1296,7 +1351,7 @@ try {
                 [
                     $uid,
                     $campId,
-                    (int) ($c['current_year'] ?? 1490),
+                    (int) ($c['current_year'] ?? 0),
                     (int) ($c['current_month'] ?? 1),
                     (int) ($c['current_day'] ?? 1),
                     trim($c['era_name'] ?? 'DR'),

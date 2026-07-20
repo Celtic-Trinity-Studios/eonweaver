@@ -2,8 +2,8 @@
 /**
  * Eon Weaver — MySQL Database Setup
  *
- * Run ONCE after uploading files to your host (production: eonscribe.com).
- * Access e.g.: https://eonscribe.com/setup_mysql.php?key=setup2024
+ * Run ONCE after uploading files to your host (production: eonweaver.com).
+ * Access e.g.: https://eonweaver.com/setup_mysql.php?key=setup2024
  *
  * After running successfully, DELETE this file or restrict access.
  */
@@ -93,6 +93,22 @@ try {
     } catch (Exception $e) {
         if (strpos($e->getMessage(), 'Duplicate column') !== false) {
             $results[] = '⏭️ discord_user_id already exists';
+        }
+    }
+
+    foreach ([
+        'stripe_customer_id VARCHAR(255) DEFAULT NULL',
+        'stripe_subscription_id VARCHAR(255) DEFAULT NULL',
+        "stripe_subscription_status VARCHAR(32) DEFAULT NULL",
+        "subscription_ec_seed_tier VARCHAR(20) DEFAULT NULL",
+    ] as $stripeCol) {
+        try {
+            $pdo->exec("ALTER TABLE users ADD COLUMN $stripeCol");
+            $results[] = '✅ Added users.' . explode(' ', $stripeCol)[0];
+        } catch (Exception $e) {
+            if (strpos($e->getMessage(), 'Duplicate column') !== false) {
+                $results[] = '⏭️ ' . explode(' ', $stripeCol)[0] . ' already exists';
+            }
         }
     }
 
@@ -499,7 +515,7 @@ try {
         id              INT AUTO_INCREMENT PRIMARY KEY,
         user_id         INT NOT NULL,
         campaign_id     INT DEFAULT NULL,
-        current_year    INT DEFAULT 1490,
+        current_year    INT DEFAULT 0,
         current_month   INT DEFAULT 1,
         current_day     INT DEFAULT 1,
         era_name        VARCHAR(50) DEFAULT 'DR',
