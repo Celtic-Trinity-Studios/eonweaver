@@ -496,6 +496,39 @@ function parseInstructions(string $instructions): array
         }
     }
 
+    // Explicit name: "named Kyril Stormbrow", "called …", "name is …"
+    // Take consecutive name tokens until a stop-word ("is made mayor…").
+    if (preg_match('/\b(?:named|called|name(?:d)?\s+is)\s+(.+)/i', $instructions, $nm)) {
+        $stop = [
+            'is', 'who', 'and', 'as', 'the', 'of', 'to', 'for', 'made', 'appointed',
+            'becomes', 'was', 'will', 'a', 'an', 'with', 'from', 'into', 'mayor',
+            'sheriff', 'level', 'male', 'female',
+        ];
+        $nameWords = [];
+        foreach (preg_split('/\s+/', trim($nm[1])) as $tok) {
+            $tok = preg_replace("/^[^A-Za-z]+|[^A-Za-z'\-]+$/u", '', $tok);
+            if ($tok === '') {
+                break;
+            }
+            if (in_array(strtolower($tok), $stop, true)) {
+                break;
+            }
+            if (!preg_match("/^[A-Za-z]/", $tok)) {
+                break;
+            }
+            $nameWords[] = $tok;
+            if (count($nameWords) >= 4) {
+                break;
+            }
+        }
+        if (!empty($nameWords)) {
+            $cased = implode(' ', array_map(static function ($w) {
+                return strtoupper($w[0]) . strtolower(substr($w, 1));
+            }, $nameWords));
+            $overrides['name'] = $cased;
+        }
+    }
+
     // Level detection
     if (preg_match('/level\s*(\d+)/i', $instructions, $m)) {
         $overrides['level'] = max(1, min(20, (int) $m[1]));
@@ -746,7 +779,23 @@ function generateRoster(int $count, array $options = []): array
         $classStr = "$className $level";
 
         // === NAME ===
-        $name = generateUniqueName($race, $gender, $usedNames, $usedFirstNames);
+        if (!empty($overrides['name']) && $i === 0) {
+            $forced = trim($overrides['name']);
+            unset($overrides['name']); // only ever try once (first slot)
+            $forcedLower = strtolower($forced);
+            if ($forced !== '' && !in_array($forcedLower, $usedNames, true)) {
+                $name = $forced;
+                $usedNames[] = $forcedLower;
+                $firstTok = explode(' ', $forced)[0] ?? '';
+                if ($firstTok !== '') {
+                    $usedFirstNames[] = strtolower($firstTok);
+                }
+            } else {
+                $name = generateUniqueName($race, $gender, $usedNames, $usedFirstNames);
+            }
+        } else {
+            $name = generateUniqueName($race, $gender, $usedNames, $usedFirstNames);
+        }
 
         // === AGE ===
         $age = generateAge($race);
