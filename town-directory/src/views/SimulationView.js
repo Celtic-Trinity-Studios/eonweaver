@@ -87,10 +87,15 @@ export default function SimulationView(container) {
           </div>
           <div class="sim-field">
             <label>👥 Intake (Force Arrivals)</label>
-            <div style="display:flex;align-items:center;gap:0.5rem;">
+            <div style="display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;">
               <input type="number" id="sim-intake-count" class="form-input" min="0" max="${MAX_INTAKE_ARRIVALS}" value="0" style="width:70px;text-align:center;" title="Number of people to force move in (0 = natural only)">
               <span style="font-size:0.75rem;color:var(--text-muted)">0 = natural arrivals only</span>
             </div>
+            <label style="display:flex;align-items:center;gap:0.45rem;margin-top:0.55rem;cursor:pointer;font-weight:600;font-size:0.9rem;">
+              <input type="checkbox" id="sim-no-new-people">
+              🚫 No new people
+            </label>
+            <small class="settings-hint" style="display:block;margin-top:0.2rem;">Blocks all arrivals and births for this run (deaths still apply). Stronger than Town Settings → Closed Borders.</small>
           </div>
         </div>
 
@@ -238,6 +243,20 @@ export default function SimulationView(container) {
     if (entries) entries.innerHTML = '';
   });
 
+  const syncNoNewPeopleUi = () => {
+    const lock = container.querySelector('#sim-no-new-people');
+    const intake = container.querySelector('#sim-intake-count');
+    if (!lock || !intake) return;
+    if (lock.checked) {
+      intake.value = '0';
+      intake.disabled = true;
+    } else {
+      intake.disabled = false;
+    }
+  };
+  container.querySelector('#sim-no-new-people')?.addEventListener('change', syncNoNewPeopleUi);
+  syncNoNewPeopleUi();
+
   // Debug LLM button (debug accounts only)
   container.querySelector('#sim-debug-btn')?.addEventListener('click', async () => {
     log('Testing OpenRouter connectivity...');
@@ -354,6 +373,10 @@ export default function SimulationView(container) {
     let fullInstructions = instructions;
     let intakeCount = Math.max(0, Math.min(MAX_INTAKE_ARRIVALS, parseInt(cont.querySelector('#sim-intake-count')?.value) || 0));
     let daysCount = Math.max(0, Math.min(30, parseInt(cont.querySelector('#sim-days')?.value) || 0));
+    const noNewPeople = !!cont.querySelector('#sim-no-new-people')?.checked;
+    if (noNewPeople) {
+      intakeCount = 0;
+    }
 
     // Estimate population for cost display
     const townInfo = cont.querySelector('#sim-town-info');
@@ -371,7 +394,9 @@ export default function SimulationView(container) {
     log(`--- Starting simulation: ${selectedMonths} month(s)${daysCount ? ` (${daysCount} days)` : ''}, town ID ${townId} ---`);
     log(`Instructions: ${fullInstructions || '(none)'}`);
     log(`Rules length: ${rules.length} chars`);
-    log(`Forced intake: ${intakeCount > 0 ? intakeCount + ' new arrivals' : 'none (natural only)'}`);
+    log(noNewPeople
+      ? 'Population lock: NO new people (arrivals + births blocked)'
+      : `Forced intake: ${intakeCount > 0 ? intakeCount + ' new arrivals' : 'none (natural only)'}`);
 
     runBtn.disabled = true;
     runBtn.textContent = '⏳ Running...';
@@ -397,13 +422,14 @@ export default function SimulationView(container) {
         }, 1000);
 
         log('Calling apiRunSimulation (single)...', 'info');
-        const result = await apiRunSimulation(townId, selectedMonths, rules, fullInstructions, intakeCount, daysCount);
+        const result = await apiRunSimulation(townId, selectedMonths, rules, fullInstructions, intakeCount, daysCount, { noNewPeople });
         clearInterval(progressInterval);
         progressFill.style.width = '100%';
         progressText.textContent = 'Simulation complete!';
         log('✅ Simulation completed successfully!', 'success');
 
         cont._lastSimPartialDays = daysCount;
+        cont._lastSimNoNewPeople = noNewPeople;
 
         if (result.simulation) {
           const ch = result.simulation.changes || {};
@@ -439,6 +465,7 @@ export default function SimulationView(container) {
         const summaries = [];
 
         cont._lastSimPartialDays = 0;
+        cont._lastSimNoNewPeople = noNewPeople;
 
         let batch = 0;
         for (let batchStart = 1; batchStart <= selectedMonths; batchStart += effectiveBatchSize) {
@@ -458,7 +485,7 @@ export default function SimulationView(container) {
 
           try {
             const partialDaysArg = (daysCount > 0 && selectedMonths === 1) ? daysCount : 0;
-            const batchResult = await apiRunSimulation(townId, batchMonths, rules, batchInstructions, batchIntake, partialDaysArg);
+            const batchResult = await apiRunSimulation(townId, batchMonths, rules, batchInstructions, batchIntake, partialDaysArg, { noNewPeople });
             const sim = batchResult.simulation || {};
             const ch = sim.changes || {};
 
@@ -497,6 +524,7 @@ export default function SimulationView(container) {
               const applyDaysElapsed = partialDaysArg > 0 ? partialDaysArg : 0;
               const applyRes = await apiApplySimulation(townId, ch, sim.new_history_entry || null, applyMonthsElapsed, applyDaysElapsed, {
                 arrivalNamePool: batchResult.arrival_name_pool,
+                noNewPeople,
               });
               log(`  Applied batch ${batch + 1} changes`, 'success');
               logApplyDebug(applyRes, `batch ${batch + 1}`);
@@ -780,7 +808,10 @@ export default function SimulationView(container) {
             sim.new_history_entry || null,
             partialDays > 0 ? 0 : selectedMonths,
             partialDays,
-            { arrivalNamePool: result.arrival_name_pool }
+            {
+              arrivalNamePool: result.arrival_name_pool,
+              noNewPeople: !!cont._lastSimNoNewPeople,
+            }
           );
 
           if (applyRes.debug_info) console.log('Apply debug_info:', applyRes.debug_info);

@@ -16,6 +16,7 @@
                 $rules = ($enc === false) ? '' : $enc;
             }
             $instructions = is_string($input['instructions'] ?? '') ? trim($input['instructions'] ?? '') : '';
+            $noNewPeople = filter_var($input['no_new_people'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
             verifyTownOwnership($userId, $townId, $uid);
 
@@ -217,6 +218,9 @@
                 // ══════════════════════════════════════════════════════════
                 // CHARACTER INTAKE MODE — One character per AI request
                 // ══════════════════════════════════════════════════════════
+                if ($noNewPeople) {
+                    throw new Exception('No new people is enabled — intake mode cannot add residents. Uncheck it or run a timed simulation instead.');
+                }
                 $numArrivals = max(1, min(150, (int) ($input['num_arrivals'] ?? 5)));
                 $startTime = time(); // Track start time for timeout guard
                 $timeLimit = 100;    // Bail before Hostinger's ~120s web server timeout
@@ -543,7 +547,7 @@ SPROMPT;
                 $demographics2 = trim($townMeta2['demographics'] ?? '');
                 $biomeBlock = $biome ? "\n## BIOME/TERRAIN: {$biome}\nALL buildings, resources, and infrastructure MUST be appropriate for this environment. Do NOT suggest structures that would not exist in {$biome} terrain.\n" : '';
 
-                // Check for closed borders setting
+                // Check for closed borders setting (town meta) or per-run "no new people" lock
                 $genRulesJson = json_decode($townMeta2['gen_rules'] ?? '{}', true) ?: [];
                 $closedBorders = !empty($genRulesJson['closed_borders']);
                 // Build level restriction block for simulation new arrivals
@@ -559,7 +563,10 @@ SPROMPT;
                     $simIntakeLevelBlock .= "MAX LEVEL CAP: {$simMaxLevel}. No new character may exceed this level. ";
                 }
                 $closedBordersBlock = '';
-                if ($closedBorders) {
+                if ($noNewPeople) {
+                    $maxBirths = 0;
+                    $closedBordersBlock = "\n## POPULATION LOCK — NO NEW PEOPLE\nThe DM enabled NO NEW PEOPLE for this run.\n- new_characters MUST be an EMPTY array. No travelers, refugees, merchants, outsiders, OR births.\n- Do NOT invent newborn children. Existing pregnancies (if any) do not resolve into new roster entries this run.\n- Deaths, drama, XP, relationships, and buildings are still allowed.\n";
+                } elseif ($closedBorders) {
                     $closedBordersBlock = "\n## CLOSED BORDERS — NO NEW ARRIVALS\nThis town has CLOSED BORDERS. You MUST NOT generate any new arrivals in the new_characters array.\nThe ONLY exception is BIRTHS from existing romantic couples — newborn children are allowed.\nDo NOT add travelers, refugees, merchants, or any outsiders. The new_characters array should be EMPTY unless a birth occurs.\n";
                 }
 
@@ -1076,12 +1083,30 @@ PROMPT;
                 }
             }
 
+            // Hard enforce population lock even if the model ignored the prompt
+            if ($noNewPeople) {
+                if (!isset($simulation['changes']) || !is_array($simulation['changes'])) {
+                    $simulation['changes'] = [];
+                }
+                $simulation['changes']['new_characters'] = [];
+                if (isset($simulation['changes']['births'])) {
+                    $simulation['changes']['births'] = [];
+                }
+                if (isset($simulation['new_characters'])) {
+                    $simulation['new_characters'] = [];
+                }
+                if (isset($simulation['births'])) {
+                    $simulation['births'] = [];
+                }
+            }
+
             simRespond([
                 'ok' => true,
                 'simulation' => $simulation,
                 'town_id' => $townId,
                 'months' => $months,
                 'arrival_name_pool' => $arrivalNamePool ?? [],
+                'no_new_people' => $noNewPeople,
             ]);
 
         /* ═══════════════════════════════════════════════════════════

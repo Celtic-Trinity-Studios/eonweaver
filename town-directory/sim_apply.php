@@ -35,10 +35,13 @@
                 } catch (Exception $e) { /* column might not exist yet */ }
             }
 
-            // New characters — check closed borders setting
+            // New characters — check closed borders / per-run population lock
             $metaRowsCB = query('SELECT value FROM town_meta WHERE town_id = ? AND `key` = ?', [$townId, 'gen_rules'], $uid);
             $genRulesCB = $metaRowsCB ? (json_decode($metaRowsCB[0]['value'] ?? '{}', true) ?: []) : [];
-            if (!empty($genRulesCB['closed_borders']) && !empty($changes['new_characters'])) {
+            $noNewPeopleApply = filter_var($input['no_new_people'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            if ($noNewPeopleApply && !empty($changes['new_characters'])) {
+                $changes['new_characters'] = [];
+            } elseif (!empty($genRulesCB['closed_borders']) && !empty($changes['new_characters'])) {
                 // Filter: only allow births (age 0 or reason mentions "born")
                 $changes['new_characters'] = array_values(array_filter($changes['new_characters'], function ($nc) {
                     $age = (int) ($nc['age'] ?? 99);

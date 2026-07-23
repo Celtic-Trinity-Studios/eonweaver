@@ -6,8 +6,19 @@ import { apiFetch } from './client.js';
 import { getState, setState } from '../stores/appState.js';
 import { apiGetCalendar } from './settings.js';
 
-export function apiRunSimulation(townId, months, rules, instructions, numArrivals = 0, days = 0) {
-    return simFetch('run_simulation', { town_id: townId, months, rules, instructions, num_arrivals: numArrivals, days });
+export function apiRunSimulation(townId, months, rules, instructions, numArrivals = 0, days = 0, opts = {}) {
+    const body = {
+        town_id: townId,
+        months,
+        rules,
+        instructions,
+        num_arrivals: numArrivals,
+        days,
+    };
+    if (opts && opts.noNewPeople) {
+        body.no_new_people = true;
+    }
+    return simFetch('run_simulation', body);
 }
 
 export function apiPlanSimulation(townId, months, rules, instructions) {
@@ -62,6 +73,9 @@ export function apiApplySimulation(townId, changes, historyEntry, monthsElapsed 
         days_elapsed: daysElapsed,
         skip_calendar: opts.skipCalendar === true,
     };
+    if (opts.noNewPeople) {
+        body.no_new_people = true;
+    }
     if (Array.isArray(opts.arrivalNamePool) && opts.arrivalNamePool.length) {
         body.arrival_name_pool = opts.arrivalNamePool;
     }
