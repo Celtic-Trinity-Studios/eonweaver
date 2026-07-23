@@ -574,3 +574,173 @@
 .social-incident-card {
     animation: social-slide-in .3s ease forwards;
 }
+
+/* ── Relationship Graph (Town Social) ────────────────────── */
+.rel-graph-host {
+    width: 100%;
+    min-height: 0;
+}
+
+.rel-graph {
+    display: flex;
+    flex-direction: column;
+    gap: .55rem;
+    background: rgba(0, 0, 0, .22);
+    border: 1px solid rgba(255, 255, 255, .06);
+    border-radius: 10px;
+    padding: .65rem .75rem .75rem;
+}
+
+.rel-graph-toolbar {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+    flex-wrap: wrap;
+}
+
+.rel-graph-filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .35rem .7rem;
+    font-size: .72rem;
+    font-weight: 600;
+    color: var(--text-primary, #eee);
+    background: rgba(255, 255, 255, .06);
+    border: 1px solid rgba(255, 255, 255, .1);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background .15s ease;
+}
+
+.rel-graph-filter-btn:hover {
+    background: rgba(255, 255, 255, .1);
+}
+
+.rel-graph-filter-icon {
+    font-size: .85rem;
+    opacity: .85;
+}
+
+.rel-graph-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem .65rem;
+    flex: 1;
+    min-width: 0;
+}
+
+.rel-graph-legend-item,
+.rel-graph-filter-item {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    font-size: .68rem;
+    color: var(--text-secondary, #aaa);
+}
+
+.rel-graph-swatch {
+    width: .55rem;
+    height: .55rem;
+    border-radius: 50%;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, .35);
+}
+
+.rel-graph-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .45rem .85rem;
+    padding: .5rem .6rem;
+    background: rgba(255, 255, 255, .03);
+    border-radius: 6px;
+    border: 1px solid rgba(255, 255, 255, .05);
+}
+
+.rel-graph-filters[hidden] {
+    display: none !important;
+}
+
+.rel-graph-filter-item {
+    cursor: pointer;
+    user-select: none;
+}
+
+.rel-graph-filter-item input {
+    margin: 0;
+    accent-color: var(--accent, #B87333);
+}
+
+.rel-graph-stage {
+    position: relative;
+    width: 100%;
+    height: 420px;
+    border-radius: 8px;
+    overflow: hidden;
+    background: rgba(12, 12, 16, .55);
+    border: 1px solid rgba(255, 255, 255, .05);
+}
+
+.rel-graph-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: default;
+    touch-action: none;
+}
+
+.rel-graph-tooltip {
+    position: absolute;
+    z-index: 3;
+    max-width: 220px;
+    padding: .45rem .55rem;
+    font-size: .7rem;
+    line-height: 1.35;
+    color: var(--text-primary, #eee);
+    background: rgba(22, 22, 28, .94);
+    border: 1px solid rgba(255, 255, 255, .12);
+    border-radius: 6px;
+    pointer-events: none;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, .35);
+}
+
+.rel-graph-tooltip em {
+    color: var(--text-secondary, #999);
+    font-style: italic;
+}
+
+.rel-graph-zoom {
+    position: absolute;
+    right: .55rem;
+    bottom: .55rem;
+    display: flex;
+    flex-direction: column;
+    gap: .3rem;
+    z-index: 2;
+}
+
+.rel-graph-zoom button {
+    width: 1.85rem;
+    height: 1.85rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    line-height: 1;
+    color: var(--text-primary, #eee);
+    background: rgba(30, 30, 38, .9);
+    border: 1px solid rgba(255, 255, 255, .12);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background .15s ease;
+}
+
+.rel-graph-zoom button:hover {
+    background: rgba(50, 50, 60, .95);
+}
+
+@media (max-width: 640px) {
+    .rel-graph-stage {
+        height: 340px;
+    }
+}

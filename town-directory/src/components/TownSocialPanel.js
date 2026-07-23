@@ -13,6 +13,7 @@ import {
 } from '../api/social.js';
 import { apiGetCharacters } from '../api/characters.js';
 import { showModal } from './Modal.js';
+import { mountRelationshipGraph } from './RelationshipGraph.js';
 
 const FACTION_ICONS = {
   guild: '⚒️', religious: '⛪', military: '⚔️', criminal: '🗡️',
@@ -79,6 +80,11 @@ function renderSocialPanel(container, data, townId, characters) {
   const reputation = data.reputation || [];
   const relationships = data.relationships || [];
 
+  if (container._relGraphDestroy) {
+    try { container._relGraphDestroy(); } catch (_) { /* ignore */ }
+    container._relGraphDestroy = null;
+  }
+
   container.innerHTML = `
     <div class="town-social-panel">
       <!-- Factions -->
@@ -125,18 +131,26 @@ function renderSocialPanel(container, data, townId, characters) {
         </div>
       </div>
 
-      <!-- Relationship Network Summary -->
+      <!-- Relationship Network -->
       <div class="town-social-section" id="tsp-relationships">
         <div class="town-social-section-title">
           <span class="section-icon">🤝</span> Relationship Network
           <span class="section-count">${relationships.length}</span>
         </div>
-        <div id="tsp-rel-summary" class="social-rel-list">
-          ${renderRelSummary(relationships)}
-        </div>
+        <div id="tsp-rel-summary" class="rel-graph-host"></div>
       </div>
     </div>
   `;
+
+  const relHost = container.querySelector('#tsp-rel-summary');
+  if (relHost) {
+    if (!relationships.length) {
+      relHost.innerHTML = '<div class="social-empty"><div class="social-empty-icon">🤝</div>No NPC relationships tracked</div>';
+    } else {
+      const graph = mountRelationshipGraph(relHost, { relationships, characters });
+      container._relGraphDestroy = graph?.destroy || null;
+    }
+  }
 
   // Wire Create Faction
   container.querySelector('#tsp-add-faction-btn')?.addEventListener('click', () => {
@@ -267,49 +281,6 @@ function renderRepRow(rep) {
       <span class="rep-reason">${rep.source ? rep.source + ': ' : ''}${score > 0 ? '+' : ''}${score} — ${rep.reason || 'No reason'}</span>
     </div>
   `;
-}
-
-function renderRelSummary(relationships) {
-  if (!relationships.length) {
-    return '<div class="social-empty"><div class="social-empty-icon">🤝</div>No NPC relationships tracked</div>';
-  }
-
-  // Group by type
-  const counts = {};
-  relationships.forEach(r => {
-    const t = r.rel_type || 'acquaintance';
-    counts[t] = (counts[t] || 0) + 1;
-  });
-
-  const REL_ICONS = { friend: '🤝', rival: '⚡', enemy: '⚔️', romantic: '❤️', mentor: '📚', student: '📖', ally: '🤜', acquaintance: '👋', family: '👨‍👩‍👧' };
-
-  let html = '<div style="display:flex;flex-wrap:wrap;gap:0.5rem;margin-bottom:0.75rem;">';
-  for (const [type, count] of Object.entries(counts)) {
-    html += `<span class="faction-member-badge" style="font-size:0.72rem;">${REL_ICONS[type] || '👋'} ${type}: ${count}</span>`;
-  }
-  html += '</div>';
-
-  // Show all relationships, strongest disposition first
-  const sorted = [...relationships].sort((a, b) => Math.abs(b.disposition || 0) - Math.abs(a.disposition || 0));
-  html += sorted.map(r => {
-    const icon = REL_ICONS[r.rel_type] || '👋';
-    const dVal = parseInt(r.disposition) || 0;
-    let dClass = 'neutral';
-    if (dVal >= 7) dClass = 'close';
-    else if (dVal >= 3) dClass = 'friendly';
-    else if (dVal <= -7) dClass = 'hostile';
-    else if (dVal <= -3) dClass = 'unfriendly';
-    return `<div class="social-rel-card" data-type="${r.rel_type}" style="animation-delay:0ms">
-      <div class="rel-icon">${icon}</div>
-      <div class="rel-info">
-        <div class="rel-names">${r.char1_name} ↔ ${r.char2_name}</div>
-        <div class="rel-type">${r.rel_type}${r.reason ? ' — ' + r.reason : ''}</div>
-      </div>
-      <div class="rel-disposition ${dClass}" title="Disposition: ${dVal}/10">${dVal > 0 ? '+' : ''}${dVal}</div>
-    </div>`;
-  }).join('');
-
-  return html;
 }
 
 /* ── Modal Forms ─────────────────────────────────────────── */
