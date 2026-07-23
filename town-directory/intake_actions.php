@@ -254,6 +254,33 @@ function ew_intake_group_stubs_by_creature_flag(array $stubs): array
 }
 
 /**
+ * Force Phase-1 roster identity onto a Phase-2 flesh result.
+ * LLMs often "correct" race/class/role; instructions + demographics must survive flesh.
+ *
+ * @param array<string, mixed> $stub
+ * @param array<string, mixed> $row
+ * @return array<string, mixed>
+ */
+function ew_intake_lock_identity_from_stub(array $stub, array $row): array
+{
+    if (!is_array($row)) {
+        $row = [];
+    }
+    $fields = ['name', 'race', 'class', 'gender', 'age', 'role', 'alignment'];
+    foreach ($fields as $f) {
+        if (!array_key_exists($f, $stub) || $stub[$f] === null || $stub[$f] === '') {
+            continue;
+        }
+        $row[$f] = $stub[$f];
+    }
+    if (!empty($stub['is_creature'])) {
+        $row['is_creature'] = true;
+    }
+
+    return $row;
+}
+
+/**
  * Decode a JSON array of character objects from model output (tolerates fences / light noise).
  *
  * @return array<int, array>|null
@@ -295,7 +322,8 @@ function ew_intake_flesh_single_stub(
     string $apiKey,
     string $model,
     string $openRouterUrl,
-    int $userId
+    int $userId,
+    string $instructions = ''
 ): ?array {
     $sn = trim($stub['name'] ?? 'Unknown');
     $sr = trim($stub['race'] ?? 'Human');
@@ -306,11 +334,12 @@ function ew_intake_flesh_single_stub(
     $sal = trim($stub['alignment'] ?? 'TN');
 
     $campDescLine = $campaignDesc ? "\nWorld Setting: {$campaignDesc}" : '';
+    $instrLine = $instructions !== '' ? "\nDM intake instructions (honor in backstory/flavor; identity fields above are LOCKED): {$instructions}" : '';
 
     if ($isCreature) {
         $fleshPrompt = "Generate creature details for this D&D {$dndEdition} creature in \"{$townName}\":
 Name: {$sn} | Race/Type: {$sr} | Monster Type: {$sc} | Gender: {$sg} | Age: {$sa} | Role: {$srl} | Alignment: {$sal}
-{$campDescLine}
+{$campDescLine}{$instrLine}
 Campaign Rules: {$campaignRules}
 {$rules}
 
@@ -319,6 +348,7 @@ Rules:
 - DO NOT generate ability scores, HP, AC, gear, or spells. The system will use the creature's standard stat block.
 - Do NOT generate feats or skills — the creature uses its racial/monster abilities only.
 - 'class' field must remain exactly as given: \"{$sc}\" — this represents the creature's monster type and HD.
+- name/race/class/gender/age/role/alignment MUST stay exactly as given above.
 - Generate a brief 'reason' (1-2 sentences) for why this creature is in/near {$townName}.
 
 OUTPUT (VALID JSON ONLY, no markdown):
@@ -326,7 +356,7 @@ OUTPUT (VALID JSON ONLY, no markdown):
     } else {
         $fleshPrompt = "Generate character details for this D&D {$dndEdition} character in \"{$townName}\":
 Name: {$sn} | Race: {$sr} | Class: {$sc} | Gender: {$sg} | Age: {$sa} | Role: {$srl} | Alignment: {$sal}
-{$campDescLine}
+{$campDescLine}{$instrLine}
 Campaign Rules: {$campaignRules}
 {$rules}
 
@@ -335,8 +365,9 @@ Rules:
 - Feats: 1 at 1st level + 1 per 3 levels. Humans get 1 extra at 1st. Fighters/Warriors get bonus combat feats. Pick from valid feats:
 {$featRef}
 - Skills: Pick appropriate class/cross-class skills. Just list them by name.
+- name/race/class/gender/age/role/alignment MUST stay exactly as given above — never substitute another race.
 
-Backstory \"reason\": 2-3 sentences — why they came to {$townName}, a personal detail/goal/secret. Tie their backstory into the world setting and town history if possible.
+Backstory \"reason\": 2-3 sentences — why they came to {$townName}, a personal detail/goal/secret. Tie their backstory into the world setting, town history, and DM intake instructions if provided.
 
 OUTPUT (VALID JSON ONLY, no markdown):
 {\"name\":\"{$sn}\",\"race\":\"{$sr}\",\"class\":\"{$sc}\",\"gender\":\"{$sg}\",\"age\":{$sa},\"status\":\"Alive\",\"alignment\":\"{$sal}\",\"role\":\"{$srl}\",\"skills_feats\":\"Skill1, Skill2, Skill3\",\"feats\":\"Feat1, Feat2\",\"reason\":\"...\"}";
@@ -389,7 +420,7 @@ OUTPUT (VALID JSON ONLY, no markdown):
             ew_openrouter_log_chat_completion('intake_flesh_single', $reqPayloadArr, $d2, []);
         }
 
-        return $parsed;
+        return ew_intake_lock_identity_from_stub($stub, $parsed);
     }
 
     return null;
@@ -413,7 +444,8 @@ function ew_intake_flesh_batch_chunk(
     string $apiKey,
     string $model,
     string $openRouterUrl,
-    int $userId
+    int $userId,
+    string $instructions = ''
 ): array {
     $n = count($chunk);
     if ($n === 0) {
@@ -433,7 +465,8 @@ function ew_intake_flesh_batch_chunk(
             $apiKey,
             $model,
             $openRouterUrl,
-            $userId
+            $userId,
+            $instructions
         );
 
         return $one ? [$one] : [];
@@ -452,10 +485,13 @@ function ew_intake_flesh_batch_chunk(
     }
     $stubBlock = implode("\n", $stubLines);
     $campDescLine = $campaignDesc ? "\nWorld Setting: {$campaignDesc}\n" : '';
+    $instrBlock = $instructions !== ''
+        ? "\nDM intake instructions (honor in backstory/flavor; stub identity fields are LOCKED):\n{$instructions}\n"
+        : '';
 
     if ($allCreatures) {
         $batchPrompt = "Generate creature flavor details for {$n} D&D {$dndEdition} creatures in \"{$townName}\".
-{$campDescLine}Campaign Rules: {$campaignRules}
+{$campDescLine}{$instrBlock}Campaign Rules: {$campaignRules}
 {$rules}
 
 STUBS (output array index MUST match line order — element [0] = line 1, etc.):
@@ -470,7 +506,7 @@ Rules:
 OUTPUT: Valid JSON array ONLY, exactly {$n} objects. No markdown or commentary.";
     } else {
         $batchPrompt = "Generate NPC flavor details for {$n} D&D {$dndEdition} characters in \"{$townName}\".
-{$campDescLine}Campaign Rules: {$campaignRules}
+{$campDescLine}{$instrBlock}Campaign Rules: {$campaignRules}
 {$rules}
 
 STUBS (output array index MUST match line order — element [0] = line 1, etc.):
@@ -481,8 +517,8 @@ Rules:
 - Feats: 1 at 1st level + 1 per 3 levels. Humans get 1 extra at 1st. Fighters/Warriors get bonus combat feats. Pick from:
 {$featRef}
 - Skills: class/cross-class skill names only in \"skills_feats\".
-- Copy \"name\", \"race\", \"class\", \"gender\", \"age\", \"alignment\", \"role\" EXACTLY from each stub line.
-- Each object: \"status\":\"Alive\", \"skills_feats\", \"feats\", \"reason\" (2-3 sentences).
+- Copy \"name\", \"race\", \"class\", \"gender\", \"age\", \"alignment\", \"role\" EXACTLY from each stub line — never substitute another race.
+- Each object: \"status\":\"Alive\", \"skills_feats\", \"feats\", \"reason\" (2-3 sentences; honor DM intake instructions when present).
 
 OUTPUT: Valid JSON array ONLY, exactly {$n} objects. No markdown or commentary.";
     }
@@ -528,7 +564,8 @@ OUTPUT: Valid JSON array ONLY, exactly {$n} objects. No markdown or commentary."
                 $apiKey,
                 $model,
                 $openRouterUrl,
-                $userId
+                $userId,
+                $instructions
             );
             if ($one) {
                 $fb[] = $one;
@@ -620,7 +657,8 @@ OUTPUT: Valid JSON array ONLY, exactly {$n} objects. No markdown or commentary."
                 $apiKey,
                 $model,
                 $openRouterUrl,
-                $userId
+                $userId,
+                $instructions
             );
             if ($one) {
                 $fb[] = $one;
@@ -648,7 +686,8 @@ OUTPUT: Valid JSON array ONLY, exactly {$n} objects. No markdown or commentary."
                     $apiKey,
                     $model,
                     $openRouterUrl,
-                    $userId
+                    $userId,
+                    $instructions
                 );
                 if ($one) {
                     $fb[] = $one;
@@ -657,7 +696,7 @@ OUTPUT: Valid JSON array ONLY, exactly {$n} objects. No markdown or commentary."
 
             return $fb;
         }
-        $out[] = $row;
+        $out[] = ew_intake_lock_identity_from_stub($chunk[$i], $row);
     }
 
     return $out;
@@ -816,8 +855,11 @@ if ($action === 'intake_roster') {
     }
 
     // Race enforcement list — filled by demographics computation, applied after AI returns
+    // Explicit race in DM instructions always wins (e.g. "Dwarven warrior" with Count 1).
     $enforcedRaceList = [];
     require_once $baseDir . '/roster_generator.php';
+    $instrOverrides = parseInstructions($instructions);
+    $instructionRaceLock = !empty($instrOverrides['race']);
 
     // ═══════════════════════════════════════════════════════════
     // STANDARD NPC MODE — Procedural generation (NO AI credits)
@@ -828,8 +870,8 @@ if ($action === 'intake_roster') {
         $hasHistory = !empty($history);
         $isNewSettlement = ($existingCount === 0 && !$hasHistory);
 
-        // Compute race enforcement list from demographics (if set)
-        if ($demographics) {
+        // Compute race enforcement list from demographics (if set) — skipped when instructions name a race
+        if ($demographics && !$instructionRaceLock) {
             $demoEntries = ew_parse_town_demographics_entries($demographics);
 
             if (!empty($demoEntries)) {
@@ -902,6 +944,12 @@ if ($action === 'intake_roster') {
             'customClasses'    => $customClassData,
         ]);
 
+        // Honor town gen_rules intake/max level on procedural stubs (same as AI path)
+        for ($li = 0; $li < count($validRoster); $li++) {
+            $rolledLevel = rollIntakeLevel($genRulesIA);
+            $validRoster[$li]['class'] = applyLevelToClass($validRoster[$li]['class'], $rolledLevel);
+        }
+
         simRespond(['ok' => true, 'roster' => $validRoster, 'town_id' => $townId, 'is_creature_intake' => false]);
     }
     // ═══════════════════════════════════════════════════════════
@@ -958,7 +1006,7 @@ For each creature provide ONLY: name, race, class, gender, age, role, alignment.
         $nameRule = 'Use WILDLY diverse naming styles. Mix Anglo (John, Margaret), Celtic (Bran, Niamh), Norse (Bjorn, Sigrid), Mediterranean (Marco, Isadora), Slavic (Dmitri, Katya), Arabic (Rashid, Fatima), East Asian (Kenji, Mei), invented fantasy, and archaic names. NO two names should share the same first syllable. Every name must feel like a DIFFERENT person from a DIFFERENT background.';
         $exampleRace = 'Human';
 
-        if ($demographics) {
+        if ($demographics && !$instructionRaceLock) {
             // Parse demographics (JSON array or comma-separated). "Other" = playable races not listed, not SRD monsters.
             $demoEntries = ew_parse_town_demographics_entries($demographics);
             foreach ($demoEntries as $de) {
@@ -1158,7 +1206,8 @@ For each character provide ONLY: name, race, class, gender, age, role, alignment
     $validRoster = array_slice($validRoster, 0, $numArrivals);
 
     // ── Enforce race distribution: override AI race assignments with computed targets ──
-    if (!empty($enforcedRaceList) && !$isCreatureIntake) {
+    // Skip when DM instructions already named a race (instruction lock).
+    if (!empty($enforcedRaceList) && !$isCreatureIntake && !$instructionRaceLock) {
         // Pad or trim the enforcement list to match the actual roster size
         $rosterLen = count($validRoster);
         while (count($enforcedRaceList) < $rosterLen) {
@@ -1199,6 +1248,7 @@ elseif ($action === 'intake_flesh') {
     $townId = (int) ($input['town_id'] ?? 0);
     $stubs = $input['stubs'] ?? [];
     $rules = trim($input['rules'] ?? '');
+    $instructions = trim($input['instructions'] ?? '');
 
     verifyTownOwnership($userId, $townId, $uid);
     if (empty($stubs))
@@ -1366,7 +1416,8 @@ elseif ($action === 'intake_flesh') {
                 $apiKey,
                 $model,
                 $openRouterUrl,
-                $userId
+                $userId,
+                $instructions
             );
             foreach ($part as $pi => $row) {
                 if (isset($llmIndexMap[$gi + $pi])) {

@@ -434,7 +434,8 @@ function selectRole(string $className, bool $isNewSettlement, string $settlement
 
 /**
  * Parse user instructions for explicit overrides.
- * Handles: "10 dwarven warriors", "all female", "level 5", etc.
+ * Handles: "10 dwarven warriors", "all female", "level 5", "appointed mayor", etc.
+ * Longer / multi-word race tokens are checked first so "half-elf" wins over "elf".
  */
 function parseInstructions(string $instructions): array
 {
@@ -442,16 +443,20 @@ function parseInstructions(string $instructions): array
     if (!$instructions) return $overrides;
     $lower = strtolower($instructions);
 
-    // Race detection
+    // Race detection (word-boundary; multi-word / adjectival forms first)
     $races = [
-        'human' => 'Human', 'elf' => 'Elf', 'elven' => 'Elf', 'elves' => 'Elf',
-        'dwarf' => 'Dwarf', 'dwarven' => 'Dwarf', 'dwarves' => 'Dwarf',
-        'halfling' => 'Halfling', 'gnome' => 'Gnome',
-        'half-elf' => 'Half-Elf', 'half elf' => 'Half-Elf',
-        'half-orc' => 'Half-Orc', 'half orc' => 'Half-Orc',
+        'half-elf' => 'Half-Elf', 'half elf' => 'Half-Elf', 'half-elven' => 'Half-Elf',
+        'half-orc' => 'Half-Orc', 'half orc' => 'Half-Orc', 'half-ogre' => 'Half-Orc',
+        'dragonborn' => 'Dragonborn', 'tiefling' => 'Tiefling', 'aasimar' => 'Aasimar',
+        'dwarven' => 'Dwarf', 'dwarves' => 'Dwarf', 'dwarf' => 'Dwarf',
+        'elven' => 'Elf', 'elves' => 'Elf', 'elf' => 'Elf',
+        'halfling' => 'Halfling', 'halflings' => 'Halfling',
+        'gnomish' => 'Gnome', 'gnomes' => 'Gnome', 'gnome' => 'Gnome',
+        'humans' => 'Human', 'human' => 'Human',
     ];
     foreach ($races as $pattern => $raceName) {
-        if (strpos($lower, $pattern) !== false) {
+        $re = '/\b' . preg_quote($pattern, '/') . '\b/i';
+        if (preg_match($re, $lower)) {
             $overrides['race'] = $raceName;
             break;
         }
@@ -472,6 +477,21 @@ function parseInstructions(string $instructions): array
     foreach ($classes as $pattern => $className) {
         if (preg_match('/\b' . preg_quote($pattern, '/') . 's?\b/', $lower)) {
             $overrides['class'] = $className;
+            break;
+        }
+    }
+
+    // Role / office detection (explicit appointment beats class-default roles)
+    $roles = [
+        // Longer phrases first so "guard captain" wins over "captain"
+        'guard captain' => 'Captain', 'town guard' => 'Guard',
+        'mayor' => 'Mayor', 'sheriff' => 'Sheriff', 'reeve' => 'Reeve',
+        'magistrate' => 'Magistrate', 'blacksmith' => 'Blacksmith',
+        'innkeeper' => 'Innkeeper', 'captain' => 'Captain',
+    ];
+    foreach ($roles as $pattern => $roleName) {
+        if (preg_match('/\b' . preg_quote($pattern, '/') . 's?\b/', $lower)) {
+            $overrides['role'] = $roleName;
             break;
         }
     }
@@ -746,7 +766,11 @@ function generateRoster(int $count, array $options = []): array
         }
 
         // === ROLE ===
-        $role = selectRole($className, $isNewSettlement, $settlementType, $biome, $roleCounts);
+        if (!empty($overrides['role'])) {
+            $role = $overrides['role'];
+        } else {
+            $role = selectRole($className, $isNewSettlement, $settlementType, $biome, $roleCounts);
+        }
         // Track the role we assigned
         $roleCounts[strtolower($role)] = ($roleCounts[strtolower($role)] ?? 0) + 1;
 
