@@ -14,8 +14,12 @@ define('SESSION_LIFETIME', 86400 * 7);  // 7 days
 // ── App Settings ─────────────────────────────────────────
 define('APP_NAME', 'Eon Weaver');
 // OpenRouter attribution (production site — keep accurate for their ToS)
+// Brand / OpenRouter HTTP-Referer — keep production even on staging hosts.
 define('APP_PUBLIC_URL', 'https://eonweaver.com');
 define('APP_PUBLIC_TITLE', 'Eon Weaver');
+// Optional: force user-facing links (email verify, Stripe). When unset, derived from HTTP_HOST
+// for eonweaver.com / worldscribe.online so staging stays on staging.
+// define('APP_SITE_URL', 'https://worldscribe.online');
 define('ALLOW_REGISTRATION', true);     // Set false to lock signups
 
 // ── SMTP (required for email verification on public signups) ──

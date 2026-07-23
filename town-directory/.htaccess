@@ -10,14 +10,18 @@ php_value memory_limit 256M
 </IfModule>
 
 RewriteEngine On
-# Retired staging host — send visitors to production (does not affect eonweaver.com).
-RewriteCond %{HTTP_HOST} ^(www\.)?worldscribe\.online$ [NC]
-RewriteRule ^ https://eonweaver.com%{REQUEST_URI} [L,R=301]
+# Staging (worldscribe.online) must NOT redirect to eonweaver.com — it is the live test host.
 
-# Force canonical host + HTTPS.
+# Force canonical host + HTTPS on production only.
+RewriteCond %{HTTP_HOST} ^(www\.)?eonweaver\.com$ [NC]
 RewriteCond %{HTTPS} !=on [OR]
 RewriteCond %{HTTP_HOST} ^www\.eonweaver\.com$ [NC]
 RewriteRule ^ https://eonweaver.com%{REQUEST_URI} [L,R=301]
+
+# Staging: HTTPS only (leave host as worldscribe.online).
+RewriteCond %{HTTP_HOST} ^(www\.)?worldscribe\.online$ [NC]
+RewriteCond %{HTTPS} !=on
+RewriteRule ^ https://worldscribe.online%{REQUEST_URI} [L,R=301]
 
 # Normalize index files to clean root/path URLs.
 RewriteCond %{THE_REQUEST} \s/+(.*/)?index\.(php|html?)[\s?] [NC]

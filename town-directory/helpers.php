@@ -11,13 +11,14 @@ require_once __DIR__ . '/llm_training_dataset.php';
 
 /**
  * Metadata OpenRouter expects on chat requests (HTTP-Referer + X-Title).
+ * Always uses APP_PUBLIC_URL (production brand), even when the request hits staging.
  * Override in config.php: APP_PUBLIC_URL and APP_PUBLIC_TITLE (see config.example.php).
  *
  * @param string|null $xTitle If non-empty, used as X-Title; otherwise APP_PUBLIC_TITLE / APP_NAME.
  */
 function openRouterAppHeaders(?string $xTitle = null): array
 {
-    $url = ew_app_public_base_url();
+    $url = ew_app_attribution_base_url();
     $title = ($xTitle !== null && $xTitle !== '')
         ? $xTitle
         : (defined('APP_PUBLIC_TITLE') ? APP_PUBLIC_TITLE : (defined('APP_NAME') ? APP_NAME : 'Eon Weaver'));
