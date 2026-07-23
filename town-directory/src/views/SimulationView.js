@@ -41,6 +41,26 @@ function simRelationshipPairLabels(r) {
   return [left || 'Unknown', right || 'Unknown'];
 }
 
+/**
+ * Deaths from the model are often criteria-only (no name); apply fills death_details with the matched resident.
+ */
+function simDeathLabel(d) {
+  if (!d || typeof d !== 'object') return 'Unknown';
+  for (const k of ['name', 'character', 'character_name', 'victim', 'char', 'npc']) {
+    if (d[k] == null) continue;
+    const s = String(d[k]).trim();
+    if (s && s.toLowerCase() !== 'undefined') return s;
+  }
+  const bits = [];
+  if (d.preferred_role) bits.push(String(d.preferred_role).trim());
+  if (d.preferred_class) bits.push(String(d.preferred_class).trim());
+  if (d.age_category && String(d.age_category).toLowerCase() !== 'any') {
+    bits.push(String(d.age_category).trim());
+  }
+  if (bits.length) return bits.join(' · ');
+  return 'Unnamed victim';
+}
+
 export default function SimulationView(container) {
   const state = getState();
 
@@ -503,8 +523,8 @@ export default function SimulationView(container) {
               }
             });
 
-            // Merge all change arrays
-            ['new_characters', 'deaths', 'new_relationships', 'xp_gains', 'stat_changes', 'role_changes', 'building_changes'].forEach(key => {
+            // Merge change arrays (deaths resolved after apply — model often omits names)
+            ['new_characters', 'new_relationships', 'xp_gains', 'stat_changes', 'role_changes', 'building_changes'].forEach(key => {
               if (Array.isArray(ch[key])) {
                 merged.changes[key].push(...ch[key]);
               }
@@ -534,6 +554,11 @@ export default function SimulationView(container) {
                 merged.changes.levelup_details.push(...ad.levelup_details);
                 log(`  ⬆️ ${ad.levelup_details.length} level-up(s) this batch`, 'info');
               }
+              if (Array.isArray(ad.death_details) && ad.death_details.length) {
+                merged.changes.deaths.push(...ad.death_details);
+              } else if (Array.isArray(ch.deaths) && ch.deaths.length) {
+                merged.changes.deaths.push(...ch.deaths);
+              }
               if (typeof ad.deaths === 'number') {
                 const aiDeaths = (ch.deaths || []).length;
                 if (ad.deaths < aiDeaths) {
@@ -542,6 +567,9 @@ export default function SimulationView(container) {
               }
             } catch (applyErr) {
               log(`  Warning: Could not apply batch ${batch + 1}: ${applyErr.message}`, 'warn');
+              if (Array.isArray(ch.deaths) && ch.deaths.length) {
+                merged.changes.deaths.push(...ch.deaths);
+              }
             }
 
             log(`  Batch ${batch + 1}: ${(ch.new_characters || []).length} arrivals, ${(ch.deaths || []).length} deaths, ${(ch.building_changes || []).length} builds`, 'info');
@@ -655,7 +683,7 @@ export default function SimulationView(container) {
       tabs.push(['deaths', '💀', 'Deaths', deaths.length,
         `<div class="sim-change-list">${deaths.map(d => `
           <div class="sim-change-item sim-change-death">
-            <strong>${d.name}</strong>
+            <strong>${simDeathLabel(d)}</strong>
             ${d.reason ? `<span class="sim-reason">${d.reason}</span>` : ''}
           </div>`).join('')}</div>`
       ]);
@@ -834,6 +862,24 @@ export default function SimulationView(container) {
           if (a.deaths_failed && a.deaths_failed.length) {
             const aiDeaths = (changes.deaths || []).length;
             log(`  ⚠️ ${a.deaths}/${aiDeaths} deaths matched characters in the DB`, 'warn');
+          }
+
+          // Refresh Deaths tab with names resolved by the server matcher
+          const deathDetails = a.death_details || [];
+          if (deathDetails.length) {
+            const deathPanel = resultsEl.querySelector('.sim-res-panel[data-sim-panel="deaths"]');
+            const deathTab = resultsEl.querySelector('.sim-res-tab[data-sim-tab="deaths"]');
+            if (deathPanel) {
+              deathPanel.innerHTML = `<div class="sim-change-list">${deathDetails.map(d => `
+                <div class="sim-change-item sim-change-death">
+                  <strong>${simDeathLabel(d)}</strong>
+                  ${d.reason ? `<span class="sim-reason">${d.reason}</span>` : ''}
+                </div>`).join('')}</div>`;
+            }
+            if (deathTab) {
+              deathTab.innerHTML = `💀 Deaths <span class="sim-tab-badge">${deathDetails.length}</span>`;
+            }
+            if (sim.changes) sim.changes.deaths = deathDetails;
           }
 
           // Log level-up details and inject Level Ups tab
