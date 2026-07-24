@@ -38,6 +38,7 @@ const NAV_GROUPS = [
     items: [
       { route: 'town', icon: '🏰', label: 'Town Roster', hint: 'Living roster, character sheets, AI intake, town settings, and history.' },
       { route: 'townstats', icon: '📈', label: 'Town Stats', hint: 'Demographics, buildings, and aggregates for the active town (pick a town from the Dashboard first).' },
+      { route: 'relationships', icon: '🕸️', label: 'Relationships', hint: 'Full-page NPC relationship network for the active town.' },
       { route: 'simulation', icon: '⏩', label: 'Monthly Simulation', hint: 'Single-town AI month(s): plan, preview changes, apply — uses the town you last opened.' },
     ],
   },
@@ -215,7 +216,15 @@ export function renderSidebar(container) {
 
   // Bind navigation clicks
   container.querySelectorAll('.nav-item[data-route]').forEach((btn) => {
-    btn.addEventListener('click', () => navigate(btn.dataset.route));
+    btn.addEventListener('click', () => {
+      const route = btn.dataset.route;
+      const { currentTownId } = getState();
+      if (route === 'relationships' && currentTownId) {
+        navigate(`relationships/${currentTownId}`);
+      } else {
+        navigate(route);
+      }
+    });
   });
   bindNavGroupToggles(container);
 

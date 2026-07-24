@@ -24,6 +24,13 @@
     flex-direction: column;
 }
 
+.app-content:has(> .view-relationship-network) {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: 1rem;
+}
+
 /* sidebar*/
 .sidebar {
     width: var(--sidebar-width);

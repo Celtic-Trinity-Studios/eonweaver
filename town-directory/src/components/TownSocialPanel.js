@@ -13,7 +13,8 @@ import {
 } from '../api/social.js';
 import { apiGetCharacters } from '../api/characters.js';
 import { showModal } from './Modal.js';
-import { mountRelationshipGraph } from './RelationshipGraph.js';
+import { navigate } from '../router.js';
+import { REL_TYPE_COLORS } from './RelationshipGraph.js';
 
 const FACTION_ICONS = {
   guild: '⚒️', religious: '⛪', military: '⚔️', criminal: '🗡️',
@@ -44,6 +45,8 @@ export async function openTownSocialPanel(townId) {
     width: 'wide',
     content: '<div class="cs-loading" style="padding:2rem;text-align:center;">Loading social data...</div>'
   });
+  // Stash closer so refresh/re-render can still leave for the full-page graph
+  if (modalBody) modalBody._tspClose = close;
 
   // Timeout helper — prevents hanging forever if the server is slow/unresponsive
   const withTimeout = (promise, ms, label) =>
@@ -74,16 +77,36 @@ export async function openTownSocialPanel(townId) {
 }
 
 
+function renderRelTypeSummary(relationships) {
+  if (!relationships.length) {
+    return '<div class="social-empty"><div class="social-empty-icon">🤝</div>No NPC relationships tracked</div>';
+  }
+  const counts = {};
+  relationships.forEach((r) => {
+    const t = String(r.rel_type || 'acquaintance').toLowerCase();
+    counts[t] = (counts[t] || 0) + 1;
+  });
+  const chips = Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([type, count]) => {
+      const color = REL_TYPE_COLORS[type] || '#888';
+      return `<span class="rel-type-chip"><span class="rel-graph-swatch" style="background:${color}"></span>${type}: ${count}</span>`;
+    })
+    .join('');
+  return `
+    <div class="rel-network-teaser">
+      <div class="rel-type-chip-row">${chips}</div>
+      <p class="rel-network-teaser-copy">Explore the living NPC web on a full-page canvas — filters, zoom, and portraits.</p>
+      <button type="button" class="btn-primary btn-sm" id="tsp-open-network-btn">Open Relationship Network</button>
+    </div>
+  `;
+}
+
 function renderSocialPanel(container, data, townId, characters) {
   const factions = data.factions || [];
   const incidents = data.incidents || [];
   const reputation = data.reputation || [];
   const relationships = data.relationships || [];
-
-  if (container._relGraphDestroy) {
-    try { container._relGraphDestroy(); } catch (_) { /* ignore */ }
-    container._relGraphDestroy = null;
-  }
 
   container.innerHTML = `
     <div class="town-social-panel">
@@ -131,26 +154,22 @@ function renderSocialPanel(container, data, townId, characters) {
         </div>
       </div>
 
-      <!-- Relationship Network -->
+      <!-- Relationship Network (full page) -->
       <div class="town-social-section" id="tsp-relationships">
         <div class="town-social-section-title">
           <span class="section-icon">🤝</span> Relationship Network
           <span class="section-count">${relationships.length}</span>
         </div>
-        <div id="tsp-rel-summary" class="rel-graph-host"></div>
+        <div id="tsp-rel-summary">${renderRelTypeSummary(relationships)}</div>
       </div>
     </div>
   `;
 
-  const relHost = container.querySelector('#tsp-rel-summary');
-  if (relHost) {
-    if (!relationships.length) {
-      relHost.innerHTML = '<div class="social-empty"><div class="social-empty-icon">🤝</div>No NPC relationships tracked</div>';
-    } else {
-      const graph = mountRelationshipGraph(relHost, { relationships, characters });
-      container._relGraphDestroy = graph?.destroy || null;
-    }
-  }
+  container.querySelector('#tsp-open-network-btn')?.addEventListener('click', () => {
+    const closer = container._tspClose;
+    if (typeof closer === 'function') closer();
+    navigate(`relationships/${townId}`);
+  });
 
   // Wire Create Faction
   container.querySelector('#tsp-add-faction-btn')?.addEventListener('click', () => {

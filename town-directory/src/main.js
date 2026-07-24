@@ -17,6 +17,7 @@ import SimulationView from './views/SimulationView.js';
 import WorldSimulateView from './views/WorldSimulateView.js';
 import WorldMapView from './views/WorldMapView.js';
 import TownStatsView from './views/TownStatsView.js';
+import RelationshipNetworkView from './views/RelationshipNetworkView.js';
 import EncounterView from './views/EncounterView.js';
 import PartyView from './views/PartyView.js';
 import HelpView from './views/HelpView.js';
@@ -232,6 +233,7 @@ function showApp() {
         registerRoute('world-simulate', WorldSimulateView);
         registerRoute('world-map', WorldMapView);
         registerRoute('townstats', TownStatsView);
+        registerRoute('relationships', RelationshipNetworkView);
         registerRoute('encounters', EncounterView);
         registerRoute('party', PartyView);
         registerRoute('homebrew', HomebrewView);

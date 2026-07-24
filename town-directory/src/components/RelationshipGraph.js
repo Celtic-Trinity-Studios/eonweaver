@@ -65,6 +65,7 @@ function escapeHtml(s) {
 export function mountRelationshipGraph(host, opts = {}) {
   const relationships = Array.isArray(opts.relationships) ? opts.relationships : [];
   const characters = Array.isArray(opts.characters) ? opts.characters : [];
+  const variant = opts.variant === 'page' ? 'page' : 'embed';
 
   const charById = new Map();
   for (const c of characters) {
@@ -151,7 +152,7 @@ export function mountRelationshipGraph(host, opts = {}) {
   })).filter((e) => e.sourceNode && e.targetNode);
 
   host.innerHTML = `
-    <div class="rel-graph">
+    <div class="rel-graph${variant === 'page' ? ' rel-graph--page' : ''}">
       <div class="rel-graph-toolbar">
         <button type="button" class="rel-graph-filter-btn" id="rg-filters-btn" aria-expanded="false">
           <span class="rel-graph-filter-icon" aria-hidden="true">☰</span> Filters

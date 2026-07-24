@@ -744,3 +744,79 @@
         height: 340px;
     }
 }
+
+/* Full-page Relationship Network */
+.view-relationship-network {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+    gap: .75rem;
+    height: 100%;
+}
+
+.view-relationship-network .view-subtitle {
+    margin: .15rem 0 0;
+    font-size: .85rem;
+    color: var(--text-secondary, #999);
+}
+
+.rn-body {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.rn-graph-host {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.rel-graph--page {
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+    border-radius: 12px;
+}
+
+.rel-graph--page .rel-graph-stage {
+    flex: 1;
+    height: auto;
+    min-height: 360px;
+}
+
+.rel-network-teaser {
+    display: flex;
+    flex-direction: column;
+    gap: .65rem;
+    align-items: flex-start;
+}
+
+.rel-network-teaser-copy {
+    margin: 0;
+    font-size: .78rem;
+    color: var(--text-secondary, #999);
+    line-height: 1.4;
+}
+
+.rel-type-chip-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .4rem;
+}
+
+.rel-type-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    font-size: .7rem;
+    text-transform: capitalize;
+    color: var(--text-secondary, #aaa);
+    padding: .2rem .45rem;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, .04);
+    border: 1px solid rgba(255, 255, 255, .06);
+}
