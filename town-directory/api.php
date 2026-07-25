@@ -1999,9 +1999,14 @@ try {
             $charIds = array_column(query('SELECT id FROM characters WHERE town_id = ?', [$townId], $uid), 'id');
             $placeholders = !empty($charIds) ? implode(',', array_fill(0, count($charIds), '?')) : '0';
 
-            // Collapse A↔B duplicates left by older sims / manual adds (undirected types only)
+            // Collapse A↔B duplicates left by older sims / manual adds (undirected types only).
+            // Never block the panel if cleanup hits a race / constraint edge case.
             if (!empty($charIds)) {
-                ew_collapse_undirected_relationship_duplicates($charIds, $uid);
+                try {
+                    ew_collapse_undirected_relationship_duplicates($charIds, $uid);
+                } catch (Exception $e) {
+                    error_log('[get_social_data] relationship collapse: ' . $e->getMessage());
+                }
             }
 
             // Relationships (for chars in this town)

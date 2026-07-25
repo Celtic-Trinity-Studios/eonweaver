@@ -842,9 +842,26 @@ function ew_upsert_character_relationship(
     }
 
     if (!empty($existing)) {
+        // Prefer a row already in canonical order so we never UPDATE into unique_rel
         $keepId = (int) $existing[0]['id'];
-        for ($i = 1, $n = count($existing); $i < $n; $i++) {
-            execute('DELETE FROM character_relationships WHERE id = ?', [(int) $existing[$i]['id']], $uid);
+        if ($undirected && count($existing) > 1) {
+            $canon = query(
+                'SELECT id FROM character_relationships
+                 WHERE rel_type = ? AND char1_id = ? AND char2_id = ?
+                 ORDER BY id ASC LIMIT 1',
+                [$relType, $c1, $c2],
+                $uid
+            );
+            if (!empty($canon)) {
+                $keepId = (int) $canon[0]['id'];
+            }
+        }
+        foreach ($existing as $ex) {
+            $exId = (int) $ex['id'];
+            if ($exId === $keepId) {
+                continue;
+            }
+            execute('DELETE FROM character_relationships WHERE id = ?', [$exId], $uid);
         }
         execute(
             'UPDATE character_relationships
@@ -868,7 +885,8 @@ function ew_upsert_character_relationship(
 
 /**
  * Delete reverse-direction duplicates for undirected types among the given characters.
- * Keeps the lowest id row and rewrites it to canonical char order.
+ * Keeps one row per (type, unordered pair): prefers already-canonical order, else lowest id.
+ * Deletes extras first, then rewrites orientation — never UPDATE into a live unique_rel conflict.
  *
  * @param int[] $charIds
  * @return int Number of duplicate rows removed
@@ -881,7 +899,7 @@ function ew_collapse_undirected_relationship_duplicates(array $charIds, int $uid
     }
     $ph = implode(',', array_fill(0, count($charIds), '?'));
     $rows = query(
-        "SELECT id, char1_id, char2_id, rel_type, disposition, public_rel, reason, started_date
+        "SELECT id, char1_id, char2_id, rel_type
          FROM character_relationships
          WHERE char1_id IN ($ph) OR char2_id IN ($ph)
          ORDER BY id ASC",
@@ -892,8 +910,8 @@ function ew_collapse_undirected_relationship_duplicates(array $charIds, int $uid
         return 0;
     }
 
-    $kept = [];
-    $removed = 0;
+    /** @var array<string, list<array{id:int,char1_id:int,char2_id:int}>> $groups */
+    $groups = [];
     foreach ($rows as $row) {
         $type = strtolower(trim((string) ($row['rel_type'] ?? '')));
         if (!ew_relationship_is_undirected($type)) {
@@ -904,19 +922,65 @@ function ew_collapse_undirected_relationship_duplicates(array $charIds, int $uid
         $lo = min($a, $b);
         $hi = max($a, $b);
         $key = $type . ':' . $lo . ':' . $hi;
-        if (!isset($kept[$key])) {
-            $kept[$key] = (int) $row['id'];
-            if ($a !== $lo || $b !== $hi) {
-                execute(
-                    'UPDATE character_relationships SET char1_id = ?, char2_id = ? WHERE id = ?',
-                    [$lo, $hi, (int) $row['id']],
-                    $uid
-                );
+        $groups[$key][] = [
+            'id' => (int) $row['id'],
+            'char1_id' => $a,
+            'char2_id' => $b,
+            'lo' => $lo,
+            'hi' => $hi,
+        ];
+    }
+
+    $removed = 0;
+    foreach ($groups as $members) {
+        if (count($members) === 1) {
+            $only = $members[0];
+            if ($only['char1_id'] !== $only['lo'] || $only['char2_id'] !== $only['hi']) {
+                // Sole reverse-order row — safe to flip (no sibling on unique_rel)
+                try {
+                    execute(
+                        'UPDATE character_relationships SET char1_id = ?, char2_id = ? WHERE id = ?',
+                        [$only['lo'], $only['hi'], $only['id']],
+                        $uid
+                    );
+                } catch (Exception $e) {
+                    // Ignore rare races; load still works with reverse orientation
+                }
             }
             continue;
         }
-        execute('DELETE FROM character_relationships WHERE id = ?', [(int) $row['id']], $uid);
-        $removed++;
+
+        // Prefer a row already in canonical (lo, hi) order; else lowest id
+        $keep = null;
+        foreach ($members as $m) {
+            if ($m['char1_id'] === $m['lo'] && $m['char2_id'] === $m['hi']) {
+                $keep = $m;
+                break;
+            }
+        }
+        if ($keep === null) {
+            $keep = $members[0];
+        }
+
+        foreach ($members as $m) {
+            if ($m['id'] === $keep['id']) {
+                continue;
+            }
+            execute('DELETE FROM character_relationships WHERE id = ?', [$m['id']], $uid);
+            $removed++;
+        }
+
+        if ($keep['char1_id'] !== $keep['lo'] || $keep['char2_id'] !== $keep['hi']) {
+            try {
+                execute(
+                    'UPDATE character_relationships SET char1_id = ?, char2_id = ? WHERE id = ?',
+                    [$keep['lo'], $keep['hi'], $keep['id']],
+                    $uid
+                );
+            } catch (Exception $e) {
+                // Kept reverse orientation rather than fail the social panel
+            }
+        }
     }
     return $removed;
 }
