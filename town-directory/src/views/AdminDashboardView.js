@@ -183,10 +183,18 @@ export default function AdminDashboardView(container) {
             monthly_calls: overview.monthly_calls,
             active_users: overview.active_users,
             monthly_cost: formatMonthlyCostCard(overview.monthly_cost_usd, overview.monthly_tokens),
+            openrouter_balance: formatOpenRouterBalanceCard(overview.openrouter).value,
         };
         Object.entries(map).forEach(([key, val]) => {
-            const el = contentEl.querySelector(`[data-stat="${key}"] .stat-value`);
+            const card = contentEl.querySelector(`[data-stat="${key}"]`);
+            const el = card?.querySelector('.stat-value');
             if (el) el.textContent = val;
+            if (key === 'openrouter_balance' && card) {
+                const fmt = formatOpenRouterBalanceCard(overview.openrouter);
+                const labelEl = card.querySelector('.stat-label');
+                if (labelEl) labelEl.textContent = fmt.label;
+                if (fmt.title) card.setAttribute('title', fmt.title);
+            }
         });
         patchMetricChart('visitors', sparkline(metrics.daily_visitors, '#60a5fa'));
         patchMetricChart('signups', sparkline(metrics.daily_signups, '#34d399'));
@@ -252,6 +260,7 @@ export default function AdminDashboardView(container) {
             apiAdminOverview(),
             apiAdminMetrics(period),
         ]);
+        const orBal = formatOpenRouterBalanceCard(data.openrouter);
         contentEl.innerHTML = `
         <div class="admin-stats-grid">
           ${statCard('👥', data.total_users, 'Registered Users', 'total_users')}
@@ -262,6 +271,7 @@ export default function AdminDashboardView(container) {
           ${statCard('📡', data.monthly_calls, 'AI Calls This Month', 'monthly_calls')}
           ${statCard('🟢', data.active_users, `Active Users (${data.month})`, 'active_users')}
           ${statCard('💰', formatMonthlyCostCard(data.monthly_cost_usd, data.monthly_tokens), monthlyCostLabel(data.monthly_cost_usd, data.monthly_tokens), 'monthly_cost')}
+          ${statCard('🏦', orBal.value, orBal.label, 'openrouter_balance', orBal.title)}
         </div>
         ${metricsLiveToolbarHtml(period, { compact: true })}
         <div class="metrics-grid metrics-grid-overview">
@@ -551,10 +561,11 @@ export default function AdminDashboardView(container) {
         startMetricsLiveRefresh(period, 'metrics');
     }
 
-    function statCard(icon, value, label, dataKey = '') {
+    function statCard(icon, value, label, dataKey = '', title = '') {
         const attr = dataKey ? ` data-stat="${dataKey}"` : '';
+        const titleAttr = title ? ` title="${String(title).replace(/"/g, '&quot;')}"` : '';
         return `
-        <div class="admin-stat-card"${attr}>
+        <div class="admin-stat-card"${attr}${titleAttr}>
           <div class="stat-icon">${icon}</div>
           <div class="stat-value">${value}</div>
           <div class="stat-label">${label}</div>
@@ -2551,6 +2562,51 @@ export default function AdminDashboardView(container) {
         const tok = parseInt(tokens, 10) || 0;
         if (Number.isFinite(t) && t > 0) return '$' + formatUsdTrim(t);
         return '$' + estimateCost(tok);
+    }
+
+    /** Format OpenRouter remaining balance / key limit for overview card. */
+    function formatOpenRouterBalanceCard(or) {
+        const money = (n) => {
+            const x = Number(n);
+            if (!Number.isFinite(x)) return '—';
+            const abs = formatUsdTrim(Math.abs(x));
+            return (x < 0 ? '-$' : '$') + abs;
+        };
+        if (!or || typeof or !== 'object') {
+            return { value: '—', label: 'OpenRouter balance', title: 'Balance unavailable' };
+        }
+        const tips = [];
+        if (or.total_credits != null && or.total_usage != null) {
+            tips.push(`Purchased ${money(or.total_credits)} · used ${money(or.total_usage)}`);
+        }
+        if (or.key_usage_monthly != null) {
+            tips.push(`Key spend this month: ${money(or.key_usage_monthly)}`);
+        }
+        if (or.key_label) tips.push(`Key: ${or.key_label}`);
+        if (or.hint) tips.push(or.hint);
+        if (or.error && !or.ok) tips.push(or.error);
+
+        if (or.ok && or.remaining_usd != null && Number.isFinite(Number(or.remaining_usd))) {
+            const label = or.source === 'key_limit' ? 'OpenRouter key limit left' : 'OpenRouter balance left';
+            return {
+                value: money(or.remaining_usd),
+                label,
+                title: tips.join(' · ') || label,
+            };
+        }
+        if (or.ok && or.source === 'key_usage' && or.key_usage_monthly != null) {
+            return {
+                value: money(or.key_usage_monthly),
+                label: 'OR key spend (month)',
+                title: (tips.join(' · ') || 'No account remaining returned')
+                    + ' — add OPENROUTER_MANAGEMENT_KEY for full account balance',
+            };
+        }
+        return {
+            value: '—',
+            label: 'OpenRouter balance',
+            title: tips.join(' · ') || 'Could not load OpenRouter balance',
+        };
     }
 
     /** @param {{ tokens: number, cost_usd?: number }} used */

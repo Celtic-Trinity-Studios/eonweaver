@@ -1999,6 +1999,11 @@ try {
             $charIds = array_column(query('SELECT id FROM characters WHERE town_id = ?', [$townId], $uid), 'id');
             $placeholders = !empty($charIds) ? implode(',', array_fill(0, count($charIds), '?')) : '0';
 
+            // Collapse A↔B duplicates left by older sims / manual adds (undirected types only)
+            if (!empty($charIds)) {
+                ew_collapse_undirected_relationship_duplicates($charIds, $uid);
+            }
+
             // Relationships (for chars in this town)
             $relationships = !empty($charIds) ? query(
                 "SELECT cr.*, c1.name as char1_name, c2.name as char2_name
@@ -2072,18 +2077,46 @@ try {
                 throw new Exception('Cannot create relationship with self.');
 
             if ($relId > 0) {
+                // Re-canonicalise undirected pairs when type/endpoints are edited
+                $row = query('SELECT char1_id, char2_id FROM character_relationships WHERE id = ?', [$relId], $uid);
+                if (!$row) {
+                    throw new Exception('Relationship not found.');
+                }
+                $c1 = (int) ($input['char1_id'] ?? $row[0]['char1_id']);
+                $c2 = (int) ($input['char2_id'] ?? $row[0]['char2_id']);
+                if ($c1 && $c2 && $c1 !== $c2) {
+                    [$c1, $c2] = ew_normalize_relationship_pair($c1, $c2, $relType);
+                } else {
+                    $c1 = (int) $row[0]['char1_id'];
+                    $c2 = (int) $row[0]['char2_id'];
+                }
+                // Drop any other same-type edge for this pair (reverse or stale)
+                $dupes = query(
+                    'SELECT id FROM character_relationships
+                     WHERE rel_type = ? AND id <> ?
+                       AND ((char1_id = ? AND char2_id = ?) OR (char1_id = ? AND char2_id = ?))',
+                    [$relType, $relId, $c1, $c2, $c2, $c1],
+                    $uid
+                );
+                foreach ($dupes as $d) {
+                    execute('DELETE FROM character_relationships WHERE id = ?', [(int) $d['id']], $uid);
+                }
                 execute(
-                    'UPDATE character_relationships SET rel_type=?, disposition=?, public_rel=?, reason=?, started_date=? WHERE id=?',
-                    [$relType, $disposition, $publicRel, $reason, $startedDate, $relId],
+                    'UPDATE character_relationships SET char1_id=?, char2_id=?, rel_type=?, disposition=?, public_rel=?, reason=?, started_date=? WHERE id=?',
+                    [$c1, $c2, $relType, $disposition, $publicRel, $reason, $startedDate, $relId],
                     $uid
                 );
                 respond(['ok' => true, 'id' => $relId]);
             } else {
-                $newId = insertAndGetId(
-                    'INSERT INTO character_relationships (char1_id, char2_id, rel_type, disposition, public_rel, reason, started_date) VALUES (?,?,?,?,?,?,?)
-                     ON DUPLICATE KEY UPDATE rel_type=VALUES(rel_type), disposition=VALUES(disposition), reason=VALUES(reason)',
-                    [$char1, $char2, $relType, $disposition, $publicRel, $reason, $startedDate],
-                    $uid
+                $newId = ew_upsert_character_relationship(
+                    $char1,
+                    $char2,
+                    $relType,
+                    $disposition,
+                    $reason,
+                    $uid,
+                    $publicRel,
+                    $startedDate
                 );
                 respond(['ok' => true, 'id' => $newId]);
             }
@@ -4034,6 +4067,7 @@ try {
                 0
             )[0]['s'] ?? 0);
             $activeUsers = query("SELECT COUNT(DISTINCT user_id) as c FROM user_token_usage WHERE `year_month` = ?", [$ym], 0)[0]['c'] ?? 0;
+            $openrouter = ew_fetch_openrouter_balance();
             respond([
                 'ok' => true,
                 'total_users' => (int) $totalUsers,
@@ -4045,6 +4079,7 @@ try {
                 'monthly_cost_usd' => round($monthlyCostUsd, 8),
                 'active_users' => (int) $activeUsers,
                 'month' => $ym,
+                'openrouter' => $openrouter,
             ]);
             break;
 

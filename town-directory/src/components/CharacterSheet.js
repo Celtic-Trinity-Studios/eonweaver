@@ -1073,7 +1073,20 @@ async function loadAndRenderSocial(el, charId, character, options) {
       const townId = getState().currentTownId;
       if (!townId) { listEl.innerHTML = '<div class="social-empty"><div class="social-empty-icon">🤝</div>No town selected</div>'; return; }
       const data = await apiGetSocialData(townId);
-      const rels = (data.relationships || []).filter(r => r.char1_id == charId || r.char2_id == charId);
+      const UNDIRECTED = new Set(['friend', 'rival', 'enemy', 'ally', 'romantic', 'acquaintance']);
+      // One card per other character + type (drops A↔B reverse duplicates if any linger)
+      const seen = new Set();
+      const rels = (data.relationships || []).filter(r => {
+        if (r.char1_id != charId && r.char2_id != charId) return false;
+        const otherId = r.char1_id == charId ? r.char2_id : r.char1_id;
+        const type = (r.rel_type || '').toLowerCase();
+        const key = UNDIRECTED.has(type)
+          ? `${type}:${Math.min(charId, otherId)}:${Math.max(charId, otherId)}`
+          : `${type}:${r.char1_id}:${r.char2_id}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
       if (countEl) countEl.textContent = rels.length;
 
       if (!rels.length) {

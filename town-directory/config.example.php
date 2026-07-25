@@ -90,6 +90,10 @@ define('SRD_DBS', [
 
 // ── AI Simulation (OpenRouter API) ───────────────────────
 define('OPENROUTER_API_KEY', 'sk-or-v1-your-key-here');
+// Optional management/provisioning key for GET /api/v1/credits (account balance left).
+// Regular sk-or-v1 keys get 403 on /credits; without this, admin still shows per-key
+// limit_remaining / usage from GET /api/v1/key.
+// define('OPENROUTER_MANAGEMENT_KEY', 'sk-or-v1-your-management-key-here');
 // ── Per-Feature API Keys (OpenRouter) ─────────────────────
 // Each can be a separate OpenRouter key with independent spend limits.
 define('OPENROUTER_KEY_SIM_STORY',       'sk-or-v1-your-key-here');

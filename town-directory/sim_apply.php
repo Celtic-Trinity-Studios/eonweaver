@@ -1261,15 +1261,18 @@
 
                         if ($cid1 && $cid2) {
                             try {
-                                $spRel = execute(
-                                    'INSERT INTO character_relationships (char1_id, char2_id, rel_type, disposition, reason) VALUES (?,?,?,?,?)
-                                     ON DUPLICATE KEY UPDATE rel_type=VALUES(rel_type), reason=VALUES(reason)',
-                                    [$cid1, $cid2, 'family', 10, 'spouse'],
-                                    $uid
+                                $spId = ew_upsert_character_relationship(
+                                    $cid1,
+                                    $cid2,
+                                    'family',
+                                    10,
+                                    'spouse',
+                                    $uid,
+                                    1,
+                                    '',
+                                    true
                                 );
-                                if ($spRel > 0) {
-                                    $logDbOp('UPSERT character_relationships spouse char1=' . $cid1 . ' char2=' . $cid2 . ' (rows=' . $spRel . ')');
-                                }
+                                $logDbOp('UPSERT character_relationships spouse id=' . $spId . ' char1=' . $cid1 . ' char2=' . $cid2);
                             } catch (Exception $e) {
                                 $logApplyErr('relationship_spouse_row', $e->getMessage(), ['char1' => $cid1, 'char2' => $cid2]);
                             }
@@ -1278,8 +1281,29 @@
 
                     // Also store in character_relationships table for all types
                     if ($cid1 && $cid2 && $cid1 !== $cid2) {
+                        $isSpouseType = in_array(strtolower($relType), ['husband', 'wife', 'spouse', 'husband/wife'], true);
                         // Map spouse types to 'romantic' for the relationship table
-                        $mappedType = in_array(strtolower($relType), ['husband', 'wife', 'spouse', 'husband/wife']) ? 'romantic' : strtolower($relType);
+                        $mappedType = $isSpouseType ? 'romantic' : strtolower($relType);
+                        // Parent links stay directional (char1 = parent, char2 = child)
+                        if ($mappedType === 'parent') {
+                            $parentReason = trim((string) ($r['reason'] ?? ''));
+                            if ($parentReason === '') {
+                                $parentReason = 'parent';
+                            }
+                            try {
+                                $famId = insertAndGetId(
+                                    'INSERT INTO character_relationships (char1_id, char2_id, rel_type, disposition, public_rel, reason) VALUES (?,?,?,?,?,?)
+                                     ON DUPLICATE KEY UPDATE reason=VALUES(reason), disposition=VALUES(disposition)',
+                                    [$cid1, $cid2, 'family', 10, 1, $parentReason],
+                                    $uid
+                                );
+                                $logDbOp('UPSERT character_relationships parent id=' . $famId . ' char1=' . $cid1 . ' char2=' . $cid2);
+                                $applied['relationships']++;
+                            } catch (Exception $e) {
+                                $logApplyErr('relationship_parent_row', $e->getMessage(), ['char1' => $cid1, 'char2' => $cid2]);
+                            }
+                            continue;
+                        }
                         $disposition = (int) ($r['disposition'] ?? 0);
                         if (!$disposition) {
                             // Infer from type
@@ -1287,19 +1311,35 @@
                             $disposition = $dispMap[$mappedType] ?? 0;
                         }
                         try {
-                            $relRows = execute(
-                                'INSERT INTO character_relationships (char1_id, char2_id, rel_type, disposition, reason) VALUES (?,?,?,?,?)
-                                 ON DUPLICATE KEY UPDATE rel_type=VALUES(rel_type), disposition=VALUES(disposition), reason=VALUES(reason)',
-                                [$cid1, $cid2, $mappedType, $disposition, $r['reason'] ?? ''],
+                            $relId = ew_upsert_character_relationship(
+                                $cid1,
+                                $cid2,
+                                $mappedType,
+                                $disposition,
+                                (string) ($r['reason'] ?? ''),
                                 $uid
                             );
-                            if ($relRows > 0) {
-                                $logDbOp('UPSERT character_relationships ' . $mappedType . ' char1=' . $cid1 . ' char2=' . $cid2 . ' (rows=' . $relRows . ')');
+                            $logDbOp('UPSERT character_relationships ' . $mappedType . ' id=' . $relId . ' char1=' . $cid1 . ' char2=' . $cid2);
+                            // Spouse already counted above via character spouse fields
+                            if (!$isSpouseType) {
+                                $applied['relationships']++;
                             }
                         } catch (Exception $e) {
                             $logApplyErr('relationship_row', $e->getMessage(), ['char1' => $cid1, 'char2' => $cid2, 'type' => $mappedType]);
                         }
                     }
+                }
+                // Heal any reverse-direction duplicates the AI emitted in this batch
+                try {
+                    $townCharIds = array_column(query('SELECT id FROM characters WHERE town_id = ?', [$townId], $uid), 'id');
+                    if (!empty($townCharIds)) {
+                        $nDup = ew_collapse_undirected_relationship_duplicates($townCharIds, $uid);
+                        if ($nDup > 0) {
+                            $logDbOp('COLLAPSE undirected relationship duplicates removed=' . $nDup);
+                        }
+                    }
+                } catch (Exception $e) {
+                    $logApplyErr('relationship_collapse', $e->getMessage());
                 }
             }
             if (!empty($input['history_entry'])) {

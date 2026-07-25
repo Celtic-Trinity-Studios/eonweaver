@@ -899,6 +899,11 @@ This is CRITICAL — the town tracks a SOCIAL WEB of relationships. You MUST fol
 - "mentor" — master/apprentice, teacher/student
 - "ally" — political or professional allies who aren't necessarily friends
 
+### Undirected links (CRITICAL — no reverse duplicates):
+For friend, rival, enemy, ally, and romantic: emit ONE new_relationships entry per pair.
+Do NOT also emit the reverse (A→B and B→A). The server stores a single undirected edge.
+Only "parent" (and mentor/student when direction matters) may be asymmetric.
+
 ## MANDATORY: CONFLICT, DRAMA & STRIFE
 A realistic town is NOT a utopia. You MUST include conflict and tension:
 

@@ -548,6 +548,166 @@ function resolveApiKey(string $featureKey, int $userId, bool $requireCredits = t
 }
 
 /**
+ * Resolve which OpenRouter key to use for account-balance / key-status probes (admin only).
+ */
+function ew_openrouter_probe_api_key(): string
+{
+    if (defined('OPENROUTER_MANAGEMENT_KEY') && OPENROUTER_MANAGEMENT_KEY) {
+        return (string) OPENROUTER_MANAGEMENT_KEY;
+    }
+    if (defined('OPENROUTER_API_KEY') && OPENROUTER_API_KEY) {
+        return (string) OPENROUTER_API_KEY;
+    }
+    return '';
+}
+
+/**
+ * Low-level GET against OpenRouter with a short timeout.
+ *
+ * @return array{ok:bool, http:int, data:?array, error:?string}
+ */
+function ew_openrouter_get_json(string $path, string $apiKey): array
+{
+    $url = 'https://openrouter.ai/api/v1' . $path;
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT => 8,
+        CURLOPT_CONNECTTIMEOUT => 4,
+        CURLOPT_HTTPHEADER => array_merge(
+            [
+                'Authorization: Bearer ' . $apiKey,
+                'Content-Type: application/json',
+            ],
+            openRouterAppHeaders('Eon Weaver Admin')
+        ),
+    ]);
+    $raw = curl_exec($ch);
+    $http = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err = curl_error($ch);
+    curl_close($ch);
+
+    if ($raw === false || $err) {
+        return ['ok' => false, 'http' => $http, 'data' => null, 'error' => $err ?: 'curl failed'];
+    }
+    $decoded = json_decode($raw, true);
+    if (!is_array($decoded)) {
+        return ['ok' => false, 'http' => $http, 'data' => null, 'error' => 'Invalid JSON from OpenRouter'];
+    }
+    if ($http < 200 || $http >= 300) {
+        $msg = $decoded['error']['message'] ?? ('HTTP ' . $http);
+        return ['ok' => false, 'http' => $http, 'data' => $decoded, 'error' => (string) $msg];
+    }
+    return ['ok' => true, 'http' => $http, 'data' => $decoded, 'error' => null];
+}
+
+/**
+ * Fetch OpenRouter remaining balance / key limits for the admin dashboard.
+ * Caches ~60s so live overview refresh does not spam OpenRouter.
+ *
+ * Account remaining requires a management/provisioning key (OPENROUTER_MANAGEMENT_KEY).
+ * Regular keys still return usage + optional per-key limit_remaining via /api/v1/key.
+ *
+ * @return array<string,mixed>
+ */
+function ew_fetch_openrouter_balance(bool $forceRefresh = false): array
+{
+    $cacheFile = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'ew_openrouter_balance_cache.json';
+    $ttl = 60;
+    if (!$forceRefresh && is_file($cacheFile)) {
+        $raw = @file_get_contents($cacheFile);
+        $cached = $raw ? json_decode($raw, true) : null;
+        if (is_array($cached) && (($cached['fetched_at'] ?? 0) > (time() - $ttl))) {
+            return $cached;
+        }
+    }
+
+    $out = [
+        'ok' => false,
+        'fetched_at' => time(),
+        'source' => null,
+        'remaining_usd' => null,
+        'total_credits' => null,
+        'total_usage' => null,
+        'key_label' => null,
+        'key_limit' => null,
+        'key_limit_remaining' => null,
+        'key_usage' => null,
+        'key_usage_monthly' => null,
+        'error' => null,
+        'hint' => null,
+    ];
+
+    $mgmtKey = (defined('OPENROUTER_MANAGEMENT_KEY') && OPENROUTER_MANAGEMENT_KEY)
+        ? (string) OPENROUTER_MANAGEMENT_KEY
+        : '';
+    $apiKey = (defined('OPENROUTER_API_KEY') && OPENROUTER_API_KEY)
+        ? (string) OPENROUTER_API_KEY
+        : ew_openrouter_probe_api_key();
+
+    if ($mgmtKey === '' && $apiKey === '') {
+        $out['error'] = 'No OpenRouter API key configured';
+        $out['hint'] = 'Set OPENROUTER_API_KEY (and optionally OPENROUTER_MANAGEMENT_KEY) in config.php';
+        @file_put_contents($cacheFile, json_encode($out));
+        return $out;
+    }
+
+    // Prefer account-level remaining (management key only).
+    $creditsKey = $mgmtKey !== '' ? $mgmtKey : $apiKey;
+    $credits = ew_openrouter_get_json('/credits', $creditsKey);
+    if ($credits['ok'] && isset($credits['data']['data']) && is_array($credits['data']['data'])) {
+        $d = $credits['data']['data'];
+        $total = isset($d['total_credits']) ? (float) $d['total_credits'] : null;
+        $used = isset($d['total_usage']) ? (float) $d['total_usage'] : null;
+        $out['ok'] = true;
+        $out['source'] = 'account';
+        $out['total_credits'] = $total;
+        $out['total_usage'] = $used;
+        if ($total !== null && $used !== null) {
+            $out['remaining_usd'] = round($total - $used, 6);
+        }
+    } elseif (($credits['http'] ?? 0) === 403) {
+        $out['hint'] = 'Account balance needs OPENROUTER_MANAGEMENT_KEY in config.php (regular keys return 403 on /credits).';
+    } elseif (!$credits['ok'] && $credits['error']) {
+        $out['error'] = $credits['error'];
+    }
+
+    // Always probe /key with the main API key for limit + usage context.
+    $keyProbeKey = $apiKey !== '' ? $apiKey : $mgmtKey;
+    if ($keyProbeKey !== '') {
+        $keyRes = ew_openrouter_get_json('/key', $keyProbeKey);
+        if ($keyRes['ok'] && isset($keyRes['data']['data']) && is_array($keyRes['data']['data'])) {
+            $kd = $keyRes['data']['data'];
+            $out['key_label'] = isset($kd['label']) ? (string) $kd['label'] : null;
+            $out['key_limit'] = array_key_exists('limit', $kd) ? $kd['limit'] : null;
+            $out['key_limit_remaining'] = array_key_exists('limit_remaining', $kd) ? $kd['limit_remaining'] : null;
+            $out['key_usage'] = isset($kd['usage']) ? (float) $kd['usage'] : null;
+            $out['key_usage_monthly'] = isset($kd['usage_monthly']) ? (float) $kd['usage_monthly'] : null;
+            if ($out['remaining_usd'] === null && $out['key_limit_remaining'] !== null) {
+                $out['ok'] = true;
+                $out['source'] = 'key_limit';
+                $out['remaining_usd'] = round((float) $out['key_limit_remaining'], 6);
+            } elseif ($out['remaining_usd'] === null) {
+                // No account remaining and unlimited key — still useful to show monthly key spend
+                $out['ok'] = true;
+                if ($out['source'] === null) {
+                    $out['source'] = 'key_usage';
+                }
+            }
+        } elseif (!$out['ok'] && $keyRes['error']) {
+            $out['error'] = $keyRes['error'];
+        }
+    }
+
+    if (!$out['ok'] && !$out['error']) {
+        $out['error'] = 'Could not read OpenRouter balance';
+    }
+
+    @file_put_contents($cacheFile, json_encode($out));
+    return $out;
+}
+
+/**
  * Redact a Discord webhook URL for API responses (never return full URL to the browser).
  *
  * @return array{webhook_configured: bool, webhook_hint: string}
@@ -594,4 +754,169 @@ function ew_integration_setting_value(int $userId, int $campaignId, string $keyN
     $decoded = json_decode($rows[0]['value_json'] ?: 'null', true);
 
     return is_array($decoded) ? $decoded : null;
+}
+
+/**
+ * Undirected social link types — one row per pair (either char order is the same edge).
+ * Directional types (parent / mentor / student / family) keep char1→char2 meaning.
+ */
+function ew_relationship_is_undirected(string $relType): bool
+{
+    $t = strtolower(trim($relType));
+    return in_array($t, [
+        'friend',
+        'rival',
+        'enemy',
+        'ally',
+        'romantic',
+        'acquaintance',
+        'husband',
+        'wife',
+        'spouse',
+        'husband/wife',
+    ], true);
+}
+
+/**
+ * Canonical char order for undirected types (lower id first). Directional types unchanged.
+ *
+ * @return array{0:int,1:int}
+ */
+function ew_normalize_relationship_pair(int $char1, int $char2, string $relType): array
+{
+    if ($char1 === $char2) {
+        throw new Exception('Cannot create relationship with self.');
+    }
+    if (!ew_relationship_is_undirected($relType)) {
+        return [$char1, $char2];
+    }
+    return $char1 < $char2 ? [$char1, $char2] : [$char2, $char1];
+}
+
+/**
+ * Upsert a character_relationships row, collapsing A→B / B→A duplicates for undirected types.
+ * Pass $forceUndirected for family+spouse (family is otherwise directional for parent links).
+ *
+ * @return int Relationship id kept
+ */
+function ew_upsert_character_relationship(
+    int $char1,
+    int $char2,
+    string $relType,
+    int $disposition,
+    string $reason,
+    int $uid,
+    int $publicRel = 1,
+    string $startedDate = '',
+    bool $forceUndirected = false
+): int {
+    $relType = strtolower(trim($relType));
+    if ($relType === '') {
+        $relType = 'acquaintance';
+    }
+    $disposition = max(-10, min(10, $disposition));
+    $undirected = $forceUndirected || ew_relationship_is_undirected($relType);
+    if ($undirected) {
+        [$c1, $c2] = $char1 < $char2 ? [$char1, $char2] : [$char2, $char1];
+    } else {
+        [$c1, $c2] = ew_normalize_relationship_pair($char1, $char2, $relType);
+    }
+
+    if ($undirected) {
+        $existing = query(
+            'SELECT id FROM character_relationships
+             WHERE rel_type = ?
+               AND ((char1_id = ? AND char2_id = ?) OR (char1_id = ? AND char2_id = ?))
+             ORDER BY id ASC',
+            [$relType, $c1, $c2, $c2, $c1],
+            $uid
+        );
+    } else {
+        $existing = query(
+            'SELECT id FROM character_relationships
+             WHERE rel_type = ? AND char1_id = ? AND char2_id = ?
+             ORDER BY id ASC',
+            [$relType, $c1, $c2],
+            $uid
+        );
+    }
+
+    if (!empty($existing)) {
+        $keepId = (int) $existing[0]['id'];
+        for ($i = 1, $n = count($existing); $i < $n; $i++) {
+            execute('DELETE FROM character_relationships WHERE id = ?', [(int) $existing[$i]['id']], $uid);
+        }
+        execute(
+            'UPDATE character_relationships
+             SET char1_id = ?, char2_id = ?, disposition = ?, public_rel = ?, reason = ?, started_date = ?
+             WHERE id = ?',
+            [$c1, $c2, $disposition, $publicRel, $reason, $startedDate, $keepId],
+            $uid
+        );
+        return $keepId;
+    }
+
+    return insertAndGetId(
+        'INSERT INTO character_relationships (char1_id, char2_id, rel_type, disposition, public_rel, reason, started_date)
+         VALUES (?,?,?,?,?,?,?)
+         ON DUPLICATE KEY UPDATE disposition=VALUES(disposition), reason=VALUES(reason),
+           public_rel=VALUES(public_rel), started_date=VALUES(started_date)',
+        [$c1, $c2, $relType, $disposition, $publicRel, $reason, $startedDate],
+        $uid
+    );
+}
+
+/**
+ * Delete reverse-direction duplicates for undirected types among the given characters.
+ * Keeps the lowest id row and rewrites it to canonical char order.
+ *
+ * @param int[] $charIds
+ * @return int Number of duplicate rows removed
+ */
+function ew_collapse_undirected_relationship_duplicates(array $charIds, int $uid): int
+{
+    $charIds = array_values(array_unique(array_map('intval', $charIds)));
+    if (count($charIds) < 2) {
+        return 0;
+    }
+    $ph = implode(',', array_fill(0, count($charIds), '?'));
+    $rows = query(
+        "SELECT id, char1_id, char2_id, rel_type, disposition, public_rel, reason, started_date
+         FROM character_relationships
+         WHERE char1_id IN ($ph) OR char2_id IN ($ph)
+         ORDER BY id ASC",
+        array_merge($charIds, $charIds),
+        $uid
+    );
+    if (!$rows) {
+        return 0;
+    }
+
+    $kept = [];
+    $removed = 0;
+    foreach ($rows as $row) {
+        $type = strtolower(trim((string) ($row['rel_type'] ?? '')));
+        if (!ew_relationship_is_undirected($type)) {
+            continue;
+        }
+        $a = (int) $row['char1_id'];
+        $b = (int) $row['char2_id'];
+        $lo = min($a, $b);
+        $hi = max($a, $b);
+        $key = $type . ':' . $lo . ':' . $hi;
+        if (!isset($kept[$key])) {
+            $kept[$key] = (int) $row['id'];
+            if ($a !== $lo || $b !== $hi) {
+                execute(
+                    'UPDATE character_relationships SET char1_id = ?, char2_id = ? WHERE id = ?',
+                    [$lo, $hi, (int) $row['id']],
+                    $uid
+                );
+            }
+            continue;
+        }
+        execute('DELETE FROM character_relationships WHERE id = ?', [(int) $row['id']], $uid);
+        $removed++;
+    }
+    return $removed;
 }
