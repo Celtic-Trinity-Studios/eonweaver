@@ -24,9 +24,24 @@ try { execute('ALTER TABLE users ADD COLUMN discord_user_id VARCHAR(32) DEFAULT 
 try { execute('ALTER TABLE users ADD COLUMN stripe_customer_id VARCHAR(255) DEFAULT NULL', [], 0); } catch (Exception $e) { /* already exists */ }
 try { execute('ALTER TABLE users ADD COLUMN stripe_subscription_id VARCHAR(255) DEFAULT NULL', [], 0); } catch (Exception $e) { /* already exists */ }
 try { execute('ALTER TABLE users ADD COLUMN stripe_subscription_status VARCHAR(32) DEFAULT NULL', [], 0); } catch (Exception $e) { /* already exists */ }
-try { execute("ALTER TABLE users ADD COLUMN subscription_ec_seed_tier VARCHAR(20) DEFAULT NULL", [], 0); } catch (Exception $e) { /* already exists */ }
+try { execute('ALTER TABLE users ADD COLUMN subscription_ec_seed_tier VARCHAR(20) DEFAULT NULL', [], 0); } catch (Exception $e) { /* already exists */ }
 try { execute('ALTER TABLE users ADD COLUMN subscription_started_at DATETIME DEFAULT NULL', [], 0); } catch (Exception $e) { /* already exists */ }
 try { execute('ALTER TABLE users ADD COLUMN subscription_renews_at DATETIME DEFAULT NULL', [], 0); } catch (Exception $e) { /* already exists */ }
+try {
+    execute(
+        'CREATE TABLE IF NOT EXISTS stripe_ec_invoice_grants (
+            invoice_id VARCHAR(255) NOT NULL PRIMARY KEY,
+            user_id INT NOT NULL,
+            amount_raw BIGINT NOT NULL,
+            tier_id VARCHAR(20) NOT NULL,
+            billing_reason VARCHAR(64) DEFAULT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_stripe_ec_grants_user (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
+        [],
+        0
+    );
+} catch (Exception $e) { /* non-fatal */ }
 try { execute('ALTER TABLE users ADD COLUMN is_debug TINYINT(1) NOT NULL DEFAULT 0', [], 0); } catch (Exception $e) { /* already exists */ }
 try {
     $byokRetired = query("SELECT `key` FROM site_settings WHERE `key` = 'byok_retired_v1' LIMIT 1", [], 0);
@@ -239,6 +254,9 @@ try {
                 ew_normalize_subscription_tier((string) $tier),
                 (string) ($udata[0]['stripe_subscription_status'] ?? '')
             );
+            try {
+                ew_stripe_reconcile_subscription_ec_grants($uid);
+            } catch (Throwable $e) { /* non-fatal */ }
             $udata = query('SELECT credit_balance FROM users WHERE id = ?', [$uid], 0);
             $creditBalance = (int) ($udata[0]['credit_balance'] ?? 0);
             $yearMonth = date('Y-m');

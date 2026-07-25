@@ -58,6 +58,7 @@ define('FREE_TIER_MAX_RESIDENTS', 15);
 // ── Stripe subscriptions (optional — self-serve Plans checkout) ──
 // Dashboard → Products: create recurring monthly prices for apprentice / adventurer / guild_master / world_builder.
 // Map Stripe price_… ids to tier keys (must match tier_limits.php). Webhook → /stripe_webhook.php on this host.
+// Events: checkout.session.completed, customer.subscription.updated/deleted, invoice.paid (renewal EC).
 // Test keys: sk_test_… / whsec_… . Live: sk_live_… after you verify the webhook endpoint.
 // define('STRIPE_SECRET_KEY', 'sk_test_…');
 // define('STRIPE_WEBHOOK_SECRET', 'whsec_…');

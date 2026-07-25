@@ -214,6 +214,7 @@ function ew_stripe_tier_rank(string $tierId): int
 
 /**
  * Credit the platform wallet when a paid subscription tier increases (idempotent via subscription_ec_seed_tier).
+ * First month of a paid plan is covered here; renewals use invoice.paid → ew_stripe_handle_invoice_paid.
  */
 function ew_stripe_maybe_grant_subscription_wallet_seed(int $userId, string $newTierId, ?string $subscriptionStatus = null): int
 {
@@ -250,6 +251,281 @@ function ew_stripe_maybe_grant_subscription_wallet_seed(int $userId, string $new
         0
     );
     return $grantRaw;
+}
+
+/**
+ * Ensure the invoice-idempotency ledger exists (also migrated from api.php bootstrap).
+ */
+function ew_stripe_ensure_ec_grant_table(): void
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+    try {
+        execute(
+            'CREATE TABLE IF NOT EXISTS stripe_ec_invoice_grants (
+                invoice_id VARCHAR(255) NOT NULL PRIMARY KEY,
+                user_id INT NOT NULL,
+                amount_raw BIGINT NOT NULL,
+                tier_id VARCHAR(20) NOT NULL,
+                billing_reason VARCHAR(64) DEFAULT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                KEY idx_stripe_ec_grants_user (user_id)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4',
+            [],
+            0
+        );
+    } catch (Throwable $e) {
+        /* non-fatal */
+    }
+}
+
+/**
+ * Grant one paid billing period's monthly EC allotment (idempotent by Stripe invoice id).
+ * Renewals: billing_reason=subscription_cycle → add monthly tier allotment.
+ * First month: billing_reason=subscription_create → record only (tier seed covers month 1).
+ *
+ * @return int raw tokens granted (0 if skipped / already granted)
+ */
+function ew_stripe_grant_ec_for_paid_invoice(int $userId, string $invoiceId, string $tierId, string $billingReason = ''): int
+{
+    require_once __DIR__ . '/tier_economics.php';
+    require_once __DIR__ . '/tier_limits.php';
+    ew_stripe_ensure_ec_grant_table();
+
+    $invoiceId = trim($invoiceId);
+    $userId = (int) $userId;
+    if ($invoiceId === '' || $userId <= 0) {
+        return 0;
+    }
+
+    $tierId = ew_normalize_subscription_tier($tierId);
+    $billingReason = strtolower(trim($billingReason));
+
+    $existing = query('SELECT invoice_id, amount_raw FROM stripe_ec_invoice_grants WHERE invoice_id = ? LIMIT 1', [$invoiceId], 0);
+    if ($existing) {
+        return 0;
+    }
+
+    // First invoice of a new subscription: wallet seed on checkout/upgrade already covers month 1.
+    if ($billingReason === 'subscription_create') {
+        try {
+            execute(
+                'INSERT INTO stripe_ec_invoice_grants (invoice_id, user_id, amount_raw, tier_id, billing_reason)
+                 VALUES (?, ?, 0, ?, ?)',
+                [$invoiceId, $userId, $tierId, 'subscription_create'],
+                0
+            );
+        } catch (Throwable $e) {
+            /* duplicate / race */
+        }
+        return 0;
+    }
+
+    // Only automatic renewals top up the wallet.
+    if ($billingReason !== 'subscription_cycle') {
+        return 0;
+    }
+
+    if ($tierId === 'free') {
+        return 0;
+    }
+
+    $grantRaw = (int) ew_monthly_raw_cap_for_tier($tierId);
+    try {
+        execute(
+            'INSERT INTO stripe_ec_invoice_grants (invoice_id, user_id, amount_raw, tier_id, billing_reason)
+             VALUES (?, ?, ?, ?, ?)',
+            [$invoiceId, $userId, $grantRaw, $tierId, $billingReason],
+            0
+        );
+    } catch (Throwable $e) {
+        return 0;
+    }
+
+    if ($grantRaw > 0) {
+        execute(
+            'UPDATE users SET credit_balance = credit_balance + ? WHERE id = ?',
+            [$grantRaw, $userId],
+            0
+        );
+    }
+    return $grantRaw;
+}
+
+/**
+ * Handle Stripe invoice.paid — grant monthly EC on subscription renewals.
+ */
+function ew_stripe_handle_invoice_paid(array $invoice): int
+{
+    $invoiceId = trim((string) ($invoice['id'] ?? ''));
+    if ($invoiceId === '') {
+        return 0;
+    }
+    $billingReason = strtolower(trim((string) ($invoice['billing_reason'] ?? '')));
+    // Only automatic subscription renewals.
+    if ($billingReason !== 'subscription_cycle') {
+        if ($billingReason === 'subscription_create') {
+            // Record so reconcile doesn't try to treat create as a missed renewal.
+            $userId = ew_stripe_resolve_user_id_from_invoice($invoice);
+            $tier = ew_stripe_tier_from_invoice($invoice);
+            if ($userId) {
+                return ew_stripe_grant_ec_for_paid_invoice($userId, $invoiceId, $tier, 'subscription_create');
+            }
+        }
+        return 0;
+    }
+
+    $paid = ($invoice['paid'] ?? true);
+    if ($paid === false || $paid === 'false' || $paid === 0 || $paid === '0') {
+        return 0;
+    }
+
+    $userId = ew_stripe_resolve_user_id_from_invoice($invoice);
+    if (!$userId) {
+        return 0;
+    }
+    $tier = ew_stripe_tier_from_invoice($invoice);
+    return ew_stripe_grant_ec_for_paid_invoice($userId, $invoiceId, $tier, 'subscription_cycle');
+}
+
+function ew_stripe_resolve_user_id_from_invoice(array $invoice): ?int
+{
+    $meta = $invoice['metadata'] ?? [];
+    if (!empty($meta['user_id'])) {
+        $uid = (int) $meta['user_id'];
+        if ($uid > 0) {
+            return $uid;
+        }
+    }
+    $subId = $invoice['subscription'] ?? null;
+    if (is_array($subId)) {
+        $subId = $subId['id'] ?? '';
+    }
+    $subId = trim((string) $subId);
+    if ($subId !== '') {
+        $rows = query('SELECT id FROM users WHERE stripe_subscription_id = ? LIMIT 1', [$subId], 0);
+        if ($rows) {
+            return (int) $rows[0]['id'];
+        }
+        // Expand subscription object for metadata when only an id was present
+        if (ew_stripe_configured()) {
+            $subRes = ew_stripe_api('GET', '/subscriptions/' . rawurlencode($subId));
+            if ($subRes['ok'] && !empty($subRes['data'])) {
+                $uid = ew_stripe_resolve_user_id_from_subscription($subRes['data']);
+                if ($uid) {
+                    return $uid;
+                }
+            }
+        }
+    }
+    $customerId = trim((string) ($invoice['customer'] ?? ''));
+    if ($customerId !== '') {
+        $rows = query('SELECT id FROM users WHERE stripe_customer_id = ? LIMIT 1', [$customerId], 0);
+        if ($rows) {
+            return (int) $rows[0]['id'];
+        }
+    }
+    return null;
+}
+
+function ew_stripe_tier_from_invoice(array $invoice): string
+{
+    require_once __DIR__ . '/tier_limits.php';
+    $metaTier = trim((string) (($invoice['metadata']['tier_id'] ?? '') ?: ''));
+    if ($metaTier !== '') {
+        return ew_normalize_subscription_tier($metaTier);
+    }
+    $lines = $invoice['lines']['data'] ?? [];
+    if (is_array($lines)) {
+        foreach ($lines as $line) {
+            $priceId = '';
+            if (!empty($line['price']['id'])) {
+                $priceId = (string) $line['price']['id'];
+            } elseif (!empty($line['pricing']['price_details']['price'])) {
+                $priceId = (string) $line['pricing']['price_details']['price'];
+            }
+            $tier = $priceId !== '' ? ew_stripe_tier_for_price_id($priceId) : null;
+            if ($tier) {
+                return $tier;
+            }
+        }
+    }
+    $subId = $invoice['subscription'] ?? null;
+    if (is_array($subId)) {
+        return ew_stripe_tier_from_subscription($subId);
+    }
+    $subId = trim((string) $subId);
+    if ($subId !== '' && ew_stripe_configured()) {
+        $subRes = ew_stripe_api('GET', '/subscriptions/' . rawurlencode($subId));
+        if ($subRes['ok'] && !empty($subRes['data'])) {
+            return ew_stripe_tier_from_subscription($subRes['data']);
+        }
+    }
+    $userId = ew_stripe_resolve_user_id_from_invoice($invoice);
+    if ($userId) {
+        $row = ew_stripe_user_billing_row($userId);
+        if ($row) {
+            return ew_normalize_subscription_tier((string) ($row['subscription_tier'] ?? 'free'));
+        }
+    }
+    return 'free';
+}
+
+/**
+ * Pull recent paid subscription invoices from Stripe and grant any missed renewal EC.
+ * Safe to call on Plans / usage loads (idempotent via stripe_ec_invoice_grants).
+ *
+ * @return int total raw tokens granted this call
+ */
+function ew_stripe_reconcile_subscription_ec_grants(int $userId): int
+{
+    if (!ew_stripe_configured()) {
+        return 0;
+    }
+    ew_stripe_ensure_ec_grant_table();
+    $row = ew_stripe_user_billing_row($userId);
+    if (!$row) {
+        return 0;
+    }
+    $customerId = trim((string) ($row['stripe_customer_id'] ?? ''));
+    $subId = trim((string) ($row['stripe_subscription_id'] ?? ''));
+    $status = strtolower(trim((string) ($row['stripe_subscription_status'] ?? '')));
+    if ($customerId === '' || !in_array($status, ['active', 'trialing', 'past_due'], true)) {
+        return 0;
+    }
+
+    $params = [
+        'customer' => $customerId,
+        'limit' => 12,
+        'status' => 'paid',
+    ];
+    if ($subId !== '') {
+        $params['subscription'] = $subId;
+    }
+    $res = ew_stripe_api('GET', '/invoices?' . http_build_query($params));
+    if (!$res['ok'] || empty($res['data']['data']) || !is_array($res['data']['data'])) {
+        return 0;
+    }
+
+    $total = 0;
+    foreach ($res['data']['data'] as $invoice) {
+        if (!is_array($invoice)) {
+            continue;
+        }
+        $reason = strtolower(trim((string) ($invoice['billing_reason'] ?? '')));
+        if ($reason !== 'subscription_cycle' && $reason !== 'subscription_create') {
+            continue;
+        }
+        $invoice['metadata'] = $invoice['metadata'] ?? [];
+        if (empty($invoice['metadata']['user_id'])) {
+            $invoice['metadata']['user_id'] = (string) $userId;
+        }
+        $total += ew_stripe_handle_invoice_paid($invoice);
+    }
+    return $total;
 }
 
 /**
@@ -549,6 +825,12 @@ function ew_stripe_billing_public_status(int $userId): array
     $enabled = ew_stripe_configured();
     if ($row) {
         $row = ew_stripe_maybe_backfill_subscription_dates($userId, $row);
+    }
+    // Catch missed renewal EC if invoice.paid webhook was not configured yet.
+    try {
+        ew_stripe_reconcile_subscription_ec_grants($userId);
+    } catch (Throwable $e) {
+        /* non-fatal */
     }
     $status = strtolower(trim((string) ($row['stripe_subscription_status'] ?? '')));
     $hasSubscription = $enabled

@@ -115,6 +115,21 @@ try {
     }
 
     try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS stripe_ec_invoice_grants (
+            invoice_id VARCHAR(255) NOT NULL PRIMARY KEY,
+            user_id INT NOT NULL,
+            amount_raw BIGINT NOT NULL,
+            tier_id VARCHAR(20) NOT NULL,
+            billing_reason VARCHAR(64) DEFAULT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_stripe_ec_grants_user (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $results[] = '✅ stripe_ec_invoice_grants table';
+    } catch (Exception $e) {
+        $results[] = '⚠️ stripe_ec_invoice_grants: ' . htmlspecialchars($e->getMessage());
+    }
+
+    try {
         $pdo->exec("CREATE TABLE IF NOT EXISTS signup_attempts (
             id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
             ip VARCHAR(45) NOT NULL,

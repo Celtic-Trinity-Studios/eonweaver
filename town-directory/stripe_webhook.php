@@ -1,11 +1,12 @@
 <?php
 /**
- * Stripe webhook endpoint — subscription lifecycle → users.subscription_tier.
+ * Stripe webhook endpoint — subscription lifecycle → users.subscription_tier + EC grants.
  *
  * Stripe Dashboard → Developers → Webhooks → Add endpoint:
  *   https://YOUR_DOMAIN/stripe_webhook.php
  *
- * Events: checkout.session.completed, customer.subscription.updated, customer.subscription.deleted
+ * Events: checkout.session.completed, customer.subscription.updated,
+ *         customer.subscription.deleted, invoice.paid
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/stripe_billing_lib.php';
@@ -48,6 +49,11 @@ try {
         case 'customer.subscription.deleted':
             if (is_array($object)) {
                 ew_stripe_handle_subscription_object($object);
+            }
+            break;
+        case 'invoice.paid':
+            if (is_array($object)) {
+                ew_stripe_handle_invoice_paid($object);
             }
             break;
         default:

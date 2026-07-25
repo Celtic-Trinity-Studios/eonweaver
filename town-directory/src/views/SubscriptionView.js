@@ -276,6 +276,7 @@ function renderPlansBody({ catalog, tier, username, usage, billingEnabled, hasAc
     </section>
     <section class="subscription-foot muted">
       <p><strong>Free tier:</strong> Simulation uses the same EC wallet rules as other AI (no separate paywall); paid tiers add a monthly token ceiling on top of EC.</p>
+      <p><strong>Renewals:</strong> When Stripe successfully charges your subscription each cycle, your wallet receives that plan’s monthly EC allotment (in addition to any unused balance).</p>
       <p>EC display uses ${TOKENS_PER_CREDIT.toLocaleString()} raw tokens = 1.00 EC (wallet stores raw tokens).</p>
     </section>`;
 }
