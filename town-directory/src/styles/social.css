@@ -788,6 +788,28 @@
     min-height: 360px;
 }
 
+/* Character-sheet ego network */
+.cs-network-block .cs-network-hint {
+    margin: 0 0 .65rem;
+    font-size: .78rem;
+    color: var(--text-secondary, #999);
+    line-height: 1.35;
+}
+
+.cs-ego-graph-host {
+    width: 100%;
+}
+
+.rel-graph--sheet .rel-graph-stage {
+    height: 380px;
+}
+
+@media (max-width: 640px) {
+    .rel-graph--sheet .rel-graph-stage {
+        height: 300px;
+    }
+}
+
 .rel-network-teaser {
     display: flex;
     flex-direction: column;

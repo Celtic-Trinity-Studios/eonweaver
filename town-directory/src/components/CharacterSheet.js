@@ -1,7 +1,6 @@
 /**
  * CharacterSheet.js — Tabbed D&D Character Sheet
- * 4 tabs matching the classic D&D 3.5e character sheet layout.
- * Tab 1: Core Stats  |  Tab 2: Inventory & Feats  |  Tab 3: Spells  |  Tab 4: Background
+ * Tabs: Page 1 (core) | Page 2 (inventory) | Social | Network | Family | Background
  */
 import { getState, setState, userCanDebug } from '../stores/appState.js';
 import { apiSaveCharacter, apiDeleteCharacter, apiGetCharacters, apiLevelUpCharacter, normalizeCharacter } from '../api/characters.js';
@@ -234,6 +233,11 @@ export function renderCharacterSheet(el, c, options = {}) {
   }
 
   // ── Build Sheet HTML ─────────────────────────────────
+  if (typeof el._destroyEgoGraph === 'function') {
+    try { el._destroyEgoGraph(); } catch (_) { /* ignore */ }
+    el._destroyEgoGraph = null;
+  }
+
   el.innerHTML = `
   <div class="cs-sheet">
     <!-- Header -->
@@ -264,6 +268,7 @@ export function renderCharacterSheet(el, c, options = {}) {
       <button class="cs-tab active" data-tab="page1">📋 Page 1</button>
       <button class="cs-tab" data-tab="page2">🎒 Page 2</button>
       <button class="cs-tab" data-tab="social">🤝 Social</button>
+      <button class="cs-tab" data-tab="network">🕸 Network</button>
       <button class="cs-tab" data-tab="family">🌳 Family</button>
       <button class="cs-tab" data-tab="background">📖 Background</button>
     </div>
@@ -287,6 +292,13 @@ export function renderCharacterSheet(el, c, options = {}) {
           <div id="cs-mem-list" class="social-mem-list"><div class="cs-loading">Loading...</div></div>
           <div class="social-add-bar"><button class="social-add-btn" id="cs-add-mem-btn">+ Add Memory</button></div>
         </div>
+      </div>
+    </div>
+    <div class="cs-tab-content" id="cs-tab-network" style="display:none;">
+      <div class="cs-block cs-network-block">
+        <div class="cs-block-title">🕸 Relationship Network</div>
+        <p class="cs-network-hint">Only people linked to ${c.name || 'this character'}.</p>
+        <div class="rel-graph-host cs-ego-graph-host" id="cs-ego-graph-host"><div class="cs-loading">Open this tab to load the network…</div></div>
       </div>
     </div>
     <div class="cs-tab-content" id="cs-tab-family" style="display:none;">
@@ -321,6 +333,7 @@ export function renderCharacterSheet(el, c, options = {}) {
   let socialLoaded = false;
   let spellsLoaded = false;
   let familyLoaded = false;
+  let networkLoaded = false;
   el.querySelectorAll('.cs-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       el.querySelectorAll('.cs-tab').forEach(t => t.classList.remove('active'));
@@ -336,6 +349,11 @@ export function renderCharacterSheet(el, c, options = {}) {
       if (tab.dataset.tab === 'social' && !socialLoaded && c.id) {
         socialLoaded = true;
         loadAndRenderSocial(el, c.id, c, { onListRefresh, containerRef });
+      }
+      // Load ego relationship graph when network tab is first opened
+      if (tab.dataset.tab === 'network' && !networkLoaded && c.id) {
+        networkLoaded = true;
+        loadAndRenderEgoNetwork(el, c);
       }
       // Load spells when page2 tab is first opened
       if (tab.dataset.tab === 'page2' && !spellsLoaded && c.id) {
@@ -1054,6 +1072,52 @@ function updateACDisplay(el, acStr, character) {
       subItems[0].textContent = acVals.touch || '—';
       subItems[1].textContent = acVals.flat || '—';
     }
+  }
+}
+
+/** Ego graph: only edges that include this character */
+async function loadAndRenderEgoNetwork(el, character) {
+  const host = el.querySelector('#cs-ego-graph-host');
+  if (!host) return;
+  host.innerHTML = '<div class="cs-loading">Loading network…</div>';
+
+  try {
+    const { apiGetSocialData } = await import('../api/social.js');
+    const { apiGetCharacters, normalizeCharacter } = await import('../api/characters.js');
+    const { getState } = await import('../stores/appState.js');
+    const { mountRelationshipGraph } = await import('./RelationshipGraph.js');
+
+    const townId = getState().currentTownId;
+    if (!townId) {
+      host.innerHTML = '<div class="social-empty"><div class="social-empty-icon">🤝</div>No town selected</div>';
+      return;
+    }
+
+    const [socialRes, charRes] = await Promise.all([
+      apiGetSocialData(townId),
+      apiGetCharacters(townId),
+    ]);
+    const relationships = socialRes.relationships || [];
+    const characters = (charRes.characters || []).map(normalizeCharacter);
+    // Ensure the sheet subject is in the character list (party members may differ)
+    const egoId = Number(character.id);
+    if (Number.isFinite(egoId) && !characters.some((c) => Number(c.id) === egoId)) {
+      characters.push(character);
+    }
+
+    if (typeof el._destroyEgoGraph === 'function') {
+      try { el._destroyEgoGraph(); } catch (_) { /* ignore */ }
+    }
+
+    const graph = mountRelationshipGraph(host, {
+      relationships,
+      characters,
+      egoId,
+      variant: 'sheet',
+    });
+    el._destroyEgoGraph = graph?.destroy || null;
+  } catch (err) {
+    host.innerHTML = `<div class="social-empty" style="color:var(--error)">Failed to load: ${err.message || err}</div>`;
   }
 }
 

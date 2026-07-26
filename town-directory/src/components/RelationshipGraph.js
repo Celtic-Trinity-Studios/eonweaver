@@ -59,13 +59,16 @@ function escapeHtml(s) {
 
 /**
  * @param {HTMLElement} host
- * @param {{ relationships: array, characters: array }} opts
+ * @param {{ relationships: array, characters: array, variant?: 'page'|'embed'|'sheet', egoId?: number|string }} opts
  * @returns {{ destroy: () => void }}
  */
 export function mountRelationshipGraph(host, opts = {}) {
   const relationships = Array.isArray(opts.relationships) ? opts.relationships : [];
   const characters = Array.isArray(opts.characters) ? opts.characters : [];
-  const variant = opts.variant === 'page' ? 'page' : 'embed';
+  const variant = opts.variant === 'page' || opts.variant === 'sheet' ? opts.variant : 'embed';
+  const egoIdRaw = opts.egoId != null ? Number(opts.egoId) : null;
+  const egoId = Number.isFinite(egoIdRaw) ? egoIdRaw : null;
+  const egoMode = egoId != null;
 
   const charById = new Map();
   for (const c of characters) {
@@ -90,6 +93,8 @@ export function mountRelationshipGraph(host, opts = {}) {
     if (!charById.has(id)) livingIds.add(id);
     else if (isLiving(charById.get(id))) livingIds.add(id);
   }
+  // Ego sheet: always include the subject even if status is missing/odd
+  if (egoMode) livingIds.add(egoId);
 
   const edges = [];
   const linkedIds = new Set();
@@ -97,6 +102,7 @@ export function mountRelationshipGraph(host, opts = {}) {
     const a = Number(r.char1_id);
     const b = Number(r.char2_id);
     if (!Number.isFinite(a) || !Number.isFinite(b) || a === b) continue;
+    if (egoMode && a !== egoId && b !== egoId) continue;
     if (!livingIds.has(a) || !livingIds.has(b)) continue;
     const type = String(r.rel_type || 'acquaintance').toLowerCase();
     edges.push({
@@ -113,7 +119,10 @@ export function mountRelationshipGraph(host, opts = {}) {
   }
 
   if (!edges.length) {
-    host.innerHTML = `<div class="social-empty"><div class="social-empty-icon">🤝</div>No living NPC relationships to graph</div>`;
+    const emptyMsg = egoMode
+      ? 'No relationships to graph for this character'
+      : 'No living NPC relationships to graph';
+    host.innerHTML = `<div class="social-empty"><div class="social-empty-icon">🤝</div>${emptyMsg}</div>`;
     return { destroy() { host.innerHTML = ''; } };
   }
 
@@ -124,16 +133,19 @@ export function mountRelationshipGraph(host, opts = {}) {
   const nodeById = new Map();
   for (const id of linkedIds) {
     const c = charById.get(id) || {};
+    const isEgo = egoMode && id === egoId;
     const n = {
       id,
       name: c.name || nameFromRel.get(id) || `#${id}`,
       portrait_url: c.portrait_url || '',
-      x: (Math.random() - 0.5) * 280,
-      y: (Math.random() - 0.5) * 200,
+      x: isEgo ? 0 : (Math.random() - 0.5) * 280,
+      y: isEgo ? 0 : (Math.random() - 0.5) * 200,
       vx: 0,
       vy: 0,
       img: null,
       fixed: false,
+      // Ego star layout: keep subject centered unless the user drags them
+      pinCenter: isEgo,
     };
     if (n.portrait_url) {
       const img = new Image();
@@ -151,8 +163,13 @@ export function mountRelationshipGraph(host, opts = {}) {
     targetNode: nodeById.get(e.target),
   })).filter((e) => e.sourceNode && e.targetNode);
 
+  const variantClass = variant === 'page' ? ' rel-graph--page' : variant === 'sheet' ? ' rel-graph--sheet' : '';
+  const canvasAria = egoMode
+    ? 'Personal relationship graph — only connections for this character'
+    : 'Relationship graph — click a person to focus their connections';
+
   host.innerHTML = `
-    <div class="rel-graph${variant === 'page' ? ' rel-graph--page' : ''}">
+    <div class="rel-graph${variantClass}">
       <div class="rel-graph-toolbar">
         <button type="button" class="rel-graph-filter-btn" id="rg-filters-btn" aria-expanded="false">
           <span class="rel-graph-filter-icon" aria-hidden="true">☰</span> Filters
@@ -162,7 +179,7 @@ export function mountRelationshipGraph(host, opts = {}) {
       </div>
       <div class="rel-graph-filters" id="rg-filters" hidden></div>
       <div class="rel-graph-stage">
-        <canvas class="rel-graph-canvas" id="rg-canvas" aria-label="Relationship graph — click a person to focus their connections"></canvas>
+        <canvas class="rel-graph-canvas" id="rg-canvas" aria-label="${canvasAria}"></canvas>
         <div class="rel-graph-tooltip" id="rg-tooltip" hidden></div>
         <div class="rel-graph-zoom">
           <button type="button" id="rg-zoom-in" title="Zoom in">+</button>
@@ -238,7 +255,7 @@ export function mountRelationshipGraph(host, opts = {}) {
   let panStart = null;
   let hoverEdge = null;
   /** @type {number|null} focused character id — dim everyone else except direct neighbors */
-  let focusId = null;
+  let focusId = egoMode ? egoId : null;
   let pointerDownAt = null;
   let didDrag = false;
   let raf = 0;
@@ -328,6 +345,13 @@ export function mountRelationshipGraph(host, opts = {}) {
     cy /= active.length;
     for (const n of active) {
       if (n.fixed) continue;
+      if (n.pinCenter) {
+        n.vx = 0;
+        n.vy = 0;
+        n.x = 0;
+        n.y = 0;
+        continue;
+      }
       n.vx += (0 - cx) * 0.01 * alpha;
       n.vy += (0 - cy) * 0.01 * alpha;
       n.vx *= 0.85;
@@ -512,6 +536,7 @@ export function mountRelationshipGraph(host, opts = {}) {
     if (n) {
       dragging = n;
       n.fixed = true;
+      if (n.pinCenter) n.pinCenter = false;
       cooled = 0;
     } else {
       panning = true;
@@ -567,7 +592,8 @@ export function mountRelationshipGraph(host, opts = {}) {
     panStart = null;
 
     // Click (not drag): focus that person; click again or empty space clears
-    if (!didDrag && ev) {
+    // Ego graphs already filter to one person — skip focus toggling
+    if (!didDrag && ev && !egoMode) {
       const { x, y } = canvasPos(ev);
       const n = hitNode(x, y);
       if (startedOnNode && n) {
