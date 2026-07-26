@@ -157,11 +157,12 @@ export function mountRelationshipGraph(host, opts = {}) {
         <button type="button" class="rel-graph-filter-btn" id="rg-filters-btn" aria-expanded="false">
           <span class="rel-graph-filter-icon" aria-hidden="true">☰</span> Filters
         </button>
+        <button type="button" class="rel-graph-filter-btn" id="rg-clear-focus" hidden title="Show all relationships">Clear focus</button>
         <div class="rel-graph-legend" id="rg-legend"></div>
       </div>
       <div class="rel-graph-filters" id="rg-filters" hidden></div>
       <div class="rel-graph-stage">
-        <canvas class="rel-graph-canvas" id="rg-canvas"></canvas>
+        <canvas class="rel-graph-canvas" id="rg-canvas" aria-label="Relationship graph — click a person to focus their connections"></canvas>
         <div class="rel-graph-tooltip" id="rg-tooltip" hidden></div>
         <div class="rel-graph-zoom">
           <button type="button" id="rg-zoom-in" title="Zoom in">+</button>
@@ -177,6 +178,7 @@ export function mountRelationshipGraph(host, opts = {}) {
   const filtersEl = host.querySelector('#rg-filters');
   const legendEl = host.querySelector('#rg-legend');
   const filterBtn = host.querySelector('#rg-filters-btn');
+  const clearFocusBtn = host.querySelector('#rg-clear-focus');
   const stage = host.querySelector('.rel-graph-stage');
 
   filtersEl.innerHTML = typesPresent.map((t) => `
@@ -198,6 +200,16 @@ export function mountRelationshipGraph(host, opts = {}) {
       `).join('');
   }
   renderLegend();
+
+  function setFocus(id) {
+    focusId = id;
+    if (clearFocusBtn) {
+      if (focusId == null) clearFocusBtn.setAttribute('hidden', '');
+      else clearFocusBtn.removeAttribute('hidden');
+    }
+  }
+
+  clearFocusBtn?.addEventListener('click', () => setFocus(null));
 
   filterBtn.addEventListener('click', () => {
     const open = filtersEl.hasAttribute('hidden');
@@ -225,6 +237,10 @@ export function mountRelationshipGraph(host, opts = {}) {
   let panning = false;
   let panStart = null;
   let hoverEdge = null;
+  /** @type {number|null} focused character id — dim everyone else except direct neighbors */
+  let focusId = null;
+  let pointerDownAt = null;
+  let didDrag = false;
   let raf = 0;
   let running = true;
   let cooled = 0;
@@ -251,6 +267,23 @@ export function mountRelationshipGraph(host, opts = {}) {
       ids.add(e.target);
     }
     return ids;
+  }
+
+  /** Focused node + nodes sharing a visible edge with it. */
+  function focusBrightIds(visEdges) {
+    if (focusId == null) return null;
+    const bright = new Set([focusId]);
+    for (const e of visEdges) {
+      if (e.source === focusId) bright.add(e.target);
+      else if (e.target === focusId) bright.add(e.source);
+    }
+    return bright;
+  }
+
+  function edgeInFocus(e, bright) {
+    if (!bright) return true;
+    return bright.has(e.source) && bright.has(e.target)
+      && (e.source === focusId || e.target === focusId);
   }
 
   function tick() {
@@ -372,29 +405,39 @@ export function mountRelationshipGraph(host, opts = {}) {
 
     const vis = visibleEdges();
     const visIds = visibleNodeIds(vis);
+    const bright = focusBrightIds(vis);
 
     for (const e of vis) {
       const a = e.sourceNode;
       const b = e.targetNode;
       const thick = 1.2 + Math.min(3, Math.abs(e.disposition) / 4);
+      const focused = edgeInFocus(e, bright);
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.lineTo(b.x, b.y);
       ctx.strokeStyle = relColor(e.type);
-      ctx.globalAlpha = hoverEdge === e ? 1 : 0.85;
-      ctx.lineWidth = (hoverEdge === e ? thick + 1 : thick) / scale;
+      if (bright && !focused) {
+        ctx.globalAlpha = 0.12;
+      } else {
+        ctx.globalAlpha = hoverEdge === e ? 1 : 0.85;
+      }
+      ctx.lineWidth = (hoverEdge === e && focused ? thick + 1 : thick) / scale;
       ctx.stroke();
       ctx.globalAlpha = 1;
     }
 
     for (const n of nodes) {
       if (!visIds.has(n.id)) continue;
+      const isBright = !bright || bright.has(n.id);
+      const isFocus = focusId === n.id;
+      ctx.globalAlpha = isBright ? 1 : 0.18;
+
       ctx.beginPath();
       ctx.arc(n.x, n.y, NODE_R, 0, Math.PI * 2);
-      ctx.fillStyle = '#2a2a32';
+      ctx.fillStyle = isFocus ? '#3a3a48' : '#2a2a32';
       ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-      ctx.lineWidth = 1.5 / scale;
+      ctx.strokeStyle = isFocus ? 'rgba(245,197,24,0.85)' : 'rgba(255,255,255,0.25)';
+      ctx.lineWidth = (isFocus ? 2.5 : 1.5) / scale;
       ctx.stroke();
 
       if (n.img && n.img.complete && n.img.naturalWidth) {
@@ -412,12 +455,13 @@ export function mountRelationshipGraph(host, opts = {}) {
         ctx.fillText(initials(n.name), n.x, n.y);
       }
 
-      ctx.fillStyle = 'rgba(240,236,228,0.92)';
-      ctx.font = `500 ${11 / scale}px system-ui,sans-serif`;
+      ctx.fillStyle = isBright ? 'rgba(240,236,228,0.92)' : 'rgba(240,236,228,0.35)';
+      ctx.font = `${isFocus ? '600' : '500'} ${11 / scale}px system-ui,sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'top';
       const label = n.name.length > 16 ? `${n.name.slice(0, 14)}…` : n.name;
       ctx.fillText(label, n.x, n.y + NODE_R + 4 / scale);
+      ctx.globalAlpha = 1;
     }
 
     ctx.restore();
@@ -462,6 +506,8 @@ export function mountRelationshipGraph(host, opts = {}) {
   canvas.addEventListener('pointerdown', (ev) => {
     canvas.setPointerCapture(ev.pointerId);
     const { x, y } = canvasPos(ev);
+    pointerDownAt = { x, y };
+    didDrag = false;
     const n = hitNode(x, y);
     if (n) {
       dragging = n;
@@ -475,6 +521,9 @@ export function mountRelationshipGraph(host, opts = {}) {
 
   canvas.addEventListener('pointermove', (ev) => {
     const { x, y } = canvasPos(ev);
+    if (pointerDownAt && (Math.hypot(x - pointerDownAt.x, y - pointerDownAt.y) > 5)) {
+      didDrag = true;
+    }
     if (dragging) {
       const w = screenToWorld(x, y);
       dragging.x = w.x;
@@ -507,13 +556,29 @@ export function mountRelationshipGraph(host, opts = {}) {
     }
   });
 
-  function endPointer() {
+  function endPointer(ev) {
+    const startedOnNode = !!dragging;
+    const startedOnEmpty = !!panning;
     if (dragging) {
       dragging.fixed = false;
       dragging = null;
     }
     panning = false;
     panStart = null;
+
+    // Click (not drag): focus that person; click again or empty space clears
+    if (!didDrag && ev) {
+      const { x, y } = canvasPos(ev);
+      const n = hitNode(x, y);
+      if (startedOnNode && n) {
+        setFocus(focusId === n.id ? null : n.id);
+      } else if (startedOnEmpty && !n) {
+        setFocus(null);
+      }
+    }
+
+    pointerDownAt = null;
+    didDrag = false;
   }
   canvas.addEventListener('pointerup', endPointer);
   canvas.addEventListener('pointercancel', endPointer);
