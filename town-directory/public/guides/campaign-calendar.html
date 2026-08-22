@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>D&amp;D Campaign Calendar — In-Game Dates in Eon Weaver</title>
+  <meta name="description" content="Use Eon Weaver’s in-game calendar to advance campaign time, hook plots to festivals and moons, and keep simulation events on dates your table recognizes." />
+  <meta name="robots" content="index,follow" />
+  <link rel="canonical" href="https://eonweaver.com/guides/campaign-calendar.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Eon Weaver" />
+  <meta property="og:title" content="D&amp;D Campaign Calendar — In-Game Dates in Eon Weaver" />
+  <meta property="og:description" content="Custom months, eras, and dated simulation — not a real-world planner." />
+  <meta property="og:url" content="https://eonweaver.com/guides/campaign-calendar.html" />
+  <link rel="icon" type="image/svg+xml" href="/eon-weaver-spider.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/guides/guides.css" />
+</head>
+<body>
+  <div class="ew-shell">
+    <aside class="ew-nav" id="ewNav">
+      <a class="ew-brand" href="/">
+        <p class="ew-brand-kicker">Eon Weaver</p>
+        <p class="ew-brand-name">Guides</p>
+      </a>
+      <p class="ew-nav-label">Guides</p>
+      <ul class="ew-nav-list">
+        <li><a href="/guides/">All guides</a></li>
+        <li><a href="/guides/getting-started.html">Getting started</a></li>
+        <li><a href="/guides/living-world-between-sessions.html">Living worlds</a></li>
+        <li><a href="/guides/how-town-simulation-works.html">Town simulation</a></li>
+        <li><a class="is-active" href="/guides/campaign-calendar.html">Campaign calendar</a></li>
+      </ul>
+      <p class="ew-nav-label">App</p>
+      <ul class="ew-nav-list">
+        <li><a href="/">Eon Weaver home</a></li>
+      </ul>
+    </aside>
+    <div class="ew-main">
+      <div class="ew-topbar">
+        <button type="button" class="ew-menu" id="ewMenu">Menu</button>
+        <span>Campaign calendar</span>
+      </div>
+      <article class="ew-article">
+        <p class="ew-eyebrow"><a href="/guides/">Guides</a> · Time</p>
+        <h1>A campaign calendar the table can quote</h1>
+        <p class="ew-lede">Players remember “the night of the third moon,” not “session 14.” Eon Weaver stores day, month, year, and an era name you choose. Simulation events stamp those dates. Your job is to pick month names the table will actually say out loud.</p>
+
+        <h2>Set the clock before the first sim</h2>
+        <p>Open the calendar from the app chrome. You can rename months, change month lengths, and set the starting date. If you change the number of months, the month-name list updates so you are not stuck with twelve Greyhawk leftovers on a six-month calendar.</p>
+
+        <h2>Advance time on purpose</h2>
+        <p>A sim pass advances the clock by the months you asked for. You can also step days or weeks when the party is in town and only a festival is coming. Do not run twelve months because the button exists — run the downtime you already promised at the table (“we winter here”).</p>
+
+        <h2>Hook plots to dates</h2>
+        <ul>
+          <li>Put a feast, tax day, or holy night on the calendar, then sim up to it.</li>
+          <li>Use travel estimates from the world map so “two weeks on the road” consumes the right slice of the year.</li>
+          <li>When the scribe writes a recap, keep the date in the title. Future-you will thank present-you.</li>
+        </ul>
+
+        <h2>Edition-agnostic time, edition-specific sheets</h2>
+        <p>The calendar and sim do not care if you are on 3.5e or 5e. Character sheets do. Pick the edition that matches how you want to look up a cleric — then let the year roll the same way either way.</p>
+
+        <div class="ew-cta">
+          <a class="ew-btn ew-btn-primary" href="/">Open the app</a>
+          <a class="ew-btn ew-btn-ghost" href="/guides/living-world-between-sessions.html">Living worlds</a>
+        </div>
+        <p class="ew-disclaimer">© 2026 Celtic Trinity Studios. Not affiliated with Wizards of the Coast.</p>
+      </article>
+    </div>
+  </div>
+  <script>
+    document.getElementById('ewMenu')?.addEventListener('click', () => {
+      document.getElementById('ewNav')?.classList.toggle('is-open');
+    });
+  </script>
+</body>
+</html>

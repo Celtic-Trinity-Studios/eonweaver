@@ -39,6 +39,8 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Cinzel:wght@400;600;700&display=swap"
         rel="stylesheet">
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-5753847979193094"
+        crossorigin="anonymous"></script>
 </head>
 
 <body>
@@ -70,6 +72,9 @@
                 <button type="button" class="landing-nav-item" data-landing-section="dms" role="tab" aria-selected="false">
                     <span class="landing-nav-icon">📜</span><span>For DMs</span>
                 </button>
+                <a class="landing-nav-item landing-nav-link" href="/guides/">
+                    <span class="landing-nav-icon">📖</span><span>Guides</span>
+                </a>
             </nav>
 
             <div class="landing-sidebar-cta">
@@ -79,6 +84,8 @@
 
             <footer class="landing-sidebar-footer">
                 <div class="landing-footer-links">
+                    <a href="/guides/">Guides</a>
+                    <span aria-hidden="true">·</span>
                     <a href="https://discord.gg/dqeUxNbHHj" target="_blank" rel="noopener">Discord</a>
                     <span aria-hidden="true">·</span>
                     <a href="mailto:admin@celtictrinitystudios.com">Contact</a>
@@ -287,7 +294,7 @@
             if (!root) return;
             const navItems = root.querySelectorAll('[data-landing-section]');
             const sections = root.querySelectorAll('section.landing-section');
-            const navButtons = root.querySelectorAll('.landing-nav-item');
+            const navButtons = root.querySelectorAll('.landing-nav-item[data-landing-section]');
 
             function activate(name) {
                 sections.forEach(sec => {

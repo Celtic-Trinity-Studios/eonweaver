@@ -176,11 +176,23 @@ async function deploy() {
         try {
             await client.uploadFrom(L("live", ".htaccess"), ".htaccess");
         } catch (e) {}
-        for (const rootFile of ["robots.txt", "sitemap.xml", "favicon.svg"]) {
+        for (const rootFile of ["robots.txt", "sitemap.xml", "favicon.svg", "ads.txt"]) {
             if (fs.existsSync(L(rootFile))) {
                 await client.uploadFrom(L(rootFile), rootFile);
                 console.log(`  OK: ${rootFile}`);
             }
+        }
+
+        const guidesDir = L("live", "guides");
+        if (fs.existsSync(guidesDir)) {
+            await client.cd(siteRoot);
+            await client.ensureDir("guides");
+            const guideFiles = fs.readdirSync(guidesDir).filter((f) => fs.statSync(path.join(guidesDir, f)).isFile());
+            for (const name of guideFiles) {
+                await client.uploadFrom(path.join(guidesDir, name), name);
+                console.log(`  OK: guides/${name}`);
+            }
+            await client.cd(siteRoot);
         }
 
         console.log("Deployment complete!");

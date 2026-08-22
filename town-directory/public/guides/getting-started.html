@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Getting Started with Eon Weaver — D&amp;D Campaign Manager</title>
+  <meta name="description" content="Create a campaign, add a town, generate a roster, and run your first month of simulation in Eon Weaver." />
+  <meta name="robots" content="index,follow" />
+  <link rel="canonical" href="https://eonweaver.com/guides/getting-started.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Eon Weaver" />
+  <meta property="og:title" content="Getting Started with Eon Weaver — D&amp;D Campaign Manager" />
+  <meta property="og:description" content="The shortest path from an empty account to a living town roster." />
+  <meta property="og:url" content="https://eonweaver.com/guides/getting-started.html" />
+  <link rel="icon" type="image/svg+xml" href="/eon-weaver-spider.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/guides/guides.css" />
+</head>
+<body>
+  <div class="ew-shell">
+    <aside class="ew-nav" id="ewNav">
+      <a class="ew-brand" href="/">
+        <p class="ew-brand-kicker">Eon Weaver</p>
+        <p class="ew-brand-name">Guides</p>
+      </a>
+      <p class="ew-nav-label">Guides</p>
+      <ul class="ew-nav-list">
+        <li><a href="/guides/">All guides</a></li>
+        <li><a class="is-active" href="/guides/getting-started.html">Getting started</a></li>
+        <li><a href="/guides/living-world-between-sessions.html">Living worlds</a></li>
+        <li><a href="/guides/how-town-simulation-works.html">Town simulation</a></li>
+        <li><a href="/guides/campaign-calendar.html">Campaign calendar</a></li>
+      </ul>
+      <p class="ew-nav-label">App</p>
+      <ul class="ew-nav-list">
+        <li><a href="/">Eon Weaver home</a></li>
+      </ul>
+    </aside>
+    <div class="ew-main">
+      <div class="ew-topbar">
+        <button type="button" class="ew-menu" id="ewMenu">Menu</button>
+        <span>Getting started</span>
+      </div>
+      <article class="ew-article">
+        <p class="ew-eyebrow"><a href="/guides/">Guides</a> · Start</p>
+        <h1>Getting started with Eon Weaver</h1>
+        <p class="ew-lede">You do not need a finished setting bible. You need a campaign, one town, a handful of people, and a month that actually happened while the table was dark.</p>
+
+        <h2>1. Create a campaign</h2>
+        <p>On first login, name the campaign and pick an edition. Sheets and the level-up wizard go deepest on 3.5e and Pathfinder 1e today. 5e, PF2e, and older editions can still hold a roster and run simulation. You can switch campaigns later from the sidebar. Put a short campaign description and house rules in Settings before you generate anyone — the AI reads those on every intake and sim.</p>
+
+        <h2>2. Create a town</h2>
+        <p>From the Dashboard, add a town. Then open Town Settings and set biome, target race mix, local food supply (used by the macro / granary layer), and generation rules <em>before</em> you populate. A desert town should not grow fishing docks because you forgot to say it was a desert.</p>
+
+        <h2>3. Populate with AI intake</h2>
+        <p>On the town roster, use the intake bar: enter a count and generate. New arrivals come in statted, geared, and with backstories. Use a 0-month intake if you only want new faces without advancing the calendar.</p>
+
+        <h2>4. Run one month</h2>
+        <p>Open World Simulate (or a single-town month). Pick the towns and the number of months, preview if you want, then apply. You should get arrivals, births, deaths, relationships, the occasional incident, and building progress — dated on the campaign calendar. After that, open History on the town and read what just happened like a session recap you did not write.</p>
+
+        <h2>5. Optional, but it changes the feel</h2>
+        <ul>
+          <li>Upload a world map, pin the towns, and set scale so travel estimates are real distances.</li>
+          <li>Run the AI scribe so wiki pages grow from events instead of from a blank page.</li>
+          <li>Invite players to the player portal when you are ready to share a subset of lore.</li>
+        </ul>
+
+        <p>In-app Help (after you sign in) has the route-by-route version of every screen. These public pages stay short on purpose.</p>
+        <div class="ew-cta">
+          <a class="ew-btn ew-btn-primary" href="/">Create an account</a>
+          <a class="ew-btn ew-btn-ghost" href="/guides/how-town-simulation-works.html">How simulation works</a>
+        </div>
+        <p class="ew-disclaimer">© 2026 Celtic Trinity Studios. Not affiliated with Wizards of the Coast.</p>
+      </article>
+    </div>
+  </div>
+  <script>
+    document.getElementById('ewMenu')?.addEventListener('click', () => {
+      document.getElementById('ewNav')?.classList.toggle('is-open');
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Keep a D&amp;D World Moving Between Sessions — Eon Weaver</title>
+  <meta name="description" content="How to run a living D&amp;D campaign between sessions: simulate towns, advance a calendar, and let lore catch up — without writing every NPC by hand." />
+  <meta name="robots" content="index,follow" />
+  <link rel="canonical" href="https://eonweaver.com/guides/living-world-between-sessions.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Eon Weaver" />
+  <meta property="og:title" content="Keep a D&amp;D World Moving Between Sessions — Eon Weaver" />
+  <meta property="og:description" content="A method for DMs who are tired of the setting standing still until next Sunday." />
+  <meta property="og:url" content="https://eonweaver.com/guides/living-world-between-sessions.html" />
+  <link rel="icon" type="image/svg+xml" href="/eon-weaver-spider.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/guides/guides.css" />
+</head>
+<body>
+  <div class="ew-shell">
+    <aside class="ew-nav" id="ewNav">
+      <a class="ew-brand" href="/">
+        <p class="ew-brand-kicker">Eon Weaver</p>
+        <p class="ew-brand-name">Guides</p>
+      </a>
+      <p class="ew-nav-label">Guides</p>
+      <ul class="ew-nav-list">
+        <li><a href="/guides/">All guides</a></li>
+        <li><a href="/guides/getting-started.html">Getting started</a></li>
+        <li><a class="is-active" href="/guides/living-world-between-sessions.html">Living worlds</a></li>
+        <li><a href="/guides/how-town-simulation-works.html">Town simulation</a></li>
+        <li><a href="/guides/campaign-calendar.html">Campaign calendar</a></li>
+      </ul>
+      <p class="ew-nav-label">App</p>
+      <ul class="ew-nav-list">
+        <li><a href="/">Eon Weaver home</a></li>
+      </ul>
+    </aside>
+    <div class="ew-main">
+      <div class="ew-topbar">
+        <button type="button" class="ew-menu" id="ewMenu">Menu</button>
+        <span>Living worlds</span>
+      </div>
+      <article class="ew-article">
+        <p class="ew-eyebrow"><a href="/guides/">Guides</a> · Method</p>
+        <h1>Keep the setting moving when the table is quiet</h1>
+        <p class="ew-lede">Most campaign tools store what you typed last session. That is a filing cabinet. A living world needs a clock. Eon Weaver is built around the month that happens while nobody is rolling dice.</p>
+
+        <h2>The problem a wiki does not solve</h2>
+        <p>World Anvil, Kanka, and a well-kept Obsidian vault are excellent at <em>remembering</em>. They do not, by themselves, decide that the miller’s daughter left town, that two factions stopped speaking, or that three months of travel means the harvest already failed. You still have to invent that motion — or the village is a diorama until the party rides in.</p>
+        <p>Generator-first tools (NPC names, shops, one-shot maps) solve a different night: Thursday prep. They rarely keep those people alive until March.</p>
+
+        <h2>What “living” means here</h2>
+        <ul>
+          <li><strong>Time has a date.</strong> Events land on the campaign calendar, not in a nameless recap pile.</li>
+          <li><strong>Towns have demographics.</strong> Race mix, food capacity, and intake rules constrain who shows up.</li>
+          <li><strong>People have relationships.</strong> Friends, rivals, marriages, crimes, and memories persist.</li>
+          <li><strong>Geography is not a graph doodle.</strong> Pins on your map, with travel estimates, so “we ride to the next town” has a cost.</li>
+          <li><strong>Lore is a trailing record.</strong> The scribe writes from what the sim just did, then you edit.</li>
+        </ul>
+
+        <h2>A between-session ritual that takes an evening, not a weekend</h2>
+        <ol>
+          <li>Decide how much table-time passed (a week, a month, a season).</li>
+          <li>Advance that many months on the towns the party left behind — or run a world pass if they crossed a region.</li>
+          <li>Read the history tabs. Steal two plot hooks. Ignore the rest.</li>
+          <li>If a hook matters, lock or edit the lore page so the next sim does not overwrite your call.</li>
+        </ol>
+        <p>You are still the DM. The sim is a restless cast, not an adventure path.</p>
+
+        <h2>What Eon Weaver is not trying to be</h2>
+        <p>It is not a VTT. Combat lives in Encounters and export, then you play on a table or in Foundry. It is not a 200,000-map stock library. You upload <em>your</em> map. It is not a replacement for published modules — it is the towns those modules sit inside while the party is elsewhere.</p>
+
+        <div class="ew-cta">
+          <a class="ew-btn ew-btn-primary" href="/guides/how-town-simulation-works.html">Read the sim details</a>
+          <a class="ew-btn ew-btn-ghost" href="/">Open Eon Weaver</a>
+        </div>
+        <p class="ew-disclaimer">© 2026 Celtic Trinity Studios. Not affiliated with Wizards of the Coast or any other campaign-manager vendor.</p>
+      </article>
+    </div>
+  </div>
+  <script>
+    document.getElementById('ewMenu')?.addEventListener('click', () => {
+      document.getElementById('ewNav')?.classList.toggle('is-open');
+    });
+  </script>
+</body>
+</html>

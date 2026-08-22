@@ -1024,6 +1024,10 @@
     font-family: inherit;
 }
 
+a.landing-nav-link {
+    text-decoration: none;
+}
+
 .landing-nav-item:hover {
     background: var(--bg-hover);
     color: var(--text-primary);
