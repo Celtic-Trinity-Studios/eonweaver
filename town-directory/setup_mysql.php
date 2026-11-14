@@ -828,6 +828,33 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $results[] = '✅ encounter_participants table';
 
+    $pdo->exec("CREATE TABLE IF NOT EXISTS encounter_tables (
+        id              INT AUTO_INCREMENT PRIMARY KEY,
+        user_id         INT NOT NULL,
+        encounter_id    INT NOT NULL,
+        image_url       VARCHAR(500) DEFAULT NULL,
+        grid_cols       INT NOT NULL DEFAULT 20,
+        grid_rows       INT NOT NULL DEFAULT 14,
+        created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_encounter_table (user_id, encounter_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $results[] = '✅ encounter_tables table';
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS encounter_table_tokens (
+        id              INT AUTO_INCREMENT PRIMARY KEY,
+        user_id         INT NOT NULL,
+        table_id        INT NOT NULL,
+        character_id    INT NOT NULL,
+        grid_x          INT NOT NULL DEFAULT 0,
+        grid_y          INT NOT NULL DEFAULT 0,
+        created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_table_character (table_id, character_id),
+        KEY idx_etable_tokens_owner (user_id, table_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $results[] = '✅ encounter_table_tokens table';
+
     // ═══════════════════════════════════════════════════════
     // SRD REFERENCE TABLES
     // ═══════════════════════════════════════════════════════
@@ -1459,6 +1486,79 @@ try {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $results[] = '✅ user_files table';
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS campaign_maps (
+        id              INT AUTO_INCREMENT PRIMARY KEY,
+        user_id         INT NOT NULL,
+        campaign_id     INT NOT NULL,
+        title           VARCHAR(160) NOT NULL,
+        notes           TEXT NULL,
+        image_url       VARCHAR(500) DEFAULT NULL,
+        image_width     INT NOT NULL DEFAULT 0,
+        image_height    INT NOT NULL DEFAULT 0,
+        created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_campaign_maps_owner (user_id, campaign_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $results[] = '✅ campaign_maps table';
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS campaign_map_pois (
+        id              INT AUTO_INCREMENT PRIMARY KEY,
+        user_id         INT NOT NULL,
+        campaign_id     INT NOT NULL,
+        map_id          INT NOT NULL,
+        name            VARCHAR(160) NOT NULL,
+        notes           TEXT NULL,
+        x_pct           DECIMAL(8,5) NOT NULL,
+        y_pct           DECIMAL(8,5) NOT NULL,
+        link_type       VARCHAR(20) NOT NULL DEFAULT 'none',
+        link_id         INT NULL,
+        created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_cmap_pois_map (map_id),
+        INDEX idx_cmap_pois_owner (user_id, campaign_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $results[] = '✅ campaign_map_pois table';
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS town_maps (
+        id              INT AUTO_INCREMENT PRIMARY KEY,
+        user_id         INT NOT NULL,
+        town_id         INT NOT NULL,
+        image_url       VARCHAR(500) DEFAULT NULL,
+        created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_town_map (user_id, town_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $results[] = '✅ town_maps table';
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS town_map_pins (
+        id              INT AUTO_INCREMENT PRIMARY KEY,
+        user_id         INT NOT NULL,
+        town_id         INT NOT NULL,
+        character_id    INT NOT NULL,
+        x_pct           DECIMAL(8,5) NOT NULL,
+        y_pct           DECIMAL(8,5) NOT NULL,
+        created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_town_map_pin (town_id, character_id),
+        KEY idx_town_map_pins_owner (user_id, town_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $results[] = '✅ town_map_pins table';
+
+    $pdo->exec("CREATE TABLE IF NOT EXISTS town_map_props (
+        id              INT AUTO_INCREMENT PRIMARY KEY,
+        user_id         INT NOT NULL,
+        town_id         INT NOT NULL,
+        kind            VARCHAR(16) NOT NULL,
+        x_pct           DECIMAL(8,5) NOT NULL,
+        y_pct           DECIMAL(8,5) NOT NULL,
+        facing          CHAR(1) NOT NULL DEFAULT 'h',
+        state           VARCHAR(16) NOT NULL,
+        created_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at      TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        KEY idx_town_map_props_owner (user_id, town_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+    $results[] = '✅ town_map_props table';
 
     $results[] = '';
     $results[] = '🎉 Setup complete! <strong>Delete this file now.</strong>';

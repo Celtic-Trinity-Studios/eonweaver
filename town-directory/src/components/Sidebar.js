@@ -49,6 +49,7 @@ const NAV_GROUPS = [
       { route: 'world-simulate', icon: '🌍', label: 'World Simulate', hint: 'Advance in-game months: events, relationships, births, deaths, construction.' },
       { route: 'macro-sim', icon: '🟣', label: 'Macro Dynamics', hint: 'Campaign-scale seasons, food supply, granary pressure, and stability context.' },
       { route: 'world-map', icon: '🗺️', label: 'World Map', hint: 'Campaign map, town pins, scale, and travel distances for simulation.' },
+      { route: 'campaign-maps', icon: '📌', label: 'Handout Maps', hint: 'Upload a map image, drop markers, and open linked lore, towns, NPCs, or encounters.' },
       { route: 'calendar', icon: '📅', label: 'Calendar', hint: 'Custom in-world calendar; the sidebar date updates when you simulate time.' },
     ],
   },

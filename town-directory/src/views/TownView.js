@@ -15,6 +15,7 @@ import { openTownExportModal } from '../components/TownExportModal.js';
 import { showModal as ha, closeModal as ft } from '../components/Modal.js';
 import { showToast as ye } from '../components/Toast.js';
 import { renderCharacterSheet as at } from '../components/CharacterSheet.js';
+import { mountTownRosterMap } from '../components/TownRosterMap.js';
 import { openTownSetupWizard } from '../components/TownSetupWizard.js';
 import { SHARED_SETTLEMENT_TYPE_OPTIONS as TwSo, SHARED_BIOME_VALUES as TwBio, SHARED_DIFFICULTY_OPTIONS as TwDf } from '../constants/sharedTownSettings.js';
 import { MAX_INTAKE_ARRIVALS } from '../constants/intakeLimits.js';
@@ -46,7 +47,10 @@ function abbrAlign(a){if(!a)return"";const k=a.toLowerCase().trim();if(AlignAbbr
 const classIcons={fighter:"⚔️",warrior:"⚔️",wizard:"🔮",sorcerer:"🔮",warlock:"🔮",cleric:"🛡️",paladin:"🛡️",rogue:"🗡️",assassin:"🗡️",thief:"🗡️",ranger:"🏹",scout:"🏹",bard:"🎵",druid:"🌿",barbarian:"🪓",monk:"👊",commoner:"🧑‍🌾",expert:"📚",adept:"📜",aristocrat:"👑"};
 function getClassIcon(cls){if(!cls)return"👤";const k=cls.toLowerCase().split(/\s+/)[0];return classIcons[k]||"👤";}
 
-function Fi(e,t){const s=Z(),a=t.id?parseInt(t.id):s.currentTownId;if(!a){e.innerHTML=`
+let townMapGen = 0;
+let stopTownMap = () => {};
+
+function Fi(e,t){const mapGen=++townMapGen;stopTownMap();stopTownMap=()=>{};const s=Z(),a=t.id?parseInt(t.id):s.currentTownId;if(!a){e.innerHTML=`
       <div class="view-empty">
         <h2> No Town Selected</h2>
         <p>Select a town from the <a href="${appHref('dashboard')}">Dashboard</a> or create a new one.</p>
@@ -90,12 +94,19 @@ function Fi(e,t){const s=Z(),a=t.id?parseInt(t.id):s.currentTownId;if(!a){e.inne
             <button class="btn-primary btn-sm" id="town-setup-btn" style="width:100%;padding:0.6rem;">🏗️ Town Setup</button>
           </div>
         </aside>
-        <section class="detail-panel-inline" id="detail-area">
-          <div class="detail-empty">Select a character</div>
+        <section class="detail-panel-inline detail-panel-tabbed" id="detail-panel">
+          <div class="detail-mode-tabs" id="detail-mode-tabs">
+            <button type="button" class="detail-mode-tab active" data-detail-tab="character">Character</button>
+            <button type="button" class="detail-mode-tab" data-detail-tab="map">Map</button>
+          </div>
+          <div id="detail-area" class="detail-pane">
+            <div class="detail-empty">Select a character</div>
+          </div>
+          <div id="town-map-pane" class="detail-pane tmap-pane" hidden></div>
         </section>
       </div>
     </div>
-  `,Oi(e,a)}async function Oi(e,t){var s,a,n,l,i,r,p,o,c,d,u,v,m;try{const b=await dt(),y=Array.isArray(b)?b:b.towns||[],f=e.querySelector("#town-select-view");f&&(f.innerHTML=y.map(w=>`<option value="${w.id}" ${w.id===t?"selected":""}>${w.name}</option>`).join(""),f.addEventListener("change",w=>{ge(`town/${w.target.value}`)}));const[g,k]=await Promise.all([Ee(t),qn(t).catch(()=>({buildings:[]}))]),_=(g.characters||[]).map(Me),$=k.buildings||[],L=y.find(w=>w.id===t)||{id:t,name:"Unknown"};L.characters=_,L.buildings=$,ee({currentTownId:t,currentTown:L,towns:y}),Ze(e,_,$),et(e,_),Ra(e),ke(e,_),xe(e,_);const _ms=e.querySelector("#town-macro-food-badge");if(_ms){const _fv=L.macro_food_stores;_fv!=null&&_fv!==""?(_ms.textContent=`🌾 ${Number(_fv).toFixed(0)}`,_ms.style.display="inline"):(_ms.textContent="",_ms.style.display="none")}(s=e.querySelector("#town-search"))==null||s.addEventListener("input",w=>{ee({searchQuery:w.target.value.trim()}),ke(e,_)}),(n=e.querySelector("#town-stats-btn"))==null||n.addEventListener("click",()=>{ge("townstats/"+t)}),(l=e.querySelector("#town-import-btn"))==null||l.addEventListener("click",()=>{openCharacterImportModal(e,t,_)}),(i=e.querySelector("#town-history-btn"))==null||i.addEventListener("click",()=>{Wi(t)}),(e.querySelector("#town-export-btn"))?.addEventListener("click",()=>{openTownExportModal(t,L?.name||"")}),(r=e.querySelector("#town-settings-btn"))==null||r.addEventListener("click",()=>{Ui(t)}),(p=e.querySelector("#town-buildings-btn"))==null||p.addEventListener("click",async()=>{const{openBuildingsPanel:w}=await import("../components/BuildingsPanel.js");w(t)}),(o=e.querySelector("#town-social-btn"))==null||o.addEventListener("click",async()=>{const{openTownSocialPanel:w}=await import("../components/TownSocialPanel.js");w(t)}),(u=e.querySelector("#town-network-btn"))==null||u.addEventListener("click",()=>{ge("relationships/"+t)});
+  `,Oi(e,a,mapGen)}async function Oi(e,t,mapGen){var s,a,n,l,i,r,p,o,c,d,u,v,m;try{const b=await dt(),y=Array.isArray(b)?b:b.towns||[],f=e.querySelector("#town-select-view");f&&(f.innerHTML=y.map(w=>`<option value="${w.id}" ${w.id===t?"selected":""}>${w.name}</option>`).join(""),f.addEventListener("change",w=>{ge(`town/${w.target.value}`)}));const[g,k]=await Promise.all([Ee(t),qn(t).catch(()=>({buildings:[]}))]),_=(g.characters||[]).map(Me),$=k.buildings||[],L=y.find(w=>w.id===t)||{id:t,name:"Unknown"};L.characters=_,L.buildings=$,ee({currentTownId:t,currentTown:L,towns:y}),Ze(e,_,$),et(e,_),Ra(e),ke(e,_),xe(e,_),openPendingMapCharacter(e,_);if(mapGen===townMapGen){stopTownMap=mountTownRosterMap(e)||(()=>{});}const _ms=e.querySelector("#town-macro-food-badge");if(_ms){const _fv=L.macro_food_stores;_fv!=null&&_fv!==""?(_ms.textContent=`🌾 ${Number(_fv).toFixed(0)}`,_ms.style.display="inline"):(_ms.textContent="",_ms.style.display="none")}(s=e.querySelector("#town-search"))==null||s.addEventListener("input",w=>{ee({searchQuery:w.target.value.trim()}),ke(e,_)}),(n=e.querySelector("#town-stats-btn"))==null||n.addEventListener("click",()=>{ge("townstats/"+t)}),(l=e.querySelector("#town-import-btn"))==null||l.addEventListener("click",()=>{openCharacterImportModal(e,t,_)}),(i=e.querySelector("#town-history-btn"))==null||i.addEventListener("click",()=>{Wi(t)}),(e.querySelector("#town-export-btn"))?.addEventListener("click",()=>{openTownExportModal(t,L?.name||"")}),(r=e.querySelector("#town-settings-btn"))==null||r.addEventListener("click",()=>{Ui(t)}),(p=e.querySelector("#town-buildings-btn"))==null||p.addEventListener("click",async()=>{const{openBuildingsPanel:w}=await import("../components/BuildingsPanel.js");w(t)}),(o=e.querySelector("#town-social-btn"))==null||o.addEventListener("click",async()=>{const{openTownSocialPanel:w}=await import("../components/TownSocialPanel.js");w(t)}),(u=e.querySelector("#town-network-btn"))==null||u.addEventListener("click",()=>{ge("relationships/"+t)});
 // Town Setup Wizard button
 const setupBtn = e.querySelector("#town-setup-btn");
 if (setupBtn) {
@@ -234,7 +245,7 @@ Type the town name to confirm:`);if(A&&A.trim().toLowerCase()===w.toLowerCase())
       <span class="sort-col" data-sort="race">RACE${a("race")}</span>
     </div>
   `,s.addEventListener("click",n=>{var r;const l=n.target.closest(".sort-col");if(!(l!=null&&l.dataset.sort))return;const i=l.dataset.sort;t.sortCol===i?ee({sortDir:t.sortDir==="asc"?"desc":"asc"}):ee({sortCol:i,sortDir:"asc"}),Ra(e),ke(e,((r=Z().currentTown)==null?void 0:r.characters)||[])})}function Ha(e){const t=Z();let s=[...e];if(t.activeRaceFilter&&(s=s.filter(n=>n.race===t.activeRaceFilter)),t.activeClassFilter&&(s=s.filter(n=>n.class===t.activeClassFilter)),t.activeBuildingFilter&&(t.activeBuildingFilter==="_unassigned"?s=s.filter(n=>!n.building_id):s=s.filter(n=>String(n.building_id)===t.activeBuildingFilter)),t.activeStatusFilter==="Deceased"?s=s.filter(n=>n.status==="Deceased"):s=s.filter(n=>n.status!=="Deceased"),t.searchQuery){const n=t.searchQuery.toLowerCase();s=s.filter(l=>(l.name||"").toLowerCase().includes(n)||(l.race||"").toLowerCase().includes(n)||(l.class||"").toLowerCase().includes(n)||(l.role||"").toLowerCase().includes(n))}s.sort((n,l)=>{let i,r;return t.sortCol==="level"?(i=parseInt(n.level)||0,r=parseInt(l.level)||0):["hp","ac","xp","age"].includes(t.sortCol)?(i=parseInt(n[t.sortCol])||0,r=parseInt(l[t.sortCol])||0):(i=String(n[t.sortCol]||"").toLowerCase(),r=String(l[t.sortCol]||"").toLowerCase()),i<r?t.sortDir==="asc"?-1:1:i>r?t.sortDir==="asc"?1:-1:0});const a=s.findIndex(n=>(n.role||"").toLowerCase().includes("mayor"));if(a>0){const[n]=s.splice(a,1);s.unshift(n)}return s}function ke(e,t){const s=e.querySelector("#list-body");if(!s)return;const a=Z(),n=Ha(t);s.innerHTML=n.map(l=>{const i=Bi[l.race]||"var(--text-muted)",r=l.id==a.selectedCharId||l.dbId==a.selectedCharId?" active":"",p=l.status==="Deceased"?" deceased":"",o=String(l.ac||"").split(",")[0].trim()||"";return`
-      <div class="char-row${r}${p}${(l.role||"").toLowerCase().includes("mayor")?" mayor-row":""}" data-id="${l.id}">
+      <div class="char-row${r}${p}${(l.role||"").toLowerCase().includes("mayor")?" mayor-row":""}" data-id="${l.id}" draggable="true">
         <div class="char-icon" title="${(l.class||"")}">${getClassIcon(l.class)}</div>
         <div class="char-info">
            <div class="char-name" title="${l.name}${l.role?' — '+l.role:''}">${(l.role||"").toLowerCase().includes("mayor")?'<span class="mayor-badge">&#9813;</span> ':""}${l.name}${parseInt(l.age)<16&&l.race==="Human"?' <span title="Child" style="font-size:0.8em;opacity:0.7">🧒</span>':parseInt(l.age)<100&&l.race.includes("Elf")?' <span title="Child" style="font-size:0.8em;opacity:0.7">🧒</span>':parseInt(l.age)<40&&l.race==="Dwarf"?' <span title="Child" style="font-size:0.8em;opacity:0.7">🧒</span>':''}</div>
@@ -863,7 +874,7 @@ Type the town name to confirm:`);if(A&&A.trim().toLowerCase()===w.toLowerCase())
   `,Ji(e),kt(e),Qi(e),e.querySelector("#settings-save-btn").addEventListener("click",()=>Zi(e))}async function kt(e){var s,a;const t=e.querySelector("#campaigns-panel");if(t)try{const n=await Gs(),l=n.campaigns||[],i=n.tier||"free",r=n.max_campaigns||1,o=(s=Z().currentCampaign)==null?void 0:s.id,c={free:"Free",standard:"Standard",premium:"Premium",legendary:"Legendary"};t.innerHTML=`
       <div class="campaign-tier-info">
         <span class="tier-badge tier-${i}">${c[i]||i}</span>
-        <span class="tier-limit">${l.length} / ${r>=999?"∞":r} campaigns</span>
+        <span class="tier-limit">${l.length} campaign${l.length===1?"":"s"}</span>
       </div>
       <div class="campaign-list" id="campaign-list">
         ${l.map(d=>`
@@ -887,11 +898,7 @@ Type the town name to confirm:`);if(A&&A.trim().toLowerCase()===w.toLowerCase())
           </div>
         `).join("")}
       </div>
-      ${l.length<r||r>=999?`
-        <button class="btn-primary btn-sm" id="campaign-create-btn" style="margin-top:0.75rem;">+ New Campaign</button>
-      `:`
-        <div class="muted" style="margin-top:0.5rem;">Upgrade your plan to create more campaigns.</div>
-      `}
+      <button class="btn-primary btn-sm" id="campaign-create-btn" style="margin-top:0.75rem;">+ New Campaign</button>
     `,t.querySelectorAll(".campaign-switch-btn").forEach(d=>{d.addEventListener("click",async()=>{const u=parseInt(d.dataset.id);try{const v=await Us(u);if(v.campaign){ee({currentCampaign:v.campaign}),He(v.campaign.dnd_edition),ct();const m=document.getElementById("sidebar-container");m&&rt(m),ye(`Switched to "${v.campaign.name}"`,"success"),kt(e)}}catch(v){ye(v.message,"error")}})}),t.querySelectorAll(".campaign-edit-btn").forEach(d=>{d.addEventListener("click",()=>Ki(e,l.find(u=>u.id==d.dataset.id)))}),t.querySelectorAll(".campaign-delete-btn").forEach(d=>{d.addEventListener("click",async()=>{var v;const u=l.find(m=>m.id==d.dataset.id);if(u&&confirm(`Delete campaign "${u.name}"? This will delete all its towns and characters permanently.`))try{await dn(u.id),ye(`Campaign "${u.name}" deleted.`,"success");const m=await(await ne(async()=>{const{apiGetCurrentUser:y}=await Promise.resolve().then(()=>yn);return{apiGetCurrentUser:y}},void 0)).apiGetCurrentUser();(v=m.user)!=null&&v.active_campaign&&(ee({currentCampaign:m.user.active_campaign}),He(m.user.active_campaign.dnd_edition));const b=document.getElementById("sidebar-container");b&&rt(b),kt(e)}catch(m){ye(m.message,"error")}})}),(a=t.querySelector("#campaign-create-btn"))==null||a.addEventListener("click",()=>Xi(e))}catch(n){t.innerHTML=`<div class="muted">Error loading campaigns: ${n.message}</div>`}}function Xi(e){const t=e.querySelector("#campaigns-panel"),s=t.querySelector(".campaign-form");if(s){s.remove();return}const a=document.createElement("div");a.className="campaign-form",a.innerHTML=`
     <h4>Create New Campaign</h4>
     <div class="form-group">
@@ -2882,5 +2889,31 @@ Enter condition to toggle:`,"");if(!i)return;const r=i.toLowerCase().replace(/[-
         </div>
       `})})}
 
-export default Fi;
+function openPendingMapCharacter(container, characters) {
+  const pending = Z().pendingMapCharacterId;
+  if (!pending) return;
+  ee({ pendingMapCharacterId: null });
+  const h = (characters || []).find((q) => q.id === pending || q.dbId === pending);
+  if (!h) return;
+  ee({ selectedCharId: h.id });
+  const q = container.querySelector('#detail-area');
+  if (!q) return;
+  at(q, h, {
+    onListRefresh: () => { ke(container, characters); xe(container, characters); },
+    onDelete: async () => {
+      const D = ((await Ee(Z().currentTownId)).characters || []).map(Me);
+      if (Z().currentTown) Z().currentTown.characters = D;
+      ee({ selectedCharId: null });
+      ke(container, D);
+      xe(container, D);
+      q.innerHTML = '<div class="detail-empty">Select a character</div>';
+    },
+    containerRef: container,
+  });
+}
+
+export default function TownView(container, params) {
+  Fi(container, params);
+  return () => stopTownMap();
+}
 export { Fi as renderTownView };

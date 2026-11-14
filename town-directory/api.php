@@ -382,13 +382,6 @@ try {
                 throw new Exception('Campaign name is required.');
             if (!in_array($edition, ['3.5e', '5e', '5e2024']))
                 $edition = '3.5e';
-            $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
-            $tier = ew_normalize_subscription_tier((string) ($udata[0]['subscription_tier'] ?? 'free'));
-            $maxCamps = ew_tier_max_campaigns($tier);
-            $existing = query('SELECT COUNT(*) as c FROM campaigns WHERE user_id = ?', [$uid], 0);
-            $currentCount = (int) ($existing[0]['c'] ?? 0);
-            if ($currentCount >= $maxCamps)
-                throw new Exception("Your $tier tier allows up to $maxCamps campaign(s). Upgrade to create more.");
             // Deactivate other campaigns, activate the new one
             execute('UPDATE campaigns SET is_active = 0 WHERE user_id = ?', [$uid], 0);
             $cid = insertAndGetId('INSERT INTO campaigns (user_id, name, dnd_edition, description, is_active) VALUES (?,?,?,?,1)', [$uid, $name, $edition, $desc], 0);
@@ -545,16 +538,6 @@ try {
             // Link to active campaign
             $activeCamp = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
             $campId = $activeCamp ? (int) $activeCamp[0]['id'] : null;
-            // Check town limit per tier
-            if ($campId) {
-                $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
-                $tier = ew_normalize_subscription_tier((string) ($udata[0]['subscription_tier'] ?? 'free'));
-                $maxTowns = ew_tier_max_towns_per_campaign($tier);
-                $existingTowns = query('SELECT COUNT(*) as c FROM towns WHERE campaign_id = ? AND (is_party_base = 0 OR is_party_base IS NULL) AND (is_encounter_town = 0 OR is_encounter_town IS NULL)', [$campId], $uid);
-                $currentTownCount = (int) ($existingTowns[0]['c'] ?? 0);
-                if ($currentTownCount >= $maxTowns)
-                    throw new Exception("Your plan allows up to $maxTowns towns per campaign. Upgrade to create more.");
-            }
             $id = insertAndGetId(
                 'INSERT INTO towns (user_id, campaign_id, name, subtitle) VALUES (?, ?, ?, ?)',
                 [$uid, $campId, $name, $subtitle],
@@ -3837,7 +3820,7 @@ try {
                 'storage_used' => $totalSize,
                 'storage_limit' => $lim['content_max_storage_bytes'],
                 'file_count' => count($files),
-                'file_limit' => $lim['content_max_files'],
+                'file_limit' => 0,
             ]);
             break;
 
@@ -6105,6 +6088,37 @@ try {
             }
             $article = loreGetOrCreateForEntity($uid, $campaignId, $entityType, $entityId, $title);
             respond(['ok' => true, 'article' => $article]);
+            break;
+
+        case 'get_town_map':
+        case 'save_town_map_pin':
+        case 'delete_town_map_pin':
+        case 'clear_town_map_image':
+        case 'save_town_map_prop':
+        case 'delete_town_map_prop':
+            require_once __DIR__ . '/town_map_lib.php';
+            townMapHandle($action, $input);
+            break;
+
+        case 'get_encounter_table':
+        case 'save_encounter_table_token':
+        case 'delete_encounter_table_token':
+        case 'save_encounter_table_hp':
+        case 'clear_encounter_table_image':
+        case 'export_encounter_table_foundry':
+            require_once __DIR__ . '/encounter_table_lib.php';
+            encounterTableHandle($action, $input);
+            break;
+
+        case 'list_campaign_maps':
+        case 'get_campaign_map':
+        case 'campaign_map_link_options':
+        case 'save_campaign_map':
+        case 'delete_campaign_map':
+        case 'save_campaign_map_poi':
+        case 'delete_campaign_map_poi':
+            require_once __DIR__ . '/campaign_map_lib.php';
+            campaignMapHandle($action, $input);
             break;
 
         default:
