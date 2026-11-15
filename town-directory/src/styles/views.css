@@ -5353,13 +5353,22 @@
 
 .tmap-pane {
     padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+/* A loaded map is tall because the picture is. The generator is taken out of
+   flow, so without this the Map column collapses to the toolbar. */
+.app-content:has(#town-map-pane:not([hidden])) .split-layout {
+    height: calc(100vh - 180px);
 }
 
 .tmap {
     position: relative;
     display: flex;
     flex-direction: column;
-    height: 100%;
+    flex: 1;
     min-height: 0;
 }
 
@@ -5768,6 +5777,7 @@
     gap: 0.45rem 0.65rem;
     padding: 0.6rem 0.75rem;
     border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
 }
 
 .tmap-gen-title {
@@ -5806,21 +5816,25 @@
     padding: 0.4rem 0.75rem 0;
     font-size: 0.75rem;
     color: var(--text-muted);
+    flex-shrink: 0;
 }
 
 .tmap-gen-preview {
     flex: 1;
-    min-height: 8rem;
-    overflow: auto;
+    min-height: 0;
+    overflow: hidden;
     margin: 0.5rem 0.75rem;
     background: #100e0c;
     border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .tmap-gen-preview canvas {
     display: block;
-    width: 100%;
-    height: auto;
+    max-width: 100%;
+    max-height: 100%;
 }
 
 .tmap-gen-actions {
@@ -5829,6 +5843,7 @@
     gap: 0.4rem;
     padding: 0.6rem 0.75rem;
     border-top: 1px solid var(--border);
+    flex-shrink: 0;
 }
 
 .seat-row {

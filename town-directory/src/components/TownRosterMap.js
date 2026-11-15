@@ -73,6 +73,7 @@ export function mountTownRosterMap(root) {
   let painting = false;
   let paintKey = '';
   let fitObserver = null;
+  let genFitObserver = null;
   let zoom = 1;
   let snapOn = true;
   let placeKind = '';
@@ -227,7 +228,24 @@ export function mountTownRosterMap(root) {
     });
     mapPane.querySelector('#tmap-zoom-in').addEventListener('click', () => setZoom(zoom * 1.25));
     mapPane.querySelector('#tmap-zoom-out').addEventListener('click', () => setZoom(zoom / 1.25));
+    const previewBox = mapPane.querySelector('.tmap-gen-preview');
+    if (previewBox && typeof ResizeObserver !== 'undefined') {
+      genFitObserver = new ResizeObserver(() => fitGeneratedPreview());
+      genFitObserver.observe(previewBox);
+    }
     updateSnapButton();
+  }
+
+  function fitGeneratedPreview() {
+    const canvas = mapPane.querySelector('#tmap-gen-preview');
+    const box = canvas?.parentElement;
+    if (!canvas || !box || !canvas.width || !canvas.height) return;
+    const maxW = box.clientWidth;
+    const maxH = box.clientHeight;
+    if (maxW < 8 || maxH < 8) return;
+    const scale = Math.min(maxW / canvas.width, maxH / canvas.height);
+    canvas.style.width = `${Math.max(1, Math.floor(canvas.width * scale))}px`;
+    canvas.style.height = `${Math.max(1, Math.floor(canvas.height * scale))}px`;
   }
 
   function bindFit() {
@@ -675,6 +693,8 @@ export function mountTownRosterMap(root) {
     const note = mapPane.querySelector('#tmap-gen-note');
     if (canvas) drawMap(canvas, gen.layout);
     if (note) note.textContent = `${describeMap(gen.layout)}. ${gen.layout.blurb}`;
+    fitGeneratedPreview();
+    requestAnimationFrame(fitGeneratedPreview);
   }
 
   function anotherMap() {
@@ -1237,6 +1257,7 @@ export function mountTownRosterMap(root) {
   document.addEventListener('pointerdown', onDocPointerDown);
   return () => {
     fitObserver?.disconnect();
+    genFitObserver?.disconnect();
     closeTokenMenu();
     closeHover();
     closeDesc();
