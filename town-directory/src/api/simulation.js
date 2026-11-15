@@ -15,8 +15,11 @@ export function apiRunSimulation(townId, months, rules, instructions, numArrival
         num_arrivals: numArrivals,
         days,
     };
-    if (opts && opts.noNewPeople) {
-        body.no_new_people = true;
+    if (opts && opts.noArrivals) {
+        body.no_arrivals = true;
+    }
+    if (opts && opts.noBirths) {
+        body.no_births = true;
     }
     return simFetch('run_simulation', body);
 }
@@ -73,8 +76,11 @@ export function apiApplySimulation(townId, changes, historyEntry, monthsElapsed 
         days_elapsed: daysElapsed,
         skip_calendar: opts.skipCalendar === true,
     };
-    if (opts.noNewPeople) {
-        body.no_new_people = true;
+    if (opts.noArrivals) {
+        body.no_arrivals = true;
+    }
+    if (opts.noBirths) {
+        body.no_births = true;
     }
     if (Array.isArray(opts.arrivalNamePool) && opts.arrivalNamePool.length) {
         body.arrival_name_pool = opts.arrivalNamePool;

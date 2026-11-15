@@ -61,10 +61,15 @@ export default function WorldSimulateView(container) {
               <span style="font-size:0.75rem;color:var(--text-muted)">0 = natural only</span>
             </div>
             <label style="display:flex;align-items:center;gap:0.45rem;margin-top:0.55rem;cursor:pointer;font-weight:600;font-size:0.9rem;">
-              <input type="checkbox" id="ws-no-new-people">
-              🚫 No new people
+              <input type="checkbox" id="ws-no-arrivals">
+              No one moving in
             </label>
-            <small class="settings-hint" style="display:block;margin-top:0.2rem;">Blocks arrivals and births in every selected town for this run.</small>
+            <small class="settings-hint" style="display:block;margin-top:0.15rem;">No travelers or outsiders in the selected towns. Births still happen.</small>
+            <label style="display:flex;align-items:center;gap:0.45rem;margin-top:0.45rem;cursor:pointer;font-weight:600;font-size:0.9rem;">
+              <input type="checkbox" id="ws-no-births">
+              No births
+            </label>
+            <small class="settings-hint" style="display:block;margin-top:0.15rem;">No newborn residents this run. People can still move in.</small>
           </div>
         </div>
         <div class="sim-field">
@@ -100,8 +105,8 @@ export default function WorldSimulateView(container) {
   // Back button
   container.querySelector('#ws-back-btn').addEventListener('click', () => navigate('dashboard'));
 
-  const syncWsNoNewPeopleUi = () => {
-    const lock = container.querySelector('#ws-no-new-people');
+  const syncWsArrivalLockUi = () => {
+    const lock = container.querySelector('#ws-no-arrivals');
     const intake = container.querySelector('#ws-intake-count');
     if (!lock || !intake) return;
     if (lock.checked) {
@@ -111,8 +116,8 @@ export default function WorldSimulateView(container) {
       intake.disabled = false;
     }
   };
-  container.querySelector('#ws-no-new-people')?.addEventListener('change', syncWsNoNewPeopleUi);
-  syncWsNoNewPeopleUi();
+  container.querySelector('#ws-no-arrivals')?.addEventListener('change', syncWsArrivalLockUi);
+  syncWsArrivalLockUi();
 
   // Load towns and calendar
   loadWorldData(container);
@@ -223,8 +228,9 @@ export default function WorldSimulateView(container) {
     const worldInstructions = cont.querySelector('#ws-instructions')?.value?.trim() || '';
     let intakeCount = Math.max(0, Math.min(MAX_INTAKE_ARRIVALS, parseInt(cont.querySelector('#ws-intake-count')?.value) || 0));
     const selectedDays = Math.max(0, Math.min(100, parseInt(cont.querySelector('#ws-days')?.value) || 0));
-    const noNewPeople = !!cont.querySelector('#ws-no-new-people')?.checked;
-    if (noNewPeople) {
+    const noArrivals = !!cont.querySelector('#ws-no-arrivals')?.checked;
+    const noBirths = !!cont.querySelector('#ws-no-births')?.checked;
+    if (noArrivals) {
       intakeCount = 0;
     }
 
@@ -455,7 +461,7 @@ export default function WorldSimulateView(container) {
           if (statusEl) statusEl.innerHTML = `<span style="color:var(--warning);">⏳ M ${monthLabel}...</span>`;
           simLog('⏳', `Month <strong>${monthLabel}/${selectedMonths}</strong> — Simulating <strong>${town.name}</strong>...`);
 
-          const result = await apiRunSimulation(town.id, batchMonths, rules, monthInstructions, 0, batchPartialDays, { noNewPeople });
+          const result = await apiRunSimulation(town.id, batchMonths, rules, monthInstructions, 0, batchPartialDays, { noArrivals, noBirths });
 
           if (result.simulation) {
             // Debug: log the actual response structure
@@ -476,7 +482,8 @@ export default function WorldSimulateView(container) {
             await apiApplySimulation(town.id, ch, sim.new_history_entry || null, applyMonths, applyDays, {
               skipCalendar: true,
               arrivalNamePool: result.arrival_name_pool,
-              noNewPeople,
+              noArrivals,
+              noBirths,
             })
               .then(applyRes => {
                 if (applyRes?.applied?.auto_levelups) {
@@ -557,7 +564,7 @@ export default function WorldSimulateView(container) {
             simLog('🔄', `<strong>${town.name}</strong> M${monthLabel}: Retry ${attempt}/${maxRetries} after error: ${err.message.slice(0, 60)}...`);
             await new Promise(r => setTimeout(r, delay));
             try {
-              const retry = await apiRunSimulation(town.id, batchMonths, rules, monthInstructions, 0, batchPartialDays, { noNewPeople });
+              const retry = await apiRunSimulation(town.id, batchMonths, rules, monthInstructions, 0, batchPartialDays, { noArrivals, noBirths });
               if (retry.simulation) {
                 const ch = retry.simulation.changes || {};
                 const retryApplyMonths = batchPartialDays > 0 ? 0 : batchMonths;
@@ -565,7 +572,8 @@ export default function WorldSimulateView(container) {
                 const retryApplyRes = await apiApplySimulation(town.id, ch, retry.simulation.new_history_entry || null, retryApplyMonths, retryApplyDays, {
                   skipCalendar: true,
                   arrivalNamePool: retry.arrival_name_pool,
-                  noNewPeople,
+                  noArrivals,
+                  noBirths,
                 });
                 const births = (ch.births || retry.simulation.births || []).map(b => ({ ...b, town: town.name, townId: town.id, month: batchEnd }));
                 const deaths = (ch.deaths || retry.simulation.deaths || []).map(d => ({ ...d, town: town.name, townId: town.id, month: batchEnd }));

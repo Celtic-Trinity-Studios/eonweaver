@@ -112,10 +112,15 @@ export default function SimulationView(container) {
               <span style="font-size:0.75rem;color:var(--text-muted)">0 = natural arrivals only</span>
             </div>
             <label style="display:flex;align-items:center;gap:0.45rem;margin-top:0.55rem;cursor:pointer;font-weight:600;font-size:0.9rem;">
-              <input type="checkbox" id="sim-no-new-people">
-              🚫 No new people
+              <input type="checkbox" id="sim-no-arrivals">
+              No one moving in
             </label>
-            <small class="settings-hint" style="display:block;margin-top:0.2rem;">Blocks all arrivals and births for this run (deaths still apply). Stronger than Town Settings → Closed Borders.</small>
+            <small class="settings-hint" style="display:block;margin-top:0.15rem;">No travelers or outsiders this run. Births still happen.</small>
+            <label style="display:flex;align-items:center;gap:0.45rem;margin-top:0.45rem;cursor:pointer;font-weight:600;font-size:0.9rem;">
+              <input type="checkbox" id="sim-no-births">
+              No births
+            </label>
+            <small class="settings-hint" style="display:block;margin-top:0.15rem;">No newborn residents this run. People can still move in.</small>
           </div>
         </div>
 
@@ -263,8 +268,8 @@ export default function SimulationView(container) {
     if (entries) entries.innerHTML = '';
   });
 
-  const syncNoNewPeopleUi = () => {
-    const lock = container.querySelector('#sim-no-new-people');
+  const syncArrivalLockUi = () => {
+    const lock = container.querySelector('#sim-no-arrivals');
     const intake = container.querySelector('#sim-intake-count');
     if (!lock || !intake) return;
     if (lock.checked) {
@@ -274,8 +279,8 @@ export default function SimulationView(container) {
       intake.disabled = false;
     }
   };
-  container.querySelector('#sim-no-new-people')?.addEventListener('change', syncNoNewPeopleUi);
-  syncNoNewPeopleUi();
+  container.querySelector('#sim-no-arrivals')?.addEventListener('change', syncArrivalLockUi);
+  syncArrivalLockUi();
 
   // Debug LLM button (debug accounts only)
   container.querySelector('#sim-debug-btn')?.addEventListener('click', async () => {
@@ -393,8 +398,9 @@ export default function SimulationView(container) {
     let fullInstructions = instructions;
     let intakeCount = Math.max(0, Math.min(MAX_INTAKE_ARRIVALS, parseInt(cont.querySelector('#sim-intake-count')?.value) || 0));
     let daysCount = Math.max(0, Math.min(30, parseInt(cont.querySelector('#sim-days')?.value) || 0));
-    const noNewPeople = !!cont.querySelector('#sim-no-new-people')?.checked;
-    if (noNewPeople) {
+    const noArrivals = !!cont.querySelector('#sim-no-arrivals')?.checked;
+    const noBirths = !!cont.querySelector('#sim-no-births')?.checked;
+    if (noArrivals) {
       intakeCount = 0;
     }
 
@@ -414,8 +420,12 @@ export default function SimulationView(container) {
     log(`--- Starting simulation: ${selectedMonths} month(s)${daysCount ? ` (${daysCount} days)` : ''}, town ID ${townId} ---`);
     log(`Instructions: ${fullInstructions || '(none)'}`);
     log(`Rules length: ${rules.length} chars`);
-    log(noNewPeople
-      ? 'Population lock: NO new people (arrivals + births blocked)'
+    const lockNote = [
+      noArrivals ? 'no one moving in' : '',
+      noBirths ? 'no births' : '',
+    ].filter(Boolean).join(', ');
+    log(lockNote
+      ? `Population lock: ${lockNote}`
       : `Forced intake: ${intakeCount > 0 ? intakeCount + ' new arrivals' : 'none (natural only)'}`);
 
     runBtn.disabled = true;
@@ -442,14 +452,15 @@ export default function SimulationView(container) {
         }, 1000);
 
         log('Calling apiRunSimulation (single)...', 'info');
-        const result = await apiRunSimulation(townId, selectedMonths, rules, fullInstructions, intakeCount, daysCount, { noNewPeople });
+        const result = await apiRunSimulation(townId, selectedMonths, rules, fullInstructions, intakeCount, daysCount, { noArrivals, noBirths });
         clearInterval(progressInterval);
         progressFill.style.width = '100%';
         progressText.textContent = 'Simulation complete!';
         log('✅ Simulation completed successfully!', 'success');
 
         cont._lastSimPartialDays = daysCount;
-        cont._lastSimNoNewPeople = noNewPeople;
+        cont._lastSimNoArrivals = noArrivals;
+        cont._lastSimNoBirths = noBirths;
 
         if (result.simulation) {
           const ch = result.simulation.changes || {};
@@ -485,7 +496,8 @@ export default function SimulationView(container) {
         const summaries = [];
 
         cont._lastSimPartialDays = 0;
-        cont._lastSimNoNewPeople = noNewPeople;
+        cont._lastSimNoArrivals = noArrivals;
+        cont._lastSimNoBirths = noBirths;
 
         let batch = 0;
         for (let batchStart = 1; batchStart <= selectedMonths; batchStart += effectiveBatchSize) {
@@ -505,7 +517,7 @@ export default function SimulationView(container) {
 
           try {
             const partialDaysArg = (daysCount > 0 && selectedMonths === 1) ? daysCount : 0;
-            const batchResult = await apiRunSimulation(townId, batchMonths, rules, batchInstructions, batchIntake, partialDaysArg, { noNewPeople });
+            const batchResult = await apiRunSimulation(townId, batchMonths, rules, batchInstructions, batchIntake, partialDaysArg, { noArrivals, noBirths });
             const sim = batchResult.simulation || {};
             const ch = sim.changes || {};
 
@@ -544,7 +556,8 @@ export default function SimulationView(container) {
               const applyDaysElapsed = partialDaysArg > 0 ? partialDaysArg : 0;
               const applyRes = await apiApplySimulation(townId, ch, sim.new_history_entry || null, applyMonthsElapsed, applyDaysElapsed, {
                 arrivalNamePool: batchResult.arrival_name_pool,
-                noNewPeople,
+                noArrivals,
+                noBirths,
               });
               log(`  Applied batch ${batch + 1} changes`, 'success');
               logApplyDebug(applyRes, `batch ${batch + 1}`);
@@ -838,7 +851,8 @@ export default function SimulationView(container) {
             partialDays,
             {
               arrivalNamePool: result.arrival_name_pool,
-              noNewPeople: !!cont._lastSimNoNewPeople,
+              noArrivals: !!cont._lastSimNoArrivals,
+              noBirths: !!cont._lastSimNoBirths,
             }
           );
 

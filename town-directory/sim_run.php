@@ -16,7 +16,9 @@
                 $rules = ($enc === false) ? '' : $enc;
             }
             $instructions = is_string($input['instructions'] ?? '') ? trim($input['instructions'] ?? '') : '';
-            $noNewPeople = filter_var($input['no_new_people'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $legacyLock = filter_var($input['no_new_people'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $blockArrivals = $legacyLock || filter_var($input['no_arrivals'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $blockBirths = $legacyLock || filter_var($input['no_births'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
             verifyTownOwnership($userId, $townId, $uid);
 
@@ -218,8 +220,8 @@
                 // ══════════════════════════════════════════════════════════
                 // CHARACTER INTAKE MODE — One character per AI request
                 // ══════════════════════════════════════════════════════════
-                if ($noNewPeople) {
-                    throw new Exception('No new people is enabled — intake mode cannot add residents. Uncheck it or run a timed simulation instead.');
+                if ($blockArrivals) {
+                    throw new Exception('No one moving in is on — intake cannot add residents. Uncheck it, or run a timed month so births can still happen.');
                 }
                 $numArrivals = max(1, min(150, (int) ($input['num_arrivals'] ?? 5)));
                 $startTime = time(); // Track start time for timeout guard
@@ -563,12 +565,17 @@ SPROMPT;
                 if ($simMaxLevel > 0 && $simMaxLevel < 20) {
                     $simIntakeLevelBlock .= "MAX LEVEL CAP: {$simMaxLevel}. No new character may exceed this level. ";
                 }
-                $closedBordersBlock = '';
-                if ($noNewPeople) {
+                $noArrivals = $blockArrivals || $closedBorders;
+                if ($blockBirths) {
                     $maxBirths = 0;
-                    $closedBordersBlock = "\n## POPULATION LOCK — NO NEW PEOPLE\nThe DM enabled NO NEW PEOPLE for this run.\n- new_characters MUST be an EMPTY array. No travelers, refugees, merchants, outsiders, OR births.\n- Do NOT invent newborn children. Existing pregnancies (if any) do not resolve into new roster entries this run.\n- Deaths, drama, XP, relationships, and buildings are still allowed.\n";
-                } elseif ($closedBorders) {
-                    $closedBordersBlock = "\n## CLOSED BORDERS — NO NEW ARRIVALS\nThis town has CLOSED BORDERS. You MUST NOT generate any new arrivals in the new_characters array.\nThe ONLY exception is BIRTHS from existing romantic couples — newborn children are allowed.\nDo NOT add travelers, refugees, merchants, or any outsiders. The new_characters array should be EMPTY unless a birth occurs.\n";
+                }
+                $closedBordersBlock = '';
+                if ($noArrivals && $blockBirths) {
+                    $closedBordersBlock = "\n## POPULATION LOCK — NO MOVERS AND NO BIRTHS\nThe DM blocked both for this run.\n- new_characters MUST be an EMPTY array. No travelers, refugees, merchants, outsiders, OR births.\n- Do NOT invent newborn children. Existing pregnancies (if any) do not resolve into new roster entries this run.\n- Deaths, drama, XP, relationships, and buildings are still allowed.\n";
+                } elseif ($noArrivals) {
+                    $closedBordersBlock = "\n## NO ONE MOVING IN\nNo travelers, refugees, merchants, or outsiders may join the roster.\nBIRTHS from existing couples are still allowed. new_characters may contain only newborns.\n";
+                } elseif ($blockBirths) {
+                    $closedBordersBlock = "\n## NO BIRTHS\nDo NOT add newborn children. Existing pregnancies do not resolve into roster entries this run.\nPeople may still move in. new_characters is for arrivals only, and every one of them is older than a newborn.\n";
                 }
 
                 // Build demographics block for simulation prompt
@@ -1089,20 +1096,33 @@ PROMPT;
                 }
             }
 
-            // Hard enforce population lock even if the model ignored the prompt
-            if ($noNewPeople) {
+            // Hard enforce the run locks even if the model ignored the prompt
+            if ($blockArrivals || $blockBirths || !empty($noArrivals)) {
                 if (!isset($simulation['changes']) || !is_array($simulation['changes'])) {
                     $simulation['changes'] = [];
                 }
-                $simulation['changes']['new_characters'] = [];
-                if (isset($simulation['changes']['births'])) {
-                    $simulation['changes']['births'] = [];
+                $dropArrivals = $blockArrivals || !empty($noArrivals);
+                if (isset($simulation['changes']['new_characters']) && is_array($simulation['changes']['new_characters'])) {
+                    $simulation['changes']['new_characters'] = ew_sim_filter_newcomers(
+                        $simulation['changes']['new_characters'],
+                        $dropArrivals,
+                        $blockBirths
+                    );
                 }
-                if (isset($simulation['new_characters'])) {
-                    $simulation['new_characters'] = [];
+                if (isset($simulation['new_characters']) && is_array($simulation['new_characters'])) {
+                    $simulation['new_characters'] = ew_sim_filter_newcomers(
+                        $simulation['new_characters'],
+                        $dropArrivals,
+                        $blockBirths
+                    );
                 }
-                if (isset($simulation['births'])) {
-                    $simulation['births'] = [];
+                if ($blockBirths) {
+                    if (isset($simulation['changes']['births'])) {
+                        $simulation['changes']['births'] = [];
+                    }
+                    if (isset($simulation['births'])) {
+                        $simulation['births'] = [];
+                    }
                 }
             }
 
@@ -1112,7 +1132,8 @@ PROMPT;
                 'town_id' => $townId,
                 'months' => $months,
                 'arrival_name_pool' => $arrivalNamePool ?? [],
-                'no_new_people' => $noNewPeople,
+                'no_arrivals' => $blockArrivals || !empty($noArrivals),
+                'no_births' => $blockBirths,
             ]);
 
         /* ═══════════════════════════════════════════════════════════

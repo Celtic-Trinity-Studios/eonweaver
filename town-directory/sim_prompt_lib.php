@@ -82,6 +82,49 @@ if (!function_exists('ew_sim_budget_history_max_older_lines')) {
     }
 }
 
+if (!function_exists('ew_sim_character_is_birth')) {
+    /** A new roster row that is a newborn, not someone who moved in. */
+    function ew_sim_character_is_birth(array $nc): bool
+    {
+        $age = isset($nc['age']) ? (int) $nc['age'] : 99;
+        $reason = strtolower(trim((string) ($nc['reason'] ?? $nc['reason_for_arrival'] ?? '')));
+        return $age === 0
+            || str_contains($reason, 'born')
+            || str_contains($reason, 'birth')
+            || str_contains($reason, 'newborn');
+    }
+}
+
+if (!function_exists('ew_sim_filter_newcomers')) {
+    /**
+     * Drop movers, newborns, or both from a new_characters list.
+     *
+     * @param array<int, mixed> $list
+     * @return array<int, mixed>
+     */
+    function ew_sim_filter_newcomers(array $list, bool $blockArrivals, bool $blockBirths): array
+    {
+        if (!$blockArrivals && !$blockBirths) {
+            return $list;
+        }
+        $out = [];
+        foreach ($list as $nc) {
+            if (!is_array($nc)) {
+                continue;
+            }
+            $birth = ew_sim_character_is_birth($nc);
+            if ($birth && $blockBirths) {
+                continue;
+            }
+            if (!$birth && $blockArrivals) {
+                continue;
+            }
+            $out[] = $nc;
+        }
+        return array_values($out);
+    }
+}
+
 if (!function_exists('ew_sim_new_arrival_naming_rules')) {
     /**
      * Shared LLM instructions: unique full names + high onomastic variety (town / world / main sim).

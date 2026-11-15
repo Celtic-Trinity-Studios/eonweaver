@@ -38,16 +38,19 @@
             // New characters — check closed borders / per-run population lock
             $metaRowsCB = query('SELECT value FROM town_meta WHERE town_id = ? AND `key` = ?', [$townId, 'gen_rules'], $uid);
             $genRulesCB = $metaRowsCB ? (json_decode($metaRowsCB[0]['value'] ?? '{}', true) ?: []) : [];
-            $noNewPeopleApply = filter_var($input['no_new_people'] ?? false, FILTER_VALIDATE_BOOLEAN);
-            if ($noNewPeopleApply && !empty($changes['new_characters'])) {
-                $changes['new_characters'] = [];
-            } elseif (!empty($genRulesCB['closed_borders']) && !empty($changes['new_characters'])) {
-                // Filter: only allow births (age 0 or reason mentions "born")
-                $changes['new_characters'] = array_values(array_filter($changes['new_characters'], function ($nc) {
-                    $age = (int) ($nc['age'] ?? 99);
-                    $reason = strtolower($nc['reason'] ?? $nc['reason_for_arrival'] ?? '');
-                    return $age === 0 || strpos($reason, 'born') !== false || strpos($reason, 'birth') !== false;
-                }));
+            $legacyLockApply = filter_var($input['no_new_people'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $blockArrivalsApply = $legacyLockApply || filter_var($input['no_arrivals'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $blockBirthsApply = $legacyLockApply || filter_var($input['no_births'] ?? false, FILTER_VALIDATE_BOOLEAN);
+            $dropArrivalsApply = $blockArrivalsApply || !empty($genRulesCB['closed_borders']);
+            if (($dropArrivalsApply || $blockBirthsApply) && !empty($changes['new_characters']) && is_array($changes['new_characters'])) {
+                $changes['new_characters'] = ew_sim_filter_newcomers(
+                    $changes['new_characters'],
+                    $dropArrivalsApply,
+                    $blockBirthsApply
+                );
+            }
+            if ($blockBirthsApply && isset($changes['births'])) {
+                $changes['births'] = [];
             }
 
             if (!empty($changes['new_characters'])) {
