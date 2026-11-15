@@ -6,6 +6,41 @@
 const MAX_ROOMS = 40;
 const MAX_NPCS = 36;
 
+/** A whole line that is a species or a job, not one person. */
+const GROUP_NPC_NAMES = new Set([
+    'orc', 'orcs', 'goblin', 'goblins', 'hobgoblin', 'hobgoblins', 'bugbear', 'bugbears',
+    'kobold', 'kobolds', 'ogre', 'ogres', 'troll', 'trolls', 'human', 'humans', 'elf', 'elves',
+    'dwarf', 'dwarves', 'halfling', 'halflings', 'gnome', 'gnomes', 'guard', 'guards',
+    'laborer', 'laborers', 'labourer', 'labourers', 'commoner', 'commoners', 'warrior', 'warriors',
+    'worker', 'workers', 'soldier', 'soldiers', 'bandit', 'bandits', 'cultist', 'cultists',
+    'miner', 'miners', 'prisoner', 'prisoners', 'npc', 'npcs', 'monster', 'monsters',
+    'creature', 'creatures', 'beast', 'beasts', 'undead', 'skeleton', 'skeletons', 'zombie', 'zombies',
+    'common', 'seasoned'
+]);
+
+/** Second word of a place title, not a surname. */
+const PLACE_NAME_WORDS = new Set([
+    'cave', 'caves', 'woods', 'wood', 'path', 'barrow', 'tunnel', 'tunnels', 'room', 'rooms',
+    'hall', 'mine', 'shrine', 'fort', 'fortress', 'camp', 'den', 'lair', 'pit', 'well'
+]);
+
+/**
+ * True for "Edmund Brightwater" or "Pell". False for "Orcs", "The Mire", "Speaking Cave".
+ */
+export function isRosterPersonName(name) {
+    const n = String(name || '').replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
+    if (n.length < 2 || n.length > 80) return false;
+    if (/^(the|a|an)\b/i.test(n)) return false;
+    const lower = n.toLowerCase();
+    if (GROUP_NPC_NAMES.has(lower)) return false;
+    const words = n.split(' ');
+    if (words.length > 4) return false;
+    if (!words.every((w) => /^[A-Z][A-Za-z'’-]{1,}$/.test(w))) return false;
+    if (words.some((w) => PLACE_NAME_WORDS.has(w.toLowerCase().replace(/[^a-z]/g, '')))) return false;
+    if (words.every((w) => GROUP_NPC_NAMES.has(w.toLowerCase()))) return false;
+    return true;
+}
+
 /** Skip tokens that look like measurements, not creatures */
 const ENCOUNTER_STOP_LAST = new Set([
     'foot', 'feet', 'ft', 'inch', 'inches', 'gp', 'sp', 'cp', 'xp', 'pp',
@@ -43,10 +78,50 @@ export function parseDungeonForRoster(raw) {
         }
     }
 
-    const npcNamed = extractDungeonNpcs(text, rooms);
-    const npcEnc = extractDungeonEncounters(text, rooms);
-    const npcs = mergeDedupeRosterEntries(npcEnc, npcNamed);
+    const fromSection = extractNpcSectionPeople(text);
+    const npcs = fromSection
+        ? fromSection
+        : mergeDedupeRosterEntries(
+            extractDungeonEncounters(text, rooms),
+            extractDungeonNpcs(text, rooms)
+        ).filter((n) => isRosterPersonName(n.name));
     return { overview, rooms: rooms.slice(0, MAX_ROOMS), npcs: npcs.slice(0, MAX_NPCS) };
+}
+
+/** People listed under ## NPCs, one bullet each. Group lines are dropped. */
+function extractNpcSectionPeople(fullText) {
+    const header = fullText.match(
+        /^##\s*(NPCs?|Key\s+NPCs?|Inhabitants?|Denizens?|Dramatis\s+Personae|Notable\s+Figures)\b[^\n]*/im
+    );
+    if (!header) return null;
+    const start = fullText.indexOf(header[0]);
+    let slice = fullText.slice(start);
+    const next = slice.slice(1).search(/^##\s+/m);
+    if (next !== -1) slice = slice.slice(0, next + 1);
+
+    const out = [];
+    const seen = new Set();
+    const patterns = [
+        /^\s*[-•*]\s*\*\*([^*]{2,80})\*\*\s*(?:[-–—:]|\s-\s)\s*(.*)$/,
+        /^\s*[-•*]\s+([A-Z][^:\n]{1,70}?)\s*(?:[-–—])\s+(.*)$/,
+        /^\s*\d+[.)]\s*\*\*([^*]{2,80})\*\*\s*(?:[-–—:]|\s-\s)\s*(.*)$/
+    ];
+    for (const line of slice.split('\n')) {
+        let hit = null;
+        for (const re of patterns) {
+            const m = line.match(re);
+            if (m) {
+                hit = [m[1].trim(), (m[2] || '').trim()];
+                break;
+            }
+        }
+        if (!hit || !isRosterPersonName(hit[0])) continue;
+        const key = hit[0].toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push({ name: hit[0].slice(0, 80), blurb: hit[1].slice(0, 2000) });
+    }
+    return out.slice(0, MAX_NPCS);
 }
 
 function mergeDedupeRosterEntries(primary, secondary) {

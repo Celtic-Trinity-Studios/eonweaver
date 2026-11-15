@@ -588,12 +588,11 @@ export default function ScribeView(container) {
             });
 
             let primaryBuildingId = null;
-            let parsedDungeon = null;
             let roomBuildingCount = 0;
             let savedOverviewBuilding = false;
+            const parsedDungeon = parseDungeonForRoster(lastRawContent);
 
             if (lastRosterMeta.tab === 'dungeon') {
-                parsedDungeon = parseDungeonForRoster(lastRawContent);
                 const { overview, rooms } = parsedDungeon;
                 if (rooms.length) {
                     let sortOrder = 0;
@@ -659,9 +658,9 @@ export default function ScribeView(container) {
 
             if (!primaryBuildingId) throw new Error('Could not save building.');
 
-            if (lastRosterMeta.tab === 'dungeon' && parsedDungeon) {
-                const { npcs } = parsedDungeon;
-                let npcCount = 0;
+            const npcs = parsedDungeon.npcs || [];
+            let npcCount = 0;
+            if (npcs.length) {
                 const displaySafe = (nm) => nm.replace(/\*\*/g, '').trim();
                 for (const n of npcs) {
                     const instructions = `Dungeon import — “${buildingName}”. ${n.blurb || ''}`.slice(0, 600);
@@ -724,7 +723,7 @@ export default function ScribeView(container) {
                 if (totalDungeonBuildings) {
                     parts.push(`${totalDungeonBuildings} dungeon building${totalDungeonBuildings === 1 ? '' : 's'} (keyed areas)`);
                 }
-                if (npcCount) parts.push(`${npcCount} from SRD roster`);
+                if (npcCount) parts.push(`${npcCount} ${npcCount === 1 ? 'person' : 'people'}`);
                 const detail = parts.length ? ` (${parts.join(', ')})` : '';
                 showToast(`Created town “${townLabel}” — ${buildingName}${detail}.`, 'success');
             } else {
