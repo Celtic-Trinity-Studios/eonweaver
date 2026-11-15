@@ -297,7 +297,7 @@ export function renderCharacterSheet(el, c, options = {}) {
     <div class="cs-tab-content" id="cs-tab-network" style="display:none;">
       <div class="cs-block cs-network-block">
         <div class="cs-block-title">🕸 Relationship Network</div>
-        <p class="cs-network-hint">Only people linked to ${c.name || 'this character'}.</p>
+        <p class="cs-network-hint">People ${c.name || 'this character'} knows, and people those contacts know.</p>
         <div class="rel-graph-host cs-ego-graph-host" id="cs-ego-graph-host"><div class="cs-loading">Open this tab to load the network…</div></div>
       </div>
     </div>
@@ -1075,7 +1075,7 @@ function updateACDisplay(el, acStr, character) {
   }
 }
 
-/** Ego graph: only edges that include this character */
+/** Ego graph: this character, who they know, and who those people know. */
 async function loadAndRenderEgoNetwork(el, character) {
   const host = el.querySelector('#cs-ego-graph-host');
   if (!host) return;

@@ -85,7 +85,6 @@ async function loadNetwork(container, townId, onMounted) {
       relationships,
       characters,
       variant: 'page',
-      initialFocusId: getState().selectedCharId,
     });
     onMounted?.(graph?.destroy || null);
   } catch (err) {
