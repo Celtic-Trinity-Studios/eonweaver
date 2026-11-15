@@ -6008,7 +6008,7 @@ try {
                 0
             ) ?: [];
             $relWeb = query(
-                "SELECT cr.char1_id, cr.char2_id, cr.relationship_type, cr.disposition,
+                "SELECT cr.char1_id, cr.char2_id, cr.rel_type, cr.disposition,
                         c1.name AS char1_name, c2.name AS char2_name
                  FROM character_relationships cr
                  JOIN characters c1 ON c1.id = cr.char1_id
