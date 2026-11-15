@@ -15,6 +15,7 @@ import {
   townMapAssetUrl,
 } from '../api/townMap.js';
 import { gridFromImageData } from './townMapGrid.js';
+import { apiGetBuildings } from '../api/buildings.js';
 import { describeMap, drawMap, generateMap, randomMapSeed } from '../engine/mapGenerator.js';
 
 function escHtml(s) {
@@ -47,10 +48,10 @@ function fitImage(img, scroll, zoom) {
   }
 }
 
-function guessMapKind(name) {
+function guessMapKind(name, hasBuildings) {
   const n = String(name || '').toLowerCase();
   if (/\b(cave|cavern|grotto|mine|den|burrow|tomb)\b/.test(n)) return 'cave';
-  if (/\b(inn|tavern|house|hall|shop|temple|tower|manor|keep|guild|barn|hut|cabin|fort|home|store|chapel|cottage)\b/.test(n)) return 'building';
+  if (hasBuildings || /\b(inn|tavern|house|hall|shop|temple|tower|manor|keep|guild|barn|hut|cabin|fort|home|store|chapel|cottage)\b/.test(n)) return 'building';
   return 'dungeon';
 }
 
@@ -80,7 +81,16 @@ export function mountTownRosterMap(root) {
   let pointer = null;
   let hoverId = '';
   let cache = { townId: 0, image_url: '', pins: [], props: [], loaded: false, error: '', grid: null };
-  const gen = { kind: 'dungeon', size: 'medium', seed: 0, userKind: false, layout: null };
+  const gen = {
+    kind: 'dungeon',
+    size: 'medium',
+    seed: 0,
+    userKind: false,
+    layout: null,
+    buildings: null,
+    people: null,
+  };
+  let planToken = 0;
 
   function pinFor(id) {
     const n = Number(id);
@@ -91,7 +101,7 @@ export function mountTownRosterMap(root) {
   function hintText() {
     const townName = getState().currentTown?.name || 'Town';
     if (cache.error) return cache.error;
-    if (!cache.image_url) return `${townName} — generate a map, or upload a picture.`;
+    if (!cache.image_url) return `${townName} — generate a map from its buildings and people, or upload a picture.`;
     if (placeKind === 'door') {
       return `${townName} — click the map to drop a door. Click Door again when you are done.`;
     }
@@ -142,7 +152,7 @@ export function mountTownRosterMap(root) {
                 <select id="tmap-gen-kind" class="form-select">
                   <option value="dungeon">Dungeon</option>
                   <option value="cave">Cave</option>
-                  <option value="building">Building</option>
+                  <option value="building">Town</option>
                 </select>
               </label>
               <label class="tmap-gen-field">Size
@@ -548,6 +558,8 @@ export function mountTownRosterMap(root) {
       gen.userKind = false;
       gen.seed = 0;
       gen.layout = null;
+      gen.buildings = null;
+      gen.people = null;
     }
     if (townId && (!cache.loaded || cache.townId !== townId)) {
       painting = true;
@@ -660,6 +672,7 @@ export function mountTownRosterMap(root) {
   }
 
   function closeGenerator() {
+    planToken += 1;
     const panel = mapPane.querySelector('#tmap-gen');
     if (panel) panel.hidden = true;
   }
@@ -668,19 +681,49 @@ export function mountTownRosterMap(root) {
     ensureShell();
     const panel = mapPane.querySelector('#tmap-gen');
     if (!panel) return;
-    if (!gen.userKind) {
-      gen.kind = guessMapKind(getState().currentTown?.name);
-      const kindSel = mapPane.querySelector('#tmap-gen-kind');
-      if (kindSel) kindSel.value = gen.kind;
-    }
     const sizeSel = mapPane.querySelector('#tmap-gen-size');
     if (sizeSel) sizeSel.value = gen.size;
     if (!gen.seed) gen.seed = randomMapSeed();
     panel.hidden = false;
-    renderGenerated();
+    const note = mapPane.querySelector('#tmap-gen-note');
+    if (note) note.textContent = 'Reading this town’s buildings and people…';
+    const token = ++planToken;
+    loadTownPlan().then(() => {
+      if (token !== planToken) return;
+      if (!gen.userKind) {
+        const hasBuildings = (gen.buildings || []).some((building) => {
+          return String(building?.name || '').trim() && String(building.status || '').toLowerCase() !== 'destroyed';
+        });
+        gen.kind = guessMapKind(getState().currentTown?.name, hasBuildings);
+        const kindSel = mapPane.querySelector('#tmap-gen-kind');
+        if (kindSel) kindSel.value = gen.kind;
+      }
+      renderGenerated();
+    });
+  }
+
+  async function loadTownPlan() {
+    const town = getState().currentTown;
+    const townId = Number(town?.id) || 0;
+    gen.people = (town?.characters || []).map((person) => ({
+      id: person.id,
+      name: person.name,
+      building_id: person.building_id,
+      status: person.status,
+    }));
+    gen.buildings = [];
+    if (!townId) return;
+    try {
+      const res = await apiGetBuildings(townId);
+      gen.buildings = res.buildings || [];
+    } catch (err) {
+      gen.buildings = [];
+      showToast(err.message || 'Could not read this town’s buildings.', 'error');
+    }
   }
 
   function renderGenerated() {
+    if (!gen.people) return;
     const kindSel = mapPane.querySelector('#tmap-gen-kind');
     const sizeSel = mapPane.querySelector('#tmap-gen-size');
     if (kindSel) gen.kind = kindSel.value === 'cave' || kindSel.value === 'building' ? kindSel.value : 'dungeon';
@@ -688,7 +731,13 @@ export function mountTownRosterMap(root) {
     if (!gen.seed) gen.seed = randomMapSeed();
     const seedInput = mapPane.querySelector('#tmap-gen-seed');
     if (seedInput && document.activeElement !== seedInput) seedInput.value = String(gen.seed);
-    gen.layout = generateMap({ kind: gen.kind, size: gen.size, seed: gen.seed });
+    gen.layout = generateMap({
+      kind: gen.kind,
+      size: gen.size,
+      seed: gen.seed,
+      buildings: gen.buildings || [],
+      people: gen.people || [],
+    });
     const canvas = mapPane.querySelector('#tmap-gen-preview');
     const note = mapPane.querySelector('#tmap-gen-note');
     if (canvas) drawMap(canvas, gen.layout);
@@ -712,6 +761,25 @@ export function mountTownRosterMap(root) {
     renderGenerated();
   }
 
+  async function placeMatchedPins(townId, pins) {
+    const keep = new Set(pins.map((pin) => Number(pin.characterId)));
+    for (const old of cache.pins || []) {
+      const id = Number(old.character_id);
+      if (!id || keep.has(id)) continue;
+      await apiDeleteTownMapPin(townId, id);
+    }
+    const next = [];
+    for (const pin of pins) {
+      const id = Number(pin.characterId);
+      if (!id) continue;
+      const x = Math.round(Number(pin.xPct) * 1000) / 1000;
+      const y = Math.round(Number(pin.yPct) * 1000) / 1000;
+      await apiSaveTownMapPin(townId, id, x, y);
+      next.push({ character_id: id, x_pct: x, y_pct: y });
+    }
+    cache.pins = next;
+  }
+
   async function applyGenerated() {
     const townId = Number(getState().currentTown?.id) || 0;
     const layout = gen.layout;
@@ -719,7 +787,9 @@ export function mountTownRosterMap(root) {
     if (!townId || !layout || !canvas) return;
     const placed = (cache.pins?.length || 0) + (cache.props?.length || 0);
     if (cache.image_url) {
-      const extra = placed ? ' People, doors, and traps already on the map stay at their old positions.' : '';
+      const extra = layout.matched
+        ? ' People are moved onto their buildings.'
+        : (placed ? ' People, doors, and traps already on the map stay at their old positions.' : '');
       if (!window.confirm(`Replace the current map with this generated one?${extra}`)) return;
     }
     const useBtn = mapPane.querySelector('#tmap-gen-use');
@@ -739,6 +809,7 @@ export function mountTownRosterMap(root) {
       cache.error = '';
       cache.grid = null;
       cache.gridSrc = '';
+      if (layout.matched) await placeMatchedPins(townId, layout.pins || []);
       closeGenerator();
       paint();
       markPainted();

@@ -52,36 +52,55 @@ export function randomMapSeed() {
   return 1 + Math.floor(Math.random() * 999999);
 }
 
-export function generateMap({ kind = 'dungeon', size = 'medium', seed = 1 } = {}) {
+export function generateMap({ kind = 'dungeon', size = 'medium', seed = 1, buildings = null, people = null } = {}) {
   const safeKind = PRESETS[kind] ? kind : 'dungeon';
   const safeSize = PRESETS[safeKind][size] ? size : 'medium';
   let numeric = Math.floor(Number(seed));
   if (!Number.isFinite(numeric) || numeric <= 0) numeric = 1;
   numeric %= 1000000000;
   const rng = makeRng(numeric);
+  const places = planTownPlaces(buildings, people);
   const preset = PRESETS[safeKind][safeSize];
-  const built = safeKind === 'cave'
-    ? generateCave(rng, preset)
-    : safeKind === 'building'
-      ? generateBuilding(rng, preset)
-      : generateDungeon(rng, preset);
+  const built = places
+    ? generateMatched(rng, safeKind, safeSize, places)
+    : safeKind === 'cave'
+      ? generateCave(rng, preset)
+      : safeKind === 'building'
+        ? generateBuilding(rng, preset)
+        : generateDungeon(rng, preset);
   const rooms = built.rooms || [];
+  const width = built.width || preset.w;
+  const height = built.height || preset.h;
   return {
     kind: safeKind,
     size: safeSize,
     seed: numeric,
-    width: preset.w,
-    height: preset.h,
-    cell: chooseCell(preset.w, preset.h),
+    width,
+    height,
+    cell: chooseCell(width, height),
     tiles: built.tiles,
     facing: built.facing,
     rooms,
-    roomOf: stampRooms(preset.w, preset.h, rooms),
-    blurb: blurbFor(safeKind),
+    roomOf: stampRooms(width, height, rooms),
+    pins: built.pins || [],
+    matched: !!places,
+    buildingCount: places ? places.buildingCount : 0,
+    peopleCount: places ? places.peopleCount : 0,
+    blurb: places ? matchedBlurb(places) : blurbFor(safeKind),
   };
 }
 
 export function describeMap(layout) {
+  if (layout.matched) {
+    const buildings = layout.buildingCount || 0;
+    const people = layout.peopleCount || 0;
+    const style = layout.kind === 'cave' ? 'Cave' : layout.kind === 'building' ? 'Town' : 'Dungeon';
+    const buildingLabel = buildings
+      ? `${buildings} building${buildings === 1 ? '' : 's'}`
+      : 'no buildings';
+    const peopleLabel = `${people} ${people === 1 ? 'person' : 'people'}`;
+    return `${style} · ${buildingLabel} · ${peopleLabel} · seed ${layout.seed}`;
+  }
   const size = layout.size === 'small' ? 'Small' : layout.size === 'large' ? 'Large' : 'Medium';
   if (layout.kind === 'cave') return `${size} cave · seed ${layout.seed}`;
   const label = layout.kind === 'building' ? 'building' : 'dungeon';
@@ -127,6 +146,7 @@ export function paintMapPixels(data, layout) {
 
   const ink = [62, 48, 36, 255];
   for (const room of layout.rooms || []) {
+    if (room.label) continue;
     if (room.w < 3 || room.h < 3) continue;
     const anchor = numberAnchor(layout, room);
     const scale = room.w >= 5 && room.h >= 4 ? 2 : 1;
@@ -152,7 +172,295 @@ export function drawMap(canvas, layout) {
   const image = ctx.createImageData(pw, ph);
   paintMapPixels(image.data, layout);
   ctx.putImageData(image, 0, 0);
+  paintLabels(ctx, layout);
   return canvas;
+}
+
+function matchedBlurb(places) {
+  if (!places.buildingCount && places.peopleCount) {
+    return 'This town has no buildings yet, so each person has a place of their own.';
+  }
+  return 'Each room is one of this town’s buildings. The names inside are the people who belong there.';
+}
+
+function planTownPlaces(buildings, people) {
+  const roster = Array.isArray(people) ? people : [];
+  const byId = new Map();
+  for (const person of roster) {
+    const id = Number(person?.id);
+    if (!id) continue;
+    byId.set(id, person);
+  }
+  const dead = new Set();
+  for (const [id, person] of byId) {
+    if (isDead(person)) dead.add(id);
+  }
+  const living = (person) => {
+    const id = Number(person?.id);
+    if (!id || dead.has(id)) return false;
+    return true;
+  };
+  const taken = new Set();
+  const blocks = [];
+  let buildingCount = 0;
+  for (const building of Array.isArray(buildings) ? buildings : []) {
+    const name = String(building?.name || '').trim();
+    if (!name) continue;
+    if (String(building.status || '').toLowerCase() === 'destroyed') continue;
+    buildingCount += 1;
+    const peopleHere = [];
+    const seen = new Set();
+    const addPerson = (id, fallbackName) => {
+      const n = Number(id);
+      if (!n || seen.has(n) || taken.has(n) || dead.has(n)) return;
+      const known = byId.get(n);
+      if (known && isDead(known)) return;
+      seen.add(n);
+      taken.add(n);
+      peopleHere.push({ id: n, name: String(known?.name || fallbackName || 'Someone').trim() || 'Someone' });
+    };
+    for (const resident of building.residents || []) addPerson(resident?.id, resident?.name);
+    for (const person of roster) {
+      if (Number(person?.building_id) === Number(building.id)) addPerson(person.id, person.name);
+    }
+    if (building.owner_id) addPerson(building.owner_id, building.owner_name);
+    const rooms = (Array.isArray(building.rooms) ? building.rooms : [])
+      .map((room) => ({ name: String(room?.name || '').trim() }))
+      .filter((room) => room.name);
+    blocks.push({
+      name,
+      rooms: rooms.length ? rooms : [{ name }],
+      people: peopleHere,
+    });
+  }
+  const loose = [];
+  for (const person of roster) {
+    if (!living(person) || taken.has(Number(person.id))) continue;
+    taken.add(Number(person.id));
+    loose.push({ id: Number(person.id), name: String(person.name || 'Someone').trim() || 'Someone' });
+  }
+  if (blocks.length && loose.length) {
+    blocks.push({
+      name: 'Unassigned',
+      rooms: [{ name: 'Unassigned' }],
+      people: loose,
+    });
+  } else if (!blocks.length && loose.length) {
+    for (const person of loose) {
+      blocks.push({
+        name: person.name,
+        rooms: [{ name: person.name }],
+        people: [person],
+      });
+    }
+  }
+  if (!blocks.length) return null;
+  const peopleCount = blocks.reduce((sum, block) => sum + block.people.length, 0);
+  return { blocks, buildingCount, peopleCount };
+}
+
+function isDead(person) {
+  const status = String(person?.status || '').toLowerCase();
+  return status === 'deceased' || status === 'dead';
+}
+
+function generateMatched(rng, kind, size, places) {
+  const blocks = shuffle(places.blocks, rng).map((block) => shapeBlock(block, size));
+  const cols = Math.max(1, Math.ceil(Math.sqrt(blocks.length)));
+  const gap = kind === 'building' ? 3 : 2;
+  let x = 2;
+  let y = 2;
+  let rowH = 0;
+  let col = 0;
+  let maxX = 0;
+  let maxY = 0;
+  const rooms = [];
+  const shells = [];
+  for (const block of blocks) {
+    if (col === cols) {
+      x = 2;
+      y += rowH + gap;
+      rowH = 0;
+      col = 0;
+    }
+    shells.push({ x, y, w: block.w, h: block.h });
+    for (const room of block.rooms) {
+      rooms.push({
+        x: x + room.x,
+        y: y + room.y,
+        w: room.w,
+        h: room.h,
+        n: rooms.length + 1,
+        label: room.label,
+        people: room.people,
+      });
+    }
+    x += block.w + gap;
+    rowH = Math.max(rowH, block.h);
+    maxX = Math.max(maxX, x);
+    maxY = Math.max(maxY, y + rowH);
+    col += 1;
+  }
+  const width = Math.max(8, maxX + 1);
+  const height = Math.max(8, maxY + 2);
+  const tiles = new Uint8Array(width * height);
+  const facing = new Uint8Array(width * height);
+  if (kind === 'building') tiles.fill(MAP_TILE.YARD);
+  if (kind === 'building') {
+    for (const shell of shells) fillTiles(tiles, width, shell.x, shell.y, shell.w, shell.h, MAP_TILE.ROCK);
+  }
+  for (const room of rooms) fillTiles(tiles, width, room.x, room.y, room.w, room.h, MAP_TILE.FLOOR);
+  punchBuildingDoors(tiles, width, rooms, rng);
+  if (kind === 'building') {
+    for (const room of rooms) punchOutside(tiles, width, height, rooms, room);
+  } else {
+    connectRooms(tiles, width, height, rooms, rng);
+    linkComponents(tiles, width, height);
+  }
+  placeDoors(tiles, facing, width, height, rooms);
+  if (kind !== 'building' && rooms.length) {
+    dropStair(tiles, width, rooms[0], MAP_TILE.STAIR_UP);
+    if (rooms.length > 1) dropStair(tiles, width, rooms[rooms.length - 1], MAP_TILE.STAIR_DOWN);
+  }
+  const pins = rooms.flatMap((room) => pinsForRoom(room, width, height));
+  return { tiles, facing, rooms, pins, width, height };
+}
+
+function shapeBlock(block, size) {
+  const defs = block.rooms.length ? block.rooms : [{ name: block.name }];
+  const buckets = defs.map(() => []);
+  block.people.forEach((person, index) => buckets[index % buckets.length].push(person));
+  const cols = Math.min(3, defs.length);
+  const crowded = defs.length > 6;
+  let x = 1;
+  let y = 1;
+  let col = 0;
+  let rowH = 0;
+  let maxX = 2;
+  const rooms = [];
+  for (let i = 0; i < defs.length; i++) {
+    if (col === cols) {
+      x = 1;
+      y += rowH + 1;
+      rowH = 0;
+      col = 0;
+    }
+    const span = roomSpan(buckets[i].length, size, crowded);
+    const own = defs[i].name || block.name;
+    const label = defs.length === 1 || own.toLowerCase() === block.name.toLowerCase()
+      ? block.name
+      : `${block.name} · ${own}`;
+    rooms.push({ x, y, w: span.w, h: span.h, label, people: buckets[i] });
+    x += span.w + 1;
+    rowH = Math.max(rowH, span.h);
+    maxX = Math.max(maxX, x);
+    col += 1;
+  }
+  return { w: maxX, h: y + rowH + 1, rooms };
+}
+
+function roomSpan(peopleCount, size, crowded) {
+  const bonus = crowded ? 0 : size === 'large' ? 2 : size === 'small' ? 0 : 1;
+  return {
+    w: Math.max(7, Math.min(13, 6 + bonus + Math.min(3, Math.ceil(peopleCount / 3)))),
+    h: Math.max(5, Math.min(9, 4 + bonus + Math.min(2, peopleCount))),
+  };
+}
+
+function punchOutside(tiles, w, h, rooms, room) {
+  const x = room.x + Math.floor(room.w / 2);
+  const y = room.y + room.h;
+  if (x <= 0 || y <= 0 || x >= w - 1 || y >= h - 1) return;
+  if (roomAt(rooms, x, y)) return;
+  const i = y * w + x;
+  if (tiles[i] === MAP_TILE.ROCK || tiles[i] === MAP_TILE.YARD) tiles[i] = MAP_TILE.FLOOR;
+}
+
+function dropStair(tiles, w, room, tile) {
+  const x = room.x + 1;
+  const y = room.y + room.h - 2;
+  if (x < room.x || y < room.y || x >= room.x + room.w || y >= room.y + room.h) return;
+  const i = y * w + x;
+  if (tiles[i] === MAP_TILE.FLOOR) tiles[i] = tile;
+}
+
+function pinsForRoom(room, width, height) {
+  const people = room.people || [];
+  const count = people.length;
+  if (!count) return [];
+  const x0 = room.x + 0.8;
+  const x1 = room.x + room.w - 0.8;
+  const y0 = room.y + Math.min(room.h - 1.4, 2.4);
+  const y1 = room.y + room.h - 0.8;
+  const cols = Math.ceil(Math.sqrt(count));
+  const rows = Math.ceil(count / cols);
+  return people.map((person, index) => {
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    const x = cols === 1 ? (x0 + x1) / 2 : x0 + ((col + 0.5) / cols) * (x1 - x0);
+    const y = rows === 1 ? (y0 + y1) / 2 : y0 + ((row + 0.5) / rows) * (y1 - y0);
+    return {
+      characterId: person.id,
+      name: person.name,
+      xPct: (x / width) * 100,
+      yPct: (y / height) * 100,
+    };
+  });
+}
+
+function paintLabels(ctx, layout) {
+  const cell = layout.cell || CELL;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  for (const room of layout.rooms || []) {
+    if (!room.label) continue;
+    const maxW = Math.max(8, (room.w - 0.8) * cell);
+    const cx = (room.x + room.w / 2) * cell;
+    let y = (room.y + 0.28) * cell;
+    const titlePx = Math.max(10, Math.round(cell * 0.46));
+    ctx.font = `600 ${titlePx}px Georgia, "Times New Roman", serif`;
+    paintLine(ctx, fitLine(ctx, room.label, maxW), cx, y);
+    y += titlePx + 2;
+    const names = room.people || [];
+    const namePx = Math.max(8, Math.round(cell * 0.34));
+    ctx.font = `${namePx}px Georgia, "Times New Roman", serif`;
+    const shown = names.slice(0, 4);
+    for (const person of shown) {
+      if (y > (room.y + room.h - 0.4) * cell) break;
+      paintLine(ctx, fitLine(ctx, person.name, maxW), cx, y);
+      y += namePx + 1;
+    }
+    if (names.length > shown.length && y <= (room.y + room.h - 0.4) * cell) {
+      paintLine(ctx, `+${names.length - shown.length}`, cx, y);
+    }
+  }
+}
+
+function paintLine(ctx, text, x, y) {
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = 'rgba(255, 246, 232, 0.92)';
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = '#2c241c';
+  ctx.fillText(text, x, y);
+}
+
+function fitLine(ctx, text, maxW) {
+  const value = String(text || '');
+  if (ctx.measureText(value).width <= maxW) return value;
+  let out = value;
+  while (out.length > 1 && ctx.measureText(`${out}…`).width > maxW) out = out.slice(0, -1);
+  return `${out}…`;
+}
+
+function shuffle(list, rng) {
+  const out = list.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = irand(rng, 0, i);
+    const swap = out[i];
+    out[i] = out[j];
+    out[j] = swap;
+  }
+  return out;
 }
 
 function blurbFor(kind) {
