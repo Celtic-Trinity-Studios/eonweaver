@@ -199,7 +199,7 @@
                 <p class="landing-eyebrow">EDITIONS</p>
                 <h2 class="landing-section-title">Built around 3.5e. Friendly to the rest.</h2>
                 <p class="landing-section-lead">
-                    Eon Weaver's roster, sim, calendar, and scribe are edition-agnostic. The character sheet and level-up wizard go deepest on 3.5e today; other editions are usable now and growing.
+                    Roster, simulation, calendar, and scribe work for every campaign you create. The character sheet and level-up wizard are built for 3.5e. A 5e campaign still stores characters on that sheet, and the SRD browser switches to the 2014 or 2024 document.
                 </p>
                 <div class="landing-editions-grid">
                     <div class="landing-edition full">
@@ -208,59 +208,61 @@
                         <small>Default · level-up wizard · SRD browser</small>
                     </div>
                     <div class="landing-edition partial">
-                        <span class="landing-edition-name">Pathfinder 1e</span>
-                        <span class="landing-edition-status">Full support</span>
-                        <small>Shares the 3.5e foundation</small>
+                        <span class="landing-edition-name">5e 2014</span>
+                        <span class="landing-edition-status">SRD &amp; living world</span>
+                        <small>2014 SRD in the browser · 3.5e sheet layout</small>
                     </div>
                     <div class="landing-edition partial">
-                        <span class="landing-edition-name">5e</span>
-                        <span class="landing-edition-status">Roster &amp; sim</span>
-                        <small>Sheet WIP</small>
-                    </div>
-                    <div class="landing-edition partial">
-                        <span class="landing-edition-name">Pathfinder 2e</span>
-                        <span class="landing-edition-status">Roster &amp; sim</span>
-                        <small>Sheet WIP</small>
-                    </div>
-                    <div class="landing-edition partial">
-                        <span class="landing-edition-name">AD&amp;D 1e / 2e</span>
-                        <span class="landing-edition-status">Roster &amp; sim</span>
-                        <small>Sheet WIP</small>
-                    </div>
-                    <div class="landing-edition partial">
-                        <span class="landing-edition-name">OD&amp;D · 4e</span>
-                        <span class="landing-edition-status">Roster &amp; sim</span>
-                        <small>Sheet WIP</small>
+                        <span class="landing-edition-name">5e 2024</span>
+                        <span class="landing-edition-status">SRD &amp; living world</span>
+                        <small>Revised SRD in the browser · 3.5e sheet layout</small>
                     </div>
                 </div>
-                <p class="landing-note">Edition is set per campaign in Settings—switch any time.</p>
+                <p class="landing-note">Edition is set per campaign in Settings. These are the three choices the app offers today.</p>
             </section>
 
             <!-- Preview -->
             <section class="landing-section" data-landing-section="preview" role="tabpanel" aria-label="Preview" hidden>
                 <p class="landing-eyebrow">PREVIEW</p>
                 <h2 class="landing-section-title">A glimpse of the workspace.</h2>
-                <p class="landing-section-lead">Screenshots from the in-app views. (Live previews coming soon.)</p>
+                <p class="landing-section-lead">Sketches of the views you open after sign-in: roster, map, scribe, and calendar.</p>
                 <div class="landing-preview-grid">
                     <div class="landing-preview-card">
-                        <div class="landing-preview-thumb" aria-hidden="true">🏘️</div>
+                        <div class="landing-mock" aria-hidden="true">
+                            <div class="landing-mock-bar"><span>Roster</span><span>Alive</span></div>
+                            <div class="landing-mock-row"><span>Mira Vale</span><span>Hum</span><span>Clr 3</span></div>
+                            <div class="landing-mock-row"><span>Torin Ash</span><span>Dwf</span><span>Ftr 2</span></div>
+                            <div class="landing-mock-row is-muted"><span>Old Bren</span><span>Hum</span><span>Graveyard</span></div>
+                        </div>
                         <h3>Town roster</h3>
                         <p>Residents with stats, relationships, and history—filterable by race, class, and status.</p>
                     </div>
                     <div class="landing-preview-card">
-                        <div class="landing-preview-thumb" aria-hidden="true">🗺️</div>
+                        <div class="landing-mock landing-mock-map" aria-hidden="true">
+                            <span class="landing-mock-pin" style="left:28%;top:36%">Firsthold</span>
+                            <span class="landing-mock-pin" style="left:62%;top:58%">Saltmere</span>
+                            <span class="landing-mock-route"></span>
+                        </div>
                         <h3>World map with pins</h3>
                         <p>Your uploaded map with locations pinned and travel context between them.</p>
                     </div>
                     <div class="landing-preview-card">
-                        <div class="landing-preview-thumb" aria-hidden="true">📜</div>
+                        <div class="landing-mock landing-mock-prose" aria-hidden="true">
+                            <strong>The Ashen Gate</strong>
+                            <span></span><span></span><span class="is-short"></span>
+                        </div>
                         <h3>AI scribe entry</h3>
-                        <p>Auto-generated lore tied to the events that just unfolded in your towns.</p>
+                        <p>Generated lore tied to the towns, NPCs, and events already in the campaign.</p>
                     </div>
                     <div class="landing-preview-card">
-                        <div class="landing-preview-thumb" aria-hidden="true">📅</div>
+                        <div class="landing-mock landing-mock-cal" aria-hidden="true">
+                            <div class="landing-mock-bar"><span>Highsummer</span><span>Year 412</span></div>
+                            <div class="landing-mock-days">
+                                <i></i><i></i><i></i><i></i><i class="is-today"></i><i></i><i></i>
+                            </div>
+                        </div>
                         <h3>In-game calendar</h3>
-                        <p>Advance time between sessions; everything stays anchored to campaign dates.</p>
+                        <p>Advance time between sessions; towns and history stay on campaign dates.</p>
                     </div>
                 </div>
             </section>
@@ -336,6 +338,7 @@
             <div class="auth-card">
                 <div class="auth-brand">&#9876;&#65039; Eon Weaver</div>
                 <p class="auth-tagline">AI-Powered Campaign Manager</p>
+                <p id="auth-join-note" class="auth-hint" style="display:none;margin:0 0 0.75rem;"></p>
 
                 <div id="auth-error" class="auth-error" style="display:none"></div>
 

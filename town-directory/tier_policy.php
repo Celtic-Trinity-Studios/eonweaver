@@ -28,18 +28,10 @@ function ew_count_town_residents(int $townId, int $uid): int
 }
 
 /**
- * Call before inserting a new character (free tier only).
+ * Roster size is not tier-gated. Kept so older callers still resolve.
+ * AI spend is limited by credit_balance only.
  */
 function ew_assert_free_tier_population_cap(int $userId, int $townId, int $uid): void
 {
-    if (ew_user_subscription_tier($userId) !== 'free') {
-        return;
-    }
-    $cap = ew_free_tier_max_residents();
-    $n = ew_count_town_residents($townId, $uid);
-    if ($n >= $cap) {
-        throw new Exception(
-            "Free demo towns are limited to {$cap} residents. Remove a character or upgrade for larger settlements."
-        );
-    }
+    unset($userId, $townId, $uid);
 }

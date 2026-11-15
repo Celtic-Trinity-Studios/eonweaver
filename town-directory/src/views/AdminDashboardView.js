@@ -2340,7 +2340,7 @@ export default function AdminDashboardView(container) {
     /** Parse admin EC field → integer raw tokens for site_settings. */
     function tokenLimitEcInputToRawTokens(valueStr) {
         const v = String(valueStr ?? '').trim();
-        if (v === '') throw new Error('Enter EC (use 0 for no monthly cap on Free).');
+        if (v === '') throw new Error('Enter EC (use 0 for no monthly grant on Free).');
         const ec = Number(v);
         if (!Number.isFinite(ec) || ec < 0) throw new Error('EC must be a non-negative number.');
         return Math.round(ec * TOKENS_PER_CREDIT);
@@ -2369,7 +2369,7 @@ export default function AdminDashboardView(container) {
             </div>
         </div>
         <p class="admin-subtle" style="margin:0 0 .75rem 0; color: var(--text-muted); font-size:0.85rem;">
-            Keys matching <code>token_limit_*</code> are monthly platform AI ceilings. Edit values as <strong>Eon Credits (EC)</strong>; they are saved as <strong>raw tokens</strong> (EC × ${tcLabel}). Free tier: use <strong>0</strong> EC for no monthly cap (wallet-only).
+            Keys matching <code>token_limit_*</code> are the monthly credit grant added to the wallet. They do not stop AI while the wallet still has a balance. Edit values as <strong>Eon Credits (EC)</strong>; they are saved as <strong>raw tokens</strong> (EC × ${tcLabel}). Free: use <strong>0</strong> EC for no monthly grant.
         </p>
         <div class="admin-table-wrap">
           <table class="admin-table" id="settings-table">

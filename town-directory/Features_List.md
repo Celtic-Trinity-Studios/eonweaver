@@ -59,10 +59,14 @@ This document tracks all the custom features, mechanics, and UI additions we've 
 *   **Cross-references:** Manual `[[Page Title]]` wikilinks (create stubs on save) plus automatic title/alias mention links; backlinks panel and clickable lore graph.
 *   **AI ingest:** Scribe generations auto-create/update lore pages; locked or DM-edited pages queue a pending merge (replace / append / skip).
 *   **Player visibility:** Per-page flag exposed on player portal snapshots; character sheets can open/create a linked lore page.
+*   **Table seats:** The campaign owner invites players by link or email from Player Portal. Players sign in with their own accounts, accept, and open a read-only table (towns, living characters, recent history, player-visible lore). Roles are Player and Co-DM. A co-DM can invite players. Revoke removes access. Share tokens still work without an account.
+
+## 📌 Handout maps
+*   **Campaign map sheets:** Upload a continent, city, or dungeon image, pan and zoom, and drop markers. Click a marker for a sidebar with notes and a link to a lore page, town, NPC, or encounter. Separate from the strategic world map used for travel.
 
 ## 🗺️ Planned — full campaign manager
 
-Living towns + Scribe + **Lore Codex** cover prep and setting continuity. Remaining campaign-manager gaps (sessions, invites, battlemaps, etc.) stay in **`CAMPAIGN_MANAGER_ROADMAP.md`**.
+Living towns + Scribe + **Lore Codex** cover prep and setting continuity. Account seats let other players join a table; remaining campaign-manager gaps (sessions, co-DM editing, battlemaps, etc.) stay in **`CAMPAIGN_MANAGER_ROADMAP.md`**.
 
 ---
-*(Last updated: 2026-07-20)*
+*(Last updated: 2026-11-12)*

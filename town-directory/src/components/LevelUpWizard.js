@@ -14,6 +14,9 @@ import { FEATS, checkFeatPrereqs, getEligibleFeats } from '../engine/featData35e
 import { roll } from '../engine/dice.js';
 import { apiApplyLevelUp } from '../api/spellsEffects.js';
 import { parseClass, checkMulticlassXPPenalty } from '../engine/rules35e.js';
+import { getState } from '../stores/appState.js';
+import { apiSaveCharacter } from '../api/characters.js';
+import { showToast } from './Toast.js';
 
 /**
  * Open the Level-Up Wizard for a character.
@@ -21,6 +24,11 @@ import { parseClass, checkMulticlassXPPenalty } from '../engine/rules35e.js';
  * @param {Function} onComplete - Called after successful level up with updated character data
  */
 export async function openLevelUpWizard(character, onComplete) {
+  const edition = getState().currentCampaign?.dnd_edition || '3.5e';
+  if (edition === '5e' || edition === '5e2024') {
+    openFifthEditionLevelUp(character, onComplete, edition);
+    return;
+  }
   // Parse current class info
   const classStr = character.class || '';
   const charLevel = parseInt(character.level) || 0;
@@ -827,6 +835,40 @@ function ordinal(n) {
   const s = ['th', 'st', 'nd', 'rd'];
   const v = n % 100;
   return s[(v - 20) % 10] || s[v] || s[0];
+}
+
+function openFifthEditionLevelUp(character, onComplete, edition) {
+  const level = (parseInt(character.level, 10) || 1) + 1;
+  const proficiency = Math.floor((level - 1) / 4) + 2;
+  const { el, close } = showModal({
+    title: `${edition} level up — ${level}`,
+    content: `
+      <p>This path records the new level on the existing sheet. It does not apply 5e class tables.</p>
+      <div class="form-group"><label>Hit points gained</label><input id="fe-hp" class="form-input" type="number" min="1" value="6"></div>
+      <div class="form-group"><label>ASI or feat note</label><input id="fe-note" class="form-input" placeholder="${level % 4 === 0 ? 'Ability score or feat' : 'Optional note'}"></div>
+      <p class="hub-note">Proficiency bonus at this level is +${proficiency}.</p>
+      <button type="button" class="btn-primary" id="fe-save">Save level</button>
+    `,
+  });
+  el.querySelector('#fe-save')?.addEventListener('click', async () => {
+    const gained = Math.max(1, parseInt(el.querySelector('#fe-hp').value, 10) || 1);
+    const hp = (parseInt(character.hp, 10) || 0) + gained;
+    const note = el.querySelector('#fe-note').value.trim();
+    const history = [character.history || '', note ? `Level ${level}: ${note}` : ''].filter(Boolean).join('\n');
+    try {
+      await apiSaveCharacter(getState().currentTownId || character.town_id, {
+        id: character.id,
+        level: String(level),
+        hp: String(hp),
+        history,
+      });
+      showToast(`Now level ${level}.`, 'success');
+      close();
+      if (onComplete) onComplete({ ...character, level, hp, history });
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
 }
 
 export { parseMulticlass };

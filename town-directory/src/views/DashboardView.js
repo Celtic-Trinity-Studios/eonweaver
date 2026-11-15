@@ -1,301 +1,402 @@
 /**
  * Eon Weaver — Dashboard View
- * Campaign overview: list of towns, quick stats, recent activity.
+ * Campaign home: town cards (population, granary), one-month quick simulate, and shortcuts.
  */
 import { getState, setState } from '../stores/appState.js';
-import { apiGetTowns } from '../api/towns.js';
+import { apiGetTowns, apiCreateTown } from '../api/towns.js';
 import { apiGetCalendar, calendarToString } from '../api/settings.js';
 import { apiRunSimulation, apiApplySimulation, apiGetCampaignRules } from '../api/simulation.js';
 import { navigate } from '../router.js';
 import { confirmAiCost } from '../components/AiCostConfirm.js';
+import { showModal, closeModal } from '../components/Modal.js';
+import { showToast } from '../components/Toast.js';
+import { apiHubOverview } from '../api/campaignHub.js';
+import { apiTableStatus, apiPortalRead } from '../api/groundwork.js';
+
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function asTowns(res) {
+  return Array.isArray(res) ? res : (res?.towns || []);
+}
 
 export default function DashboardView(container) {
   const state = getState();
+  const campaignName = state.currentCampaign?.name || 'Your campaign';
 
   container.innerHTML = `
     <div class="view-dashboard">
       <header class="view-header">
-        <h1>Campaign Dashboard</h1>
-        <p class="view-subtitle">Overview of your world</p>
+        <div class="view-header-left">
+          <div>
+            <h1>Campaign Dashboard</h1>
+            <p class="view-subtitle" id="dash-campaign-line">${esc(campaignName)}</p>
+          </div>
+        </div>
+        <div class="view-header-right dash-shortcuts">
+          <button type="button" class="btn-secondary btn-sm" data-dash-route="sessions">Sessions</button>
+          <button type="button" class="btn-secondary btn-sm" data-dash-route="settings">Settings</button>
+          <button type="button" class="btn-secondary btn-sm" data-dash-route="world-simulate">World Simulate</button>
+          <button type="button" class="btn-secondary btn-sm" data-dash-route="calendar">Calendar</button>
+          <button type="button" class="btn-secondary btn-sm" data-dash-route="wiki">Lore Codex</button>
+        </div>
       </header>
 
       <div class="dashboard-grid">
         <div class="dash-card dash-card-calendar">
           <h3>Calendar</h3>
-          <div class="dash-calendar-display" id="dash-calendar">
-            ${state.calendar ? calendarToString(state.calendar) : 'Loading...'}
-          </div>
-        </div>
-
-        <div class="dash-card dash-card-towns">
-          <h3>Your Towns</h3>
-          <div id="dash-town-list" class="dash-town-list">Loading...</div>
-          <button class="btn-primary btn-sm" id="dash-new-town-btn">+ New Town</button>
+          <div class="dash-calendar-display" id="dash-calendar">Loading...</div>
+          <p class="dash-card-note">Advances when you simulate time.</p>
         </div>
 
         <div class="dash-card dash-card-stats">
           <h3>World Stats</h3>
           <div id="dash-world-stats" class="dash-stats-grid">Loading...</div>
         </div>
+
+        <div class="dash-card" id="dash-tonight">
+          <h3>Next session</h3>
+          <div id="dash-tonight-body">Loading...</div>
+          <div id="dash-table-status"></div>
+        </div>
       </div>
 
-      <!-- World Simulation Panel (hidden by default) -->
-      <div id="world-sim-panel" class="dash-card" style="display:none;margin-top:1rem;">
-        <h3>World Simulation</h3>
-        <div id="world-sim-content"></div>
-      </div>
+      <section class="dash-card dash-towns-panel">
+        <div class="dash-towns-head">
+          <h3>Your Towns</h3>
+          <button type="button" class="btn-primary btn-sm" id="dash-new-town-btn">+ New Town</button>
+        </div>
+        <div id="dash-town-list" class="dash-town-list">Loading...</div>
+      </section>
+
+      <div id="dash-quick-sim" class="dash-card dash-quick-sim" hidden></div>
     </div>
   `;
 
-  // Load data
-  loadDashboardData(container);
+  container.querySelectorAll('[data-dash-route]').forEach((btn) => {
+    btn.addEventListener('click', () => navigate(btn.dataset.dashRoute));
+  });
 
-  // New town button
   container.querySelector('#dash-new-town-btn')?.addEventListener('click', () => {
-    const name = prompt('Enter town name:');
-    if (name) {
-      import('../api/towns.js').then(({ apiCreateTown }) => {
-        apiCreateTown(name, '').then(() => loadDashboardData(container));
-      });
+    openNewTownModal(container);
+  });
+
+  loadDashboardData(container);
+}
+
+function openNewTownModal(container) {
+  const modal = showModal({
+    title: 'New town',
+    content: `
+      <div class="form-group">
+        <label for="dash-town-name">Name</label>
+        <input type="text" id="dash-town-name" class="form-input" maxlength="120" placeholder="e.g. Firsthold" autofocus>
+      </div>
+      <div class="form-group">
+        <label for="dash-town-sub">Subtitle</label>
+        <input type="text" id="dash-town-sub" class="form-input" maxlength="200" placeholder="Region, realm, or epithet">
+      </div>
+      <div class="dash-modal-actions">
+        <button type="button" class="btn-primary" id="dash-town-create">Create town</button>
+      </div>
+    `,
+  });
+
+  const nameInput = modal.el.querySelector('#dash-town-name');
+  const subInput = modal.el.querySelector('#dash-town-sub');
+  const createBtn = modal.el.querySelector('#dash-town-create');
+  nameInput?.focus();
+
+  const submit = async () => {
+    const name = nameInput?.value.trim() || '';
+    if (!name) {
+      showToast('Enter a town name.', 'warning');
+      nameInput?.focus();
+      return;
+    }
+    createBtn.disabled = true;
+    try {
+      await apiCreateTown(name, subInput?.value.trim() || '');
+      closeModal();
+      showToast(`${name} created.`, 'success');
+      await loadDashboardData(container);
+    } catch (err) {
+      createBtn.disabled = false;
+      showToast(err.message || 'Could not create town.', 'error');
+    }
+  };
+
+  createBtn?.addEventListener('click', submit);
+  modal.el.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      submit();
     }
   });
 }
 
+function openTown(townId) {
+  setState({ currentTownId: townId });
+  navigate(`town/${townId}`);
+}
+
 async function loadDashboardData(container) {
+  if (!container.isConnected) return;
+  const townListEl = container.querySelector('#dash-town-list');
+  const statsEl = container.querySelector('#dash-world-stats');
+  const calEl = container.querySelector('#dash-calendar');
+
   try {
-    const townsRes = await apiGetTowns();
-    const towns = Array.isArray(townsRes) ? townsRes : (townsRes.towns || []);
+    const [townsRes, calRes, hubRes, tableRes] = await Promise.all([
+      apiGetTowns(),
+      apiGetCalendar().catch(() => null),
+      apiHubOverview().catch(() => null),
+      apiTableStatus().catch(() => null),
+    ]);
+    if (!container.isConnected) return;
+
+    const towns = asTowns(townsRes);
     setState({ towns });
 
-    // Render town list
-    const townListEl = container.querySelector('#dash-town-list');
-    if (townListEl) {
-      if (towns.length === 0) {
-        townListEl.innerHTML = '<p class="muted">No towns yet. Create one to get started!</p>';
-      } else {
-        townListEl.innerHTML = towns.map(t => {
-          const food = t.macro_food_stores != null && t.macro_food_stores !== ''
-            ? `<span class="dash-town-food muted" title="Macro granary index">🌾 ${Number(t.macro_food_stores).toFixed(0)}</span>`
-            : '';
-          return `
-          <div class="dash-town-item" data-town-id="${t.id}">
-            <div class="dash-town-main">
-              <span class="dash-town-name">${t.name}</span>
-              ${food}
-            </div>
-            <span class="dash-town-sub">${t.subtitle || ''}</span>
-          </div>
-        `;
-        }).join('');
-
-        // Click to navigate to town
-        townListEl.querySelectorAll('.dash-town-item').forEach(item => {
-          item.addEventListener('click', () => {
-            navigate(`town/${item.dataset.townId}`);
-          });
-        });
-      }
+    if (calRes?.calendar) {
+      setState({ calendar: calRes.calendar });
+      if (calEl) calEl.textContent = calendarToString(calRes.calendar);
+    } else if (calEl && !getState().calendar) {
+      calEl.textContent = 'No calendar yet';
+    } else if (calEl && getState().calendar) {
+      calEl.textContent = calendarToString(getState().calendar);
     }
 
-    // World stats
-    const statsEl = container.querySelector('#dash-world-stats');
+    const living = towns.reduce((sum, t) => sum + (Number(t.alive_character_count) || 0), 0);
+    const total = towns.reduce((sum, t) => sum + (Number(t.character_count) || 0), 0);
     if (statsEl) {
       statsEl.innerHTML = `
         <div class="stat-item"><span class="stat-value">${towns.length}</span><span class="stat-label">Towns</span></div>
+        <div class="stat-item"><span class="stat-value">${living}</span><span class="stat-label">Living</span></div>
+        <div class="stat-item"><span class="stat-value">${total}</span><span class="stat-label">Roster</span></div>
       `;
     }
 
-    // Calendar
-    try {
-      const calRes = await apiGetCalendar();
-      if (calRes.calendar) {
-        setState({ calendar: calRes.calendar });
-        const calEl = container.querySelector('#dash-calendar');
-        if (calEl) calEl.textContent = calendarToString(calRes.calendar);
-      }
-    } catch (e) { /* ignore */ }
+    renderTownList(container, towns);
+    paintTonight(container, hubRes?.next_session || null, hubRes?.open_beats, !hubRes);
+    paintTableStatus(container, tableRes);
   } catch (err) {
     console.error('Dashboard load error:', err);
+    if (townListEl) {
+      townListEl.innerHTML = `<p class="dash-load-error">Could not load towns. ${esc(err.message || '')}</p>`;
+    }
+    if (statsEl) statsEl.innerHTML = '<p class="muted">Unavailable</p>';
+    paintTonight(container, null, null, true);
   }
 }
 
-/* ---- World Simulation ---- */
-async function startWorldSimulation(container) {
-  const panel = container.querySelector('#world-sim-panel');
-  const content = container.querySelector('#world-sim-content');
-  if (!panel || !content) return;
+function paintTonight(container, session, openBeats, failed = false) {
+  const el = container.querySelector('#dash-tonight-body');
+  if (!el) return;
+  const beats = openBeats > 0
+    ? `<p class="dash-card-note">${openBeats} open prep beat${openBeats === 1 ? '' : 's'}.</p>`
+    : '';
+  if (failed) {
+    el.innerHTML = `<p class="muted">Session planner unavailable.</p>`;
+    return;
+  }
+  if (!session) {
+    el.innerHTML = `
+      <p class="muted">No session planned.</p>
+      <button type="button" class="btn-secondary btn-sm" id="dash-open-sessions">Open session planner</button>
+    `;
+  } else {
+    const when = [session.real_date, session.in_game_label].filter(Boolean).join(' · ');
+    const goals = session.goals ? `<p class="dash-quick-summary">${esc(String(session.goals).slice(0, 220))}</p>` : '';
+    el.innerHTML = `
+      <strong>${esc(session.title)}</strong>
+      ${when ? `<p class="dash-card-note">${esc(when)}</p>` : ''}
+      ${goals}
+      ${beats}
+      <button type="button" class="btn-secondary btn-sm" id="dash-open-sessions">Open session</button>
+    `;
+  }
+  el.querySelector('#dash-open-sessions')?.addEventListener('click', () => navigate('sessions'));
+}
 
-  // Get towns
-  const townsRes = await apiGetTowns();
-  const towns = Array.isArray(townsRes) ? townsRes : (townsRes.towns || []);
-  if (towns.length === 0) {
-    alert('No towns to simulate.');
+function paintTableStatus(container, tableRes) {
+  const el = container.querySelector('#dash-table-status');
+  if (!el) return;
+  if (!tableRes) {
+    el.innerHTML = '';
+    return;
+  }
+  const place = tableRes.party_location?.name ? `Party is based in ${tableRes.party_location.name}.` : '';
+  const unread = Number(tableRes.unread) || 0;
+  const items = (tableRes.activity || []).map((item) => `<li>${esc(item.summary)}</li>`).join('');
+  el.innerHTML = `
+    ${place ? `<p class="dash-card-note">${esc(place)}</p>` : ''}
+    <p class="dash-card-note">${unread} unread player update${unread === 1 ? '' : 's'}.</p>
+    ${items ? `<ul>${items}</ul>` : ''}
+    ${unread ? '<button type="button" class="btn-secondary btn-sm" id="dash-mark-read">Mark read</button>' : ''}
+  `;
+  el.querySelector('#dash-mark-read')?.addEventListener('click', async () => {
+    await apiPortalRead();
+    el.querySelector('#dash-mark-read')?.remove();
+  });
+}
+
+function renderTownList(container, towns) {
+  const townListEl = container.querySelector('#dash-town-list');
+  if (!townListEl) return;
+
+  if (!towns.length) {
+    townListEl.innerHTML = `
+      <div class="dash-empty">
+        <p>No towns yet. Create one, then open the roster or run a month of simulation from here.</p>
+        <button type="button" class="btn-secondary btn-sm" id="dash-empty-settings">Set campaign tone in Settings</button>
+      </div>
+    `;
+    townListEl.querySelector('#dash-empty-settings')?.addEventListener('click', () => navigate('settings'));
     return;
   }
 
-  // Get campaign rules
+  townListEl.innerHTML = towns.map((t) => {
+    const alive = Number(t.alive_character_count) || 0;
+    const total = Number(t.character_count) || 0;
+    const buried = Math.max(0, total - alive);
+    const food = t.macro_food_stores != null && t.macro_food_stores !== ''
+      ? `<span class="dash-town-food" title="Macro granary index">🌾 ${Number(t.macro_food_stores).toFixed(0)}</span>`
+      : '';
+    const subtitle = t.subtitle ? `<span class="dash-town-sub">${esc(t.subtitle)}</span>` : '';
+    return `
+      <article class="dash-town-card">
+        <button type="button" class="dash-town-open" data-action="open" data-town-id="${t.id}">
+          <span class="dash-town-name">${esc(t.name)}</span>
+          ${subtitle}
+          <span class="dash-town-meta">
+            <span>${alive} living${buried ? ` · ${buried} in the graveyard` : ''}</span>
+            ${food}
+          </span>
+        </button>
+        <div class="dash-town-actions">
+          <button type="button" class="btn-secondary btn-sm" data-action="stats" data-town-id="${t.id}">Stats</button>
+          <button type="button" class="btn-secondary btn-sm" data-action="sim" data-town-id="${t.id}">1 month</button>
+        </div>
+      </article>
+    `;
+  }).join('');
+
+  townListEl.querySelectorAll('[data-action]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const townId = parseInt(btn.dataset.townId, 10);
+      const town = towns.find((t) => Number(t.id) === townId);
+      if (!town) return;
+      if (btn.dataset.action === 'stats') {
+        setState({ currentTownId: townId });
+        navigate(`townstats/${townId}`);
+        return;
+      }
+      if (btn.dataset.action === 'sim') {
+        quickSimulate(container, town);
+        return;
+      }
+      openTown(townId);
+    });
+  });
+}
+
+async function quickSimulate(container, town) {
+  const panel = container.querySelector('#dash-quick-sim');
+  if (!panel) return;
+
+  const pop = Math.max(1, Number(town.alive_character_count) || Number(town.character_count) || 50);
+  const proceed = await confirmAiCost('simulation', {
+    months: 1,
+    population: pop,
+    intakeCount: 0,
+  });
+  if (!proceed || !container.isConnected) return;
+
+  panel.hidden = false;
+  panel.innerHTML = `<h3>One month — ${esc(town.name)}</h3><p>Running simulation…</p>`;
+  panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
   let rules = '';
   try {
     const rulesRes = await apiGetCampaignRules();
     rules = rulesRes.rules_text || '';
-  } catch (e) { /* no rules */ }
+  } catch { /* campaign rules are optional */ }
 
-  panel.style.display = '';
-  content.innerHTML =
-    '<div class="wsim-config">' +
-    '  <div class="sim-field"><label>Months to Simulate</label>' +
-    '    <div class="sim-months-group">' +
-    '      <button class="sim-month-btn" data-months="1">1</button>' +
-    '      <button class="sim-month-btn active" data-months="3">3</button>' +
-    '      <button class="sim-month-btn" data-months="6">6</button>' +
-    '      <button class="sim-month-btn" data-months="12">12</button>' +
-    '      <input type="number" id="wsim-months-custom" class="form-input" min="1" max="24" placeholder="Custom" style="width:70px;">' +
-    '    </div>' +
-    '  </div>' +
-    '  <div class="sim-field"><label>Instructions (applied to all towns)</label>' +
-    '    <textarea id="wsim-instructions" class="form-input" rows="2" placeholder="Optional instructions for all towns..."></textarea>' +
-    '  </div>' +
-    '  <div style="margin-top:0.75rem;">' +
-    '    <strong>Towns to simulate (' + towns.length + '):</strong> ' +
-    towns.map(t => t.name).join(', ') +
-    '  </div>' +
-    '  <div style="margin-top:0.75rem;">' +
-    '    <button class="btn-primary" id="wsim-start-btn">Start World Simulation</button>' +
-    '    <button class="btn-secondary" id="wsim-cancel-btn" style="margin-left:0.5rem;">Cancel</button>' +
-    '  </div>' +
-    '</div>';
+  try {
+    const result = await apiRunSimulation(town.id, 1, rules, '', 0);
+    if (!container.isConnected) return;
+    const sim = result.simulation || {};
+    const changes = sim.changes || {};
+    const newChars = changes.new_characters?.length || 0;
+    const deaths = changes.deaths?.length || 0;
+    const events = sim.events?.length || 0;
+    const summary = sim.summary || 'Simulation complete. Review before applying.';
 
-  // Month buttons
-  let selectedMonths = 3;
-  content.querySelectorAll('.sim-month-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-      content.querySelectorAll('.sim-month-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-      selectedMonths = parseInt(btn.dataset.months);
-      content.querySelector('#wsim-months-custom').value = '';
+    panel.innerHTML = `
+      <h3>One month — ${esc(town.name)}</h3>
+      <p class="dash-quick-summary">${esc(summary)}</p>
+      <div class="dash-quick-stats">
+        <span>New characters: ${newChars}</span>
+        <span>Deaths: ${deaths}</span>
+        <span>Events: ${events}</span>
+      </div>
+      <div class="dash-quick-actions">
+        <button type="button" class="btn-primary" id="dash-sim-apply">Apply changes</button>
+        <button type="button" class="btn-secondary" id="dash-sim-skip">Discard</button>
+        <button type="button" class="btn-secondary" id="dash-sim-full">Open full simulation</button>
+      </div>
+    `;
+
+    panel.querySelector('#dash-sim-skip')?.addEventListener('click', () => {
+      panel.hidden = true;
+      panel.innerHTML = '';
+      showToast('Simulation discarded. Nothing was saved.', 'info');
     });
-  });
-  content.querySelector('#wsim-months-custom')?.addEventListener('change', (e) => {
-    const v = parseInt(e.target.value);
-    if (v > 0) {
-      selectedMonths = v;
-      content.querySelectorAll('.sim-month-btn').forEach(b => b.classList.remove('active'));
-    }
-  });
-
-  // Cancel
-  content.querySelector('#wsim-cancel-btn')?.addEventListener('click', () => {
-    panel.style.display = 'none';
-  });
-
-  // Start
-  content.querySelector('#wsim-start-btn')?.addEventListener('click', async () => {
-    const instructions = content.querySelector('#wsim-instructions')?.value || '';
-    // Show AI cost confirmation
-    const proceed = await confirmAiCost('worldSimulation', {
-      months: selectedMonths,
-      towns: towns.map((t) => ({
-        population: Math.max(1, Number(t.alive_character_count) || Number(t.character_count) || 50),
-      })),
-      intakeCount: 0,
-      billingMode: 'dashboard',
+    panel.querySelector('#dash-sim-full')?.addEventListener('click', () => {
+      setState({ currentTownId: town.id });
+      navigate('simulation');
     });
-    if (!proceed) return;
-    await runWorldSim(content, towns, selectedMonths, rules, instructions);
-  });
-}
-
-async function runWorldSim(content, towns, months, rules, instructions) {
-  content.innerHTML =
-    '<div class="wsim-progress">' +
-    '  <div class="wsim-status-header">Simulating ' + towns.length + ' town' + (towns.length !== 1 ? 's' : '') + ' for ' + months + ' month' + (months !== 1 ? 's' : '') + '...</div>' +
-    '  <div id="wsim-town-list" class="wsim-town-list"></div>' +
-    '  <div id="wsim-current" class="wsim-current"></div>' +
-    '</div>';
-
-  const listEl = content.querySelector('#wsim-town-list');
-  const currentEl = content.querySelector('#wsim-current');
-
-  // Build town status list
-  listEl.innerHTML = towns.map((t, i) =>
-    '<div class="wsim-town-row" id="wsim-row-' + i + '">' +
-    '  <span class="wsim-town-name">' + t.name + '</span>' +
-    '  <span class="wsim-town-status" id="wsim-status-' + i + '">Pending</span>' +
-    '</div>'
-  ).join('');
-
-  let applied = 0, skipped = 0, failed = 0;
-
-  for (let i = 0; i < towns.length; i++) {
-    const town = towns[i];
-    const statusEl = content.querySelector('#wsim-status-' + i);
-    const rowEl = content.querySelector('#wsim-row-' + i);
-    if (rowEl) rowEl.classList.add('wsim-active');
-    if (statusEl) statusEl.textContent = 'Simulating...';
-
-    try {
-      const result = await apiRunSimulation(town.id, months, rules, instructions, 0);
-      const sim = result.simulation;
-      const newChars = sim?.changes?.new_characters?.length || 0;
-      const deaths = sim?.changes?.deaths?.length || 0;
-      const events = sim?.events?.length || 0;
-
-      if (statusEl) statusEl.textContent = 'Done - Review';
-      if (rowEl) rowEl.classList.remove('wsim-active');
-
-      // Show summary and ask apply/skip
-      const action = await showTownResult(currentEl, town, sim, newChars, deaths, events, months);
-
-      if (action === 'apply') {
-        await apiApplySimulation(town.id, sim.changes, sim.new_history_entry, months, 0, {
+    panel.querySelector('#dash-sim-apply')?.addEventListener('click', async () => {
+      const applyBtn = panel.querySelector('#dash-sim-apply');
+      if (applyBtn) {
+        applyBtn.disabled = true;
+        applyBtn.textContent = 'Applying…';
+      }
+      try {
+        await apiApplySimulation(town.id, changes, sim.new_history_entry || null, 1, 0, {
           arrivalNamePool: result.arrival_name_pool,
         });
-        if (statusEl) { statusEl.textContent = 'Applied'; statusEl.classList.add('wsim-applied'); }
-        applied++;
-      } else {
-        if (statusEl) { statusEl.textContent = 'Skipped'; statusEl.classList.add('wsim-skipped'); }
-        skipped++;
+        showToast(`Applied one month in ${town.name}.`, 'success');
+        panel.hidden = true;
+        panel.innerHTML = '';
+        const cal = getState().calendar;
+        const calEl = container.querySelector('#dash-calendar');
+        if (cal && calEl) calEl.textContent = calendarToString(cal);
+        await loadDashboardData(container);
+      } catch (err) {
+        if (applyBtn) {
+          applyBtn.disabled = false;
+          applyBtn.textContent = 'Apply changes';
+        }
+        showToast(err.message || 'Apply failed.', 'error');
       }
-    } catch (err) {
-      if (statusEl) { statusEl.textContent = 'Error: ' + err.message.substring(0, 50); statusEl.classList.add('wsim-error'); }
-      if (rowEl) rowEl.classList.remove('wsim-active');
-      failed++;
-    }
+    });
+  } catch (err) {
+    panel.innerHTML = `
+      <h3>One month — ${esc(town.name)}</h3>
+      <p class="dash-load-error">${esc(err.message || 'Simulation failed.')}</p>
+      <button type="button" class="btn-secondary btn-sm" id="dash-sim-close">Close</button>
+    `;
+    panel.querySelector('#dash-sim-close')?.addEventListener('click', () => {
+      panel.hidden = true;
+      panel.innerHTML = '';
+    });
   }
-
-  // Final summary
-  currentEl.innerHTML =
-    '<div class="wsim-final">' +
-    '  <h3>World Simulation Complete</h3>' +
-    '  <p>' + applied + ' town' + (applied !== 1 ? 's' : '') + ' applied, ' +
-    skipped + ' skipped, ' + failed + ' failed</p>' +
-    '  <button class="btn-primary" id="wsim-done-btn">Done</button>' +
-    '</div>';
-
-  content.querySelector('#wsim-done-btn')?.addEventListener('click', () => {
-    navigate('dashboard');
-  });
-}
-
-function showTownResult(el, town, sim, newChars, deaths, events, months) {
-  return new Promise((resolve) => {
-    const summary = sim?.summary || 'Simulation complete.';
-    el.innerHTML =
-      '<div class="wsim-review">' +
-      '  <h4>' + town.name + ' - Results</h4>' +
-      '  <p class="wsim-summary">' + summary + '</p>' +
-      '  <div class="wsim-result-stats">' +
-      '    <span>New Characters: ' + newChars + '</span>' +
-      '    <span>Deaths: ' + deaths + '</span>' +
-      '    <span>Events: ' + events + '</span>' +
-      '  </div>' +
-      '  <div class="wsim-review-actions">' +
-      '    <button class="btn-primary" id="wsim-apply-btn">Apply Changes</button>' +
-      '    <button class="btn-secondary" id="wsim-skip-btn">Skip</button>' +
-      '  </div>' +
-      '</div>';
-
-    el.querySelector('#wsim-apply-btn')?.addEventListener('click', () => resolve('apply'));
-    el.querySelector('#wsim-skip-btn')?.addEventListener('click', () => resolve('skip'));
-  });
 }

@@ -465,6 +465,7 @@ The headings **How to use this checklist** and **Suggested run order** are meta 
 | Done | ID | Feature | Primary surface | Test procedure | Notes |
 |------|-----|---------|-----------------|----------------|-------|
 | [ ] | MAP-01 | World map render | World map | 1) Multiple towns: markers or list. 2) Navigation to town. | |
+| [ ] | MAP-CM-05 | Clickable handout map + inspector | Handout Maps (`campaign-maps`) | 1) Create a map and upload an image. 2) Pan and zoom. 3) Place a marker; save name and notes. 4) Link it to a lore page, town, NPC, or encounter. 5) Click the marker and use Open link. | Separate from the strategic world map. |
 | [ ] | STATS-01 | Town stats aggregates | Town stats | 1) Population breakdowns. 2) Refresh after sim. | |
 
 ---

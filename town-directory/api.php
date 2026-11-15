@@ -235,6 +235,16 @@ try {
                 // Get active campaign
                 $camps = query('SELECT id, name, dnd_edition, description FROM campaigns WHERE user_id = ? AND is_active = 1 ORDER BY id LIMIT 1', [(int) $user['id']], 0);
                 $user['active_campaign'] = $camps[0] ?? null;
+                $user['joined_tables'] = [];
+                $user['pending_table_invites'] = [];
+                try {
+                    require_once __DIR__ . '/campaign_seats_lib.php';
+                    $user['joined_tables'] = ew_joined_tables_for_user((int) $user['id']);
+                    $user['pending_table_invites'] = ew_pending_invites_for_user((int) $user['id'], (string) ($user['email'] ?? ''));
+                } catch (Throwable $e) {
+                    $user['joined_tables'] = [];
+                    $user['pending_table_invites'] = [];
+                }
             }
             respond($user ? ['ok' => true, 'user' => $user] : ['ok' => false, 'user' => null]);
             break;
@@ -435,6 +445,11 @@ try {
             }
             execute('DELETE FROM towns WHERE campaign_id = ?', [$cid], $uid);
             execute('DELETE FROM campaigns WHERE id = ?', [$cid], 0);
+            try {
+                require_once __DIR__ . '/campaign_seats_lib.php';
+                ew_ensure_campaign_seats();
+                execute('DELETE FROM campaign_seats WHERE campaign_id = ?', [$cid], 0);
+            } catch (Throwable $e) { /* seats table may not exist yet */ }
             // Activate another campaign if none active
             $active = query('SELECT id FROM campaigns WHERE user_id = ? AND is_active = 1 LIMIT 1', [$uid], 0);
             if (!$active) {
@@ -5082,6 +5097,100 @@ try {
             respond(['ok' => true, 'campaign_id' => $campaignId, 'snapshots' => $rows]);
             break;
 
+        case 'campaign_seats':
+            $user = requireAuth();
+            require_once __DIR__ . '/campaign_seats_lib.php';
+            $campaignId = ew_resolve_managed_campaign_id((int) $user['id'], (int) ($_GET['campaign_id'] ?? 0));
+            $list = ew_campaign_seat_list((int) $user['id'], $campaignId);
+            respond(['ok' => true] + $list);
+            break;
+
+        case 'campaign_seat_invite':
+            $user = requireAuth();
+            require_once __DIR__ . '/campaign_seats_lib.php';
+            $campaignId = ew_resolve_managed_campaign_id((int) $user['id'], (int) ($input['campaign_id'] ?? 0));
+            $created = ew_campaign_seat_invite(
+                (int) $user['id'],
+                $campaignId,
+                trim((string) ($input['role'] ?? 'player')),
+                trim((string) ($input['email'] ?? ''))
+            );
+            respond(['ok' => true, 'campaign_id' => $campaignId] + $created);
+            break;
+
+        case 'campaign_seat_revoke':
+            $user = requireAuth();
+            require_once __DIR__ . '/campaign_seats_lib.php';
+            $campaignId = ew_resolve_managed_campaign_id((int) $user['id'], (int) ($input['campaign_id'] ?? 0));
+            $seatId = (int) ($input['seat_id'] ?? 0);
+            if ($seatId <= 0) {
+                throw new Exception('Missing seat_id.');
+            }
+            ew_campaign_seat_revoke((int) $user['id'], $campaignId, $seatId);
+            respond(['ok' => true, 'seat_id' => $seatId]);
+            break;
+
+        case 'campaign_seat_role':
+            $user = requireAuth();
+            require_once __DIR__ . '/campaign_seats_lib.php';
+            $campaignId = ew_resolve_managed_campaign_id((int) $user['id'], (int) ($input['campaign_id'] ?? 0));
+            $seatId = (int) ($input['seat_id'] ?? 0);
+            if ($seatId <= 0) {
+                throw new Exception('Missing seat_id.');
+            }
+            ew_campaign_seat_set_role((int) $user['id'], $campaignId, $seatId, trim((string) ($input['role'] ?? '')));
+            respond(['ok' => true, 'seat_id' => $seatId]);
+            break;
+
+        case 'campaign_invite_preview':
+            require_once __DIR__ . '/campaign_seats_lib.php';
+            $preview = ew_invite_preview(trim((string) ($_GET['token'] ?? '')), currentUser());
+            respond(['ok' => true] + $preview);
+            break;
+
+        case 'campaign_invite_accept':
+            $user = requireAuth();
+            require_once __DIR__ . '/campaign_seats_lib.php';
+            $accepted = ew_accept_campaign_invite(
+                (int) $user['id'],
+                (string) ($user['email'] ?? ''),
+                trim((string) ($input['token'] ?? '')),
+                (int) ($input['seat_id'] ?? 0)
+            );
+            respond(['ok' => true] + $accepted);
+            break;
+
+        case 'my_tables':
+            $user = requireAuth();
+            require_once __DIR__ . '/campaign_seats_lib.php';
+            respond([
+                'ok' => true,
+                'tables' => ew_joined_tables_for_user((int) $user['id']),
+                'pending' => ew_pending_invites_for_user((int) $user['id'], (string) ($user['email'] ?? '')),
+            ]);
+            break;
+
+        case 'player_seat_snapshot':
+            $user = requireAuth();
+            require_once __DIR__ . '/campaign_seats_lib.php';
+            $campaignId = (int) ($_GET['campaign_id'] ?? 0);
+            if ($campaignId <= 0) {
+                throw new Exception('campaign_id is required.');
+            }
+            respond(['ok' => true] + ew_player_seat_snapshot((int) $user['id'], $campaignId));
+            break;
+
+        case 'player_seat_leave':
+            $user = requireAuth();
+            require_once __DIR__ . '/campaign_seats_lib.php';
+            $campaignId = (int) ($input['campaign_id'] ?? 0);
+            if ($campaignId <= 0) {
+                throw new Exception('campaign_id is required.');
+            }
+            ew_leave_campaign_seat((int) $user['id'], $campaignId);
+            respond(['ok' => true, 'campaign_id' => $campaignId]);
+            break;
+
         case 'player_portal_snapshot':
             $user = requireAuth();
             $uid = (int) $user['id'];
@@ -6119,6 +6228,52 @@ try {
         case 'delete_campaign_map_poi':
             require_once __DIR__ . '/campaign_map_lib.php';
             campaignMapHandle($action, $input);
+            break;
+
+        case 'hub_overview':
+        case 'hub_bundle':
+        case 'hub_session_save':
+        case 'hub_session_delete':
+        case 'hub_beat_save':
+        case 'hub_beat_delete':
+        case 'hub_table_save':
+        case 'hub_table_delete':
+        case 'hub_table_roll':
+        case 'hub_draft_save':
+        case 'hub_draft_delete':
+        case 'hub_player_board':
+            require_once __DIR__ . '/campaign_hub_lib.php';
+            hubHandle($action, $input);
+            break;
+
+        case 'gw_share_read':
+        case 'gw_table_status':
+        case 'gw_portal_read':
+        case 'gw_companions':
+        case 'gw_companion_save':
+        case 'gw_companion_delete':
+        case 'gw_battlemaps':
+        case 'gw_battlemap_save':
+        case 'gw_battlemap_procedural':
+        case 'gw_battlemap_delete':
+        case 'gw_mark_save':
+        case 'gw_mark_delete':
+        case 'gw_blocks':
+        case 'gw_block_save':
+        case 'gw_block_delete':
+        case 'gw_queue_generation':
+        case 'gw_file_recap':
+        case 'gw_seed_sessions':
+        case 'gw_share_create':
+        case 'gw_homebrew_access':
+        case 'gw_homebrew_access_set':
+        case 'gw_player_options':
+        case 'gw_create_pc':
+        case 'gw_set_portrait':
+        case 'gw_folders':
+        case 'gw_file_folder':
+            require_once __DIR__ . '/groundwork_lib.php';
+            gwHandle($action, $input);
             break;
 
         default:

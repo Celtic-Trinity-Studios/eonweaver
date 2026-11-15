@@ -17,9 +17,39 @@ export default defineConfig({
                 target: 'http://localhost:8080',
                 changeOrigin: true,
             },
+            '/dev/api.php': {
+                target: 'http://localhost:8080',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/dev/, ''),
+            },
             '/simulate.php': {
                 target: 'http://localhost:8080',
                 changeOrigin: true,
+            },
+            '/dev/simulate.php': {
+                target: 'http://localhost:8080',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/dev/, ''),
+            },
+            '/dev/auth.php': {
+                target: 'http://localhost:8080',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/dev/, ''),
+            },
+            '/dev/upload_content.php': {
+                target: 'http://localhost:8080',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/dev/, ''),
+            },
+            '/dev/upload_portrait.php': {
+                target: 'http://localhost:8080',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/dev/, ''),
+            },
+            '/dev/upload_world_map.php': {
+                target: 'http://localhost:8080',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/dev/, ''),
             },
             '/auth.php': {
                 target: 'http://localhost:8080',
@@ -28,6 +58,33 @@ export default defineConfig({
             '/upload_portrait.php': {
                 target: 'http://localhost:8080',
                 changeOrigin: true,
+            },
+            '/upload_campaign_map.php': {
+                target: 'http://localhost:8080',
+                changeOrigin: true,
+            },
+            '/dev/upload_campaign_map.php': {
+                target: 'http://localhost:8080',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/dev/, ''),
+            },
+            '/upload_encounter_table.php': {
+                target: 'http://localhost:8080',
+                changeOrigin: true,
+            },
+            '/upload_town_map.php': {
+                target: 'http://localhost:8080',
+                changeOrigin: true,
+            },
+            '/dev/upload_town_map.php': {
+                target: 'http://localhost:8080',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/dev/, ''),
+            },
+            '/dev/upload_encounter_table.php': {
+                target: 'http://localhost:8080',
+                changeOrigin: true,
+                rewrite: (path) => path.replace(/^\/dev/, ''),
             },
         },
     },

@@ -33,6 +33,11 @@ try {
     $uid = (int) $user['id'];
     $fileType = trim($_POST['file_type'] ?? 'document'); // map, handout, asset, document
     $description = trim($_POST['description'] ?? '');
+    $folder = trim($_POST['folder'] ?? '');
+    if ($folder === '') {
+        $folder = 'content';
+    }
+    $folder = substr($folder, 0, 100);
     $campaignScoped = ($_POST['campaign_scoped'] ?? '1') === '1';
 
     // Validate upload
@@ -63,29 +68,15 @@ try {
     $udata = query('SELECT subscription_tier FROM users WHERE id = ?', [$uid], 0);
     $tier = ew_normalize_subscription_tier((string) ($udata[0]['subscription_tier'] ?? 'free'));
     $lim = ew_tier_limits_for_user_tier($tier);
-    $maxFileSize = (int) $lim['content_max_file_bytes'];
-    $maxFiles = (int) $lim['content_max_files'];
     $maxStorage = (int) $lim['content_max_storage_bytes'];
 
-    if ($file['size'] > $maxFileSize) {
-        $limitMB = $maxFileSize / (1024 * 1024);
-        respond(['ok' => false, 'error' => "File too large (max {$limitMB}MB for {$tier} tier)"]);
-    }
-
-    // Count existing files (from user's SQLite DB)
+    // File count and per-file size are not tier caps. The library stops at the storage quota.
     try {
-        $fileCount = userQuery($uid, 'SELECT COUNT(*) as c FROM user_files');
-        $currentCount = (int) ($fileCount[0]['c'] ?? 0);
-        if ($currentCount >= $maxFiles) {
-            respond(['ok' => false, 'error' => "File limit reached ({$maxFiles} files for {$tier} tier). Delete some files first."]);
-        }
-
-        // Check total storage
         $storageUsed = userQuery($uid, 'SELECT SUM(file_size) as total FROM user_files');
         $currentStorage = (int) ($storageUsed[0]['total'] ?? 0);
         if ($currentStorage + $file['size'] > $maxStorage) {
-            $limitMB = $maxStorage / (1024 * 1024);
-            respond(['ok' => false, 'error' => "Storage limit reached ({$limitMB}MB for {$tier} tier). Delete some files first."]);
+            $limitMB = round($maxStorage / (1024 * 1024));
+            respond(['ok' => false, 'error' => "Storage limit reached ({$limitMB} MB). Delete some files to free space."]);
         }
     } catch (Exception $e) {
         // DB might not exist yet — skip limit checks, getUserDB will auto-create
@@ -116,8 +107,8 @@ try {
 
     // Save to user's SQLite DB
     $newId = userInsert($uid,
-        'INSERT INTO user_files (campaign_id, filename, original_name, file_type, mime_type, file_size, description) VALUES (?,?,?,?,?,?,?)',
-        [$campId, $filename, $originalName, $fileType, $mime, $file['size'], $description]
+        'INSERT INTO user_files (campaign_id, filename, original_name, file_type, mime_type, file_size, description, folder) VALUES (?,?,?,?,?,?,?,?)',
+        [$campId, $filename, $originalName, $fileType, $mime, $file['size'], $description, $folder]
     );
 
     $url = "users/{$uid}/content/{$filename}";

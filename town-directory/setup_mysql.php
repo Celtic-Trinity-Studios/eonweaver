@@ -242,6 +242,40 @@ try {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     $results[] = '✅ campaigns table';
 
+    try {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS campaign_seats (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            campaign_id INT NOT NULL,
+            user_id INT NULL,
+            role VARCHAR(20) NOT NULL DEFAULT 'player',
+            status VARCHAR(20) NOT NULL DEFAULT 'invited',
+            invite_email VARCHAR(255) NULL,
+            invite_token_hash CHAR(64) NULL,
+            invited_by INT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            accepted_at DATETIME NULL,
+            revoked_at DATETIME NULL,
+            expires_at DATETIME NULL,
+            KEY idx_seat_campaign_status (campaign_id, status),
+            KEY idx_seat_user_status (user_id, status),
+            KEY idx_seat_token (invite_token_hash),
+            KEY idx_seat_email (invite_email, status)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $results[] = '✅ campaign_seats table';
+    } catch (Exception $e) {
+        $results[] = '⚠️ campaign_seats: ' . htmlspecialchars($e->getMessage());
+    }
+
+    try {
+        require_once __DIR__ . '/campaign_hub_lib.php';
+        hubEnsureSchema();
+        require_once __DIR__ . '/groundwork_lib.php';
+        gwEnsureSchema();
+        $results[] = '✅ campaign hub tables (sessions, prep timeline, roll tables, workshop drafts)';
+    } catch (Exception $e) {
+        $results[] = '⚠️ campaign hub: ' . htmlspecialchars($e->getMessage());
+    }
+
     // Keep users.active_campaign_id in sync where the column exists (non-fatal if column missing until migration above runs)
     try {
         $hasCol = $pdo->query("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'active_campaign_id'")->fetchColumn();

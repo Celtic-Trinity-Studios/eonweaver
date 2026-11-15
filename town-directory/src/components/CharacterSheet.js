@@ -6,6 +6,7 @@ import { getState, setState, userCanDebug } from '../stores/appState.js';
 import { apiSaveCharacter, apiDeleteCharacter, apiGetCharacters, apiLevelUpCharacter, normalizeCharacter } from '../api/characters.js';
 import { parseClass, calcBAB, abilityMod, parseGearWeapons } from '../engine/rulesAdapter.js';
 import { calcAttackBonuses } from '../engine/rules35e.js'; // 3.5e-specific iterative attacks
+import { apiCompanions, apiCompanionSave, apiCompanionDelete } from '../api/groundwork.js';
 
 /* ── Helpers ────────────────────────────────────────────── */
 const fmtMod = (m) => m >= 0 ? `+${m}` : `${m}`;
@@ -251,6 +252,7 @@ export function renderCharacterSheet(el, c, options = {}) {
         <div class="cs-header-info">
           <h1 class="cs-name">${c.name}</h1>
           <p class="cs-subtitle">${subtitle}</p>
+          ${['5e', '5e2024'].includes(getState().currentCampaign?.dnd_edition) ? `<p class="cs-subtitle">5e sheet groundwork · proficiency ${fmtMod(Math.floor(((parseInt(c.level, 10) || 1) - 1) / 4) + 2)}</p>` : ''}
           ${c.status === 'Deceased' ? '<span class="cs-deceased">☠ DECEASED</span>' : ''}
         </div>
       </div>
@@ -271,6 +273,7 @@ export function renderCharacterSheet(el, c, options = {}) {
       <button class="cs-tab" data-tab="network">🕸 Network</button>
       <button class="cs-tab" data-tab="family">🌳 Family</button>
       <button class="cs-tab" data-tab="background">📖 Background</button>
+      <button class="cs-tab" data-tab="companions">🐾 Companions</button>
     </div>
 
     <!-- Tab Content -->
@@ -304,6 +307,12 @@ export function renderCharacterSheet(el, c, options = {}) {
     <div class="cs-tab-content" id="cs-tab-family" style="display:none;">
       <div id="cs-family-tree-root"><div class="cs-loading">Loading family tree...</div></div>
     </div>
+    <div class="cs-tab-content" id="cs-tab-companions" style="display:none;">
+      <div class="cs-block">
+        <div class="cs-block-title">Familiars, mounts, pets</div>
+        <div id="cs-companions"><div class="cs-loading">Open this tab to load companions.</div></div>
+      </div>
+    </div>
     <div class="cs-tab-content" id="cs-tab-background" style="display:none;">
       ${buildBackgroundTab(c)}
     </div>
@@ -334,6 +343,7 @@ export function renderCharacterSheet(el, c, options = {}) {
   let spellsLoaded = false;
   let familyLoaded = false;
   let networkLoaded = false;
+  let companionsLoaded = false;
   el.querySelectorAll('.cs-tab').forEach(tab => {
     tab.addEventListener('click', () => {
       el.querySelectorAll('.cs-tab').forEach(t => t.classList.remove('active'));
@@ -364,6 +374,10 @@ export function renderCharacterSheet(el, c, options = {}) {
       if (tab.dataset.tab === 'family' && !familyLoaded && c.id) {
         familyLoaded = true;
         loadAndRenderFamilyTree(el, c.id, c, { onListRefresh, containerRef });
+      }
+      if (tab.dataset.tab === 'companions' && !companionsLoaded && c.id) {
+        companionsLoaded = true;
+        loadCompanions(el, c.id);
       }
     });
   });
@@ -3272,6 +3286,54 @@ function buildBackgroundTab(c) {
       </div>` : ''}
     </div>
   </div>`;
+}
+
+function escComp(s) {
+  return String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+
+async function loadCompanions(el, characterId) {
+  const host = el.querySelector('#cs-companions');
+  if (!host) return;
+  try {
+    const res = await apiCompanions(characterId);
+    const rows = res.companions || [];
+    host.innerHTML = `
+      ${rows.map((row) => `
+        <div class="cs-block" style="margin-bottom:.5rem;">
+          <strong>${escComp(row.kind)}</strong> ${escComp(row.name)}
+          <p>${escComp(row.notes || '')}</p>
+          <pre style="white-space:pre-wrap;">${escComp(row.statblock || '')}</pre>
+          <button type="button" class="btn-danger btn-sm" data-del-comp="${row.id}">Remove</button>
+        </div>
+      `).join('') || '<p class="cs-muted">No familiar, mount, or pet yet.</p>'}
+      <div class="hub-form-row">
+        <select id="cs-comp-kind" class="form-input"><option value="familiar">Familiar</option><option value="mount">Mount</option><option value="pet">Pet</option></select>
+        <input id="cs-comp-name" class="form-input" placeholder="Name">
+      </div>
+      <textarea id="cs-comp-notes" class="form-input" rows="2" placeholder="Bond, notes"></textarea>
+      <textarea id="cs-comp-block" class="form-input" rows="3" placeholder="Statblock text"></textarea>
+      <button type="button" class="btn-primary btn-sm" id="cs-comp-save">Save companion</button>
+    `;
+    host.querySelector('#cs-comp-save')?.addEventListener('click', async () => {
+      await apiCompanionSave({
+        character_id: characterId,
+        kind: host.querySelector('#cs-comp-kind').value,
+        name: host.querySelector('#cs-comp-name').value,
+        notes: host.querySelector('#cs-comp-notes').value,
+        statblock: host.querySelector('#cs-comp-block').value,
+      });
+      loadCompanions(el, characterId);
+    });
+    host.querySelectorAll('[data-del-comp]').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        await apiCompanionDelete(parseInt(btn.dataset.delComp, 10));
+        loadCompanions(el, characterId);
+      });
+    });
+  } catch (err) {
+    host.textContent = err.message;
+  }
 }
 
 /* ── Editable Sections ───────────────────────────────────── */

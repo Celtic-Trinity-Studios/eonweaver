@@ -27,7 +27,7 @@ Use this file **while** you work through `QA_FEATURE_CHECKLIST.md`. When a test 
 
 | # | Date (YYYY-MM-DD) | Checklist ID | Want / Need | Summary | Notes / links |
 |---|-------------------|--------------|-------------|---------|---------------|
-| *(add rows below this line)* | | | | | |
+| — | — | — | — | No open items. | |
 
 ---
 
@@ -36,6 +36,7 @@ Use this file **while** you work through `QA_FEATURE_CHECKLIST.md`. When a test 
 | # | Resolved date | Checklist ID | Was Want/Need | Summary | How it was closed |
 |---|---------------|--------------|-----------------|---------|-------------------|
 | 1 | 2026-05-11 | N/A | — | Staging deploy **worldscribe.online** (live SPA + PHP) | `npm run build` then `.\deploy_worldscribe.ps1 -SkipGitCommit` (Discord deploy ping succeeded). URL: https://worldscribe.online/ . Source: same-session `git push` on branch `cursor/worldscribe-staging-openrouter-intake-scribe` (includes Help/sidebar/appHref bundle). |
+| 2 | 2026-11-12 | MAP-CM-05 | Want | Clickable campaign maps: markers open a sidebar with location/NPC/lore info | Handout Maps route `campaign-maps`: upload, pan/zoom, markers linked to lore, town, NPC, or encounter. |
 | *(move rows here when done)* | | | | | |
 
 ---

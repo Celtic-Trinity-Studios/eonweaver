@@ -41,10 +41,6 @@ function fmtStorage(bytes) {
   return `${Math.round(n / (1024 * 1024))} MB`;
 }
 
-function qty(n) {
-  return (Number(n) || 0) >= 999 ? 'Unlimited' : String(n);
-}
-
 function priceLabel(usd) {
   const p = Number(usd) || 0;
   if (p <= 0) return 'Free';
@@ -58,10 +54,10 @@ function formatTokens(n) {
   return String(v);
 }
 
-/** Free tier: no monthly raw cap — wallet-only (starter ~1.5 EC). */
-function monthlyAiCapDisplay(t) {
+/** Monthly wallet grant. Free with a 0 grant is wallet-only. */
+function monthlyGrantDisplay(t) {
   const cap = Number(t.monthly_raw_token_cap) || 0;
-  if (t.id === 'free' && cap <= 0) return 'Wallet only (no monthly cap)';
+  if (cap <= 0) return 'Wallet only';
   return `~${formatWalletTc(rawTokensToTc(cap))} EC`;
 }
 
@@ -101,7 +97,7 @@ function renderTierCta(t, currentTierId, username, billingEnabled, hasActiveSubs
 function renderTierCards(catalog, currentTierId, username, billingEnabled, hasActiveSubscription) {
   return catalog
     .map((t) => {
-      const capDd = monthlyAiCapDisplay(t);
+      const capDd = monthlyGrantDisplay(t);
       const isCurrent = t.id === currentTierId;
       const lines = Array.isArray(t.includes) ? t.includes : [];
       const lis = lines.map((line) => `<li>${escHtml(line)}</li>`).join('');
@@ -113,12 +109,8 @@ function renderTierCards(catalog, currentTierId, username, billingEnabled, hasAc
         </div>
         <div class="subscription-card-price">${priceLabel(t.price_usd_month)}</div>
         <dl class="subscription-card-specs">
-          <div><dt>Campaigns</dt><dd>${qty(t.max_campaigns)}</dd></div>
-          <div><dt>Towns / campaign</dt><dd>${qty(t.max_towns_per_campaign)}</dd></div>
-          <div><dt>Content files</dt><dd>${Number(t.content_max_files) || 0}</dd></div>
           <div><dt>Library storage</dt><dd>${fmtStorage(t.content_max_storage_bytes)}</dd></div>
-          <div><dt>Max upload</dt><dd>${Math.round((Number(t.content_max_file_bytes) || 0) / (1024 * 1024))} MB</dd></div>
-          <div><dt>Platform AI / mo (cap)</dt><dd title="Free: starter EC wallet only, no monthly ceiling. Paid: calendar-month raw-token ceiling on platform wallet.">${capDd}</dd></div>
+          <div><dt>Monthly credit grant</dt><dd title="Added to your wallet each billing cycle. AI stops only when the wallet is empty, on any plan.">${capDd}</dd></div>
         </dl>
         <h4 class="subscription-includes-title">Includes</h4>
         <ul class="subscription-includes-list">${lis}</ul>
@@ -133,15 +125,11 @@ function renderTierCards(catalog, currentTierId, username, billingEnabled, hasAc
 function renderCompareTable(catalog) {
   const rows = catalog
     .map((t) => {
-      const capDd = monthlyAiCapDisplay(t);
+      const capDd = monthlyGrantDisplay(t);
       return `<tr>
         <td><span class="tier-badge tier-${escHtml(t.id)}">${escHtml(t.label || t.id)}</span></td>
         <td>${priceLabel(t.price_usd_month)}</td>
-        <td>${qty(t.max_campaigns)}</td>
-        <td>${qty(t.max_towns_per_campaign)}</td>
-        <td>${Number(t.content_max_files) || 0}</td>
         <td>${fmtStorage(t.content_max_storage_bytes)}</td>
-        <td>${Math.round((Number(t.content_max_file_bytes) || 0) / (1024 * 1024))} MB</td>
         <td>${capDd}</td>
       </tr>`;
     })
@@ -152,12 +140,8 @@ function renderCompareTable(catalog) {
         <tr>
           <th>Tier</th>
           <th>Price</th>
-          <th>Campaigns</th>
-          <th>Towns / campaign</th>
-          <th>Files</th>
-          <th>Storage</th>
-          <th>Max file</th>
-          <th>Monthly AI cap</th>
+          <th>Library storage</th>
+          <th>Monthly grant</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -191,9 +175,7 @@ function renderUsagePanel(usage) {
         </div>
         ${walletLine}
         <p class="muted" style="margin:0.5rem 0 0;font-size:0.85rem;line-height:1.45">
-          ${tier === 'free'
-            ? 'Free tier: no monthly platform cap — AI draws from your EC wallet until empty.'
-            : 'No monthly raw-token ceiling on this plan — wallet limits apply.'}
+          AI calls run while your wallet has credits, on any plan. This plan does not add a monthly grant.
           ${formatTokens(tokens_used || 0)} tokens used (${(call_count || 0).toLocaleString()} calls).
         </p>
       </div>`;
@@ -216,10 +198,10 @@ function renderUsagePanel(usage) {
         <div class="usage-bar-labels">
           <span>${formatTokens(tokens_used)} used</span>
           <span style="color:${barColor}">${pct}%</span>
-          <span>${formatTokens(token_limit)} cap</span>
+          <span>${formatTokens(token_limit)} grant</span>
         </div>
       </div>
-      <p class="muted" style="margin:0.5rem 0 0;font-size:0.8rem">${(call_count || 0).toLocaleString()} AI calls this month</p>
+      <p class="muted" style="margin:0.5rem 0 0;font-size:0.8rem">${(call_count || 0).toLocaleString()} AI calls this month. The bar is the monthly grant. Calls keep running while the wallet has credits, including credits saved before a plan change.</p>
     </div>`;
 }
 
@@ -275,7 +257,7 @@ function renderPlansBody({ catalog, tier, username, usage, billingEnabled, hasAc
       </div>
     </section>
     <section class="subscription-foot muted">
-      <p><strong>Free tier:</strong> Simulation uses the same EC wallet rules as other AI (no separate paywall); paid tiers add a monthly token ceiling on top of EC.</p>
+      <p><strong>Every plan:</strong> Towns, campaigns, and rosters are not capped. AI calls spend the wallet and stop when it is empty. Credits saved on a higher plan still spend after you move to Free. Paid plans add a monthly credit grant on renewal.</p>
       <p><strong>Renewals:</strong> When Stripe successfully charges your subscription each cycle, your wallet receives that plan’s monthly EC allotment (in addition to any unused balance).</p>
       <p>EC display uses ${TOKENS_PER_CREDIT.toLocaleString()} raw tokens = 1.00 EC (wallet stores raw tokens).</p>
     </section>`;

@@ -10,7 +10,7 @@ import {
 } from '../api/wiki.js';
 import { showToast } from '../components/Toast.js';
 import { escHtml, renderLoreMarkdown } from '../utils/loreMarkdown.js';
-import { navigate } from '../router.js';
+import { navigate, appHref } from '../router.js';
 
 const CATEGORIES = [
   { id: '', label: 'All categories' },
@@ -109,6 +109,7 @@ export default function WikiView(container) {
             </div>
             <div class="lore-actions">
               <button type="button" class="btn-primary" id="lore-save">Save page</button>
+              <button type="button" class="btn-secondary" id="lore-share">Share link</button>
               <button type="button" class="btn-secondary" id="lore-insert-link">Insert [[link]]</button>
               <button type="button" class="btn-secondary" id="lore-toggle-preview">Preview</button>
               <button type="button" class="btn-danger" id="lore-delete" hidden>Delete</button>
@@ -493,6 +494,21 @@ export default function WikiView(container) {
   });
 
   container.querySelector('#lore-save').addEventListener('click', savePage);
+  container.querySelector('#lore-share')?.addEventListener('click', async () => {
+    if (!currentId) {
+      showToast('Save the page first.', 'warning');
+      return;
+    }
+    try {
+      const { apiShareCreate } = await import('../api/groundwork.js');
+      const res = await apiShareCreate('wiki', currentId, els.title?.value || '');
+      const url = `${window.location.origin}${appHref('share/' + res.token)}`;
+      await navigator.clipboard.writeText(url).catch(() => {});
+      showToast('Share link copied. Anyone with the link can read this page.', 'success');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
 
   container.querySelector('#lore-delete').addEventListener('click', async () => {
     if (!currentId) return;

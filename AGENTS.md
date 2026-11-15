@@ -4,7 +4,7 @@ This repo holds **Eon Weaver**, a Vite SPA plus PHP/MySQL backend. Use this file
 
 ## Hosts
 
-- **Production:** **https://eonscribe.com** — live player-facing site. OpenRouter chat requests use **`APP_PUBLIC_URL` / `APP_PUBLIC_TITLE`** from `config.php` (see `config.example.php`) so attribution stays correct everywhere (including when you test from worldscribe).
+- **Production:** **https://eonweaver.com** — live player-facing site. OpenRouter chat requests use **`APP_PUBLIC_URL` / `APP_PUBLIC_TITLE`** from `config.php` (see `config.example.php`) so attribution stays correct everywhere (including when you test from worldscribe).
 - **Staging / planning:** **https://worldscribe.online/** — FTP via `deploy_worldscribe.ps1`, `base: '/'` in the live build.
 
 1. **FTP env files** (all gitignored, disk only — never paste passwords into commits or chat):  
@@ -17,7 +17,8 @@ This repo holds **Eon Weaver**, a Vite SPA plus PHP/MySQL backend. Use this file
 
 One-time / rare DB setup: `setup_mysql.php?key=…` on the host you are initializing (staging vs production URLs differ — use your real domain).
 
-**Phases** (intake vs Scribe vs DB vs UI): see `town-directory/PROJECT_PHASES.md`.
+**Phases** (intake vs Scribe vs DB vs UI): see `town-directory/PROJECT_PHASES.md`.  
+**Campaign-manager roadmap** (future sessions / players / generator gaps): see `town-directory/CAMPAIGN_MANAGER_ROADMAP.md`.
 
 **“next step” in a new chat:** read `town-directory/QA_PROGRESS.md` (cursor + ordered IDs) with `town-directory/QA_FEATURE_CHECKLIST.md` (**Systematic pass**) for feature titles/surfaces—reply with **implementation work**, not browser test steps (human QA later). Update **`Last completed ID`** on **`done <ID>`**. Say **“QA next step”** only if they want test procedures pasted.
 

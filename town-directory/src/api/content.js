@@ -54,7 +54,7 @@ export function apiDeleteUserFile(fileId) {
  * Upload a file to the content library.
  * Uses FormData since we're uploading binary files.
  */
-export async function apiUploadContent(file, fileType = 'document', description = '', campaignScoped = true) {
+export async function apiUploadContent(file, fileType = 'document', description = '', campaignScoped = true, folder = 'content') {
     const _base = (import.meta.env?.BASE_URL || '/').replace(/\/$/, '');
     const url = `${_base}/upload_content.php`;
 
@@ -63,6 +63,7 @@ export async function apiUploadContent(file, fileType = 'document', description 
     formData.append('file_type', fileType);
     formData.append('description', description);
     formData.append('campaign_scoped', campaignScoped ? '1' : '0');
+    formData.append('folder', folder || 'content');
 
     const res = await fetch(url, {
         method: 'POST',

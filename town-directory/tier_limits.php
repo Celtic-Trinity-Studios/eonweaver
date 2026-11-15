@@ -2,8 +2,8 @@
 /**
  * Subscription tier quotas — campaigns, towns, per-account content library.
  *
- * Monthly platform AI raw-token ceilings: tier_economics.php (and site_settings overrides).
- * Free-tier NPC population cap: tier_policy.php / FREE_TIER_MAX_RESIDENTS.
+ * Monthly figures in tier_economics.php are wallet grants, not a hard stop on AI.
+ * Towns, campaigns, and roster size are not capped by tier.
  *
  * When changing commercial defaults, update Price_Analysis.md and keep this file in sync.
  *
@@ -30,8 +30,8 @@ if (!function_exists('ew_subscription_tier_ids')) {
             'free' => [
                 'label' => 'Free',
                 'price_usd_month' => 0.0,
-                'max_campaigns' => 1,
-                'max_towns_per_campaign' => 3,
+                'max_campaigns' => 999,
+                'max_towns_per_campaign' => 999,
                 'content_max_file_bytes' => 2 * 1024 * 1024,
                 'content_max_files' => 10,
                 'content_max_storage_bytes' => 20 * 1024 * 1024,
@@ -39,8 +39,8 @@ if (!function_exists('ew_subscription_tier_ids')) {
             'apprentice' => [
                 'label' => 'Apprentice',
                 'price_usd_month' => 5.0,
-                'max_campaigns' => 2,
-                'max_towns_per_campaign' => 4,
+                'max_campaigns' => 999,
+                'max_towns_per_campaign' => 999,
                 'content_max_file_bytes' => 3 * 1024 * 1024,
                 'content_max_files' => 25,
                 'content_max_storage_bytes' => 50 * 1024 * 1024,
@@ -48,8 +48,8 @@ if (!function_exists('ew_subscription_tier_ids')) {
             'adventurer' => [
                 'label' => 'Adventurer',
                 'price_usd_month' => 10.0,
-                'max_campaigns' => 3,
-                'max_towns_per_campaign' => 5,
+                'max_campaigns' => 999,
+                'max_towns_per_campaign' => 999,
                 'content_max_file_bytes' => 5 * 1024 * 1024,
                 'content_max_files' => 50,
                 'content_max_storage_bytes' => 100 * 1024 * 1024,
@@ -57,8 +57,8 @@ if (!function_exists('ew_subscription_tier_ids')) {
             'guild_master' => [
                 'label' => 'Guild Master',
                 'price_usd_month' => 20.0,
-                'max_campaigns' => 10,
-                'max_towns_per_campaign' => 10,
+                'max_campaigns' => 999,
+                'max_towns_per_campaign' => 999,
                 'content_max_file_bytes' => 10 * 1024 * 1024,
                 'content_max_files' => 200,
                 'content_max_storage_bytes' => 500 * 1024 * 1024,
@@ -95,56 +95,35 @@ if (!function_exists('ew_subscription_tier_ids')) {
 
     /**
      * Short product bullets for checkout / Settings (no HTML).
-     * Free-tier population cap: tier_policy.php (ew_free_tier_max_residents).
-     *
      * @return list<string>
      */
     function ew_tier_included_feature_bullets(string $tierId): array
     {
-        if (!function_exists('ew_free_tier_max_residents')) {
-            require_once __DIR__ . '/tier_policy.php';
-        }
         $tierId = ew_normalize_subscription_tier($tierId);
         $lim = ew_tier_limits_for_user_tier($tierId);
-        $maxFileMb = (int) ceil($lim['content_max_file_bytes'] / (1024 * 1024));
         $libMb = (int) round($lim['content_max_storage_bytes'] / (1024 * 1024));
         $libGb = $lim['content_max_storage_bytes'] >= 1024 * 1024 * 1024
             ? round($lim['content_max_storage_bytes'] / (1024 * 1024 * 1024), 1) . ' GB'
             : $libMb . ' MB';
 
-        $campStr = $lim['max_campaigns'] >= 999 ? 'unlimited' : (string) $lim['max_campaigns'];
-        $townStr = $lim['max_towns_per_campaign'] >= 999 ? 'unlimited' : (string) $lim['max_towns_per_campaign'];
         $quota = sprintf(
-            'This tier: %s campaign(s), up to %s towns per campaign, up to %d handouts/files (%s total storage, %d MB max per upload).',
-            $campStr,
-            $townStr,
-            $lim['content_max_files'],
-            $libGb,
-            $maxFileMb
+            'Library storage: %s. Towns, campaigns, roster size, and file count are not capped. A file can be as large as the storage you have left.',
+            $libGb
         );
 
         $aiWalletLine =
             $tierId === 'free'
-                ? 'Free tier: ~1.5 EC starter grant after email verification; no monthly platform AI allowance—usage draws only from your EC wallet until empty (EC top-ups planned).'
-                : 'Platform AI uses your Eon Credits (EC) wallet and a per-calendar-month raw-token ceiling; new subscriptions seed your wallet with that tier’s monthly EC allowance (upgrades add the difference).';
+                ? 'AI calls spend your Eon Credits and stop only when the wallet is empty. Credits saved on a paid plan still spend after you move to Free. Free adds a small starter grant after email verification and does not add a monthly grant.'
+                : 'AI calls spend your Eon Credits and stop only when the wallet is empty. This plan adds a monthly credit grant on each renewal (upgrades add the difference). Unused credits stay in the wallet if you later change plans.';
 
-        $core = [
+        return [
             $quota,
             'SRD rules browser (edition follows the active campaign).',
             'Towns: roster, relationships, buildings, town history, in-game calendar, campaign rules & lore.',
             'Wiki, Scribe, homebrew, world map, trade routes, calendar tooling, and exports where enabled in your build.',
             $aiWalletLine,
-            'AI town and multi-town world simulation use the same platform wallet and token rules as other AI.',
+            'AI town and multi-town world simulation use the same wallet as other AI calls.',
         ];
-
-        if ($tierId === 'free') {
-            $n = ew_free_tier_max_residents();
-            return array_merge($core, [
-                "Free demo towns: up to {$n} residents per town.",
-            ]);
-        }
-
-        return $core;
     }
 
     /**

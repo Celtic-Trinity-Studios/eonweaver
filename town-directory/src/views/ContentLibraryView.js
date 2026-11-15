@@ -5,6 +5,7 @@
  */
 import { showToast } from '../components/Toast.js';
 import { apiGetUserFiles, apiDeleteUserFile, apiUploadContent } from '../api/content.js';
+import { apiFolders } from '../api/groundwork.js';
 
 const FILE_TYPE_OPTIONS = [
     { value: 'map', label: '🗺️ Map', icon: '🗺️' },
@@ -40,6 +41,11 @@ export default function ContentLibraryView(container) {
             <label>Description <span class="muted">(optional)</span></label>
             <input class="form-input" id="cl-upload-desc" placeholder="Brief description of this file...">
           </div>
+          <div class="form-group">
+            <label>Folder</label>
+            <input class="form-input" id="cl-upload-folder" list="cl-folders" placeholder="content" value="content">
+            <datalist id="cl-folders"></datalist>
+          </div>
           <div class="cl-upload-actions">
             <button class="btn-primary btn-sm" id="cl-upload-btn">📤 Upload</button>
             <button class="btn-secondary btn-sm" id="cl-upload-cancel">Cancel</button>
@@ -62,6 +68,12 @@ export default function ContentLibraryView(container) {
     const fileInput = container.querySelector('#cl-file-input');
     const uploadOptions = container.querySelector('#cl-upload-options');
     let pendingFiles = [];
+
+    apiFolders().then((res) => {
+        const list = container.querySelector('#cl-folders');
+        if (!list) return;
+        list.innerHTML = (res.folders || []).map((name) => `<option value="${String(name).replace(/"/g, '&quot;')}">`).join('');
+    }).catch(() => {});
 
     dropzone.addEventListener('click', () => fileInput.click());
     dropzone.addEventListener('dragover', (e) => { e.preventDefault(); dropzone.classList.add('dragover'); });
@@ -91,6 +103,7 @@ export default function ContentLibraryView(container) {
         if (!pendingFiles.length) return;
         const fileType = container.querySelector('#cl-upload-type').value;
         const description = container.querySelector('#cl-upload-desc').value.trim();
+        const folder = container.querySelector('#cl-upload-folder')?.value.trim() || 'content';
         const btn = container.querySelector('#cl-upload-btn');
         btn.disabled = true;
         btn.textContent = '⏳ Uploading...';
@@ -98,7 +111,7 @@ export default function ContentLibraryView(container) {
         let successCount = 0;
         for (const file of pendingFiles) {
             try {
-                await apiUploadContent(file, fileType, description);
+                await apiUploadContent(file, fileType, description, true, folder);
                 successCount++;
             } catch (e) {
                 showToast(`Upload failed for "${file.name}": ${e.message}`, 'error');
@@ -132,17 +145,18 @@ async function loadFiles(container) {
         const storageUsed = res.storage_used || 0;
         const storageLimit = res.storage_limit || 20 * 1024 * 1024;
         const fileCount = res.file_count || 0;
-        const fileLimit = res.file_limit || 10;
 
         const usedMB = (storageUsed / (1024 * 1024)).toFixed(1);
-        const limitMB = (storageLimit / (1024 * 1024)).toFixed(0);
+        const limitLabel = storageLimit >= 1024 * 1024 * 1024
+            ? `${(storageLimit / (1024 * 1024 * 1024)).toFixed(storageLimit % (1024 * 1024 * 1024) === 0 ? 0 : 1)} GB`
+            : `${(storageLimit / (1024 * 1024)).toFixed(0)} MB`;
         const pct = Math.min(100, (storageUsed / storageLimit) * 100);
 
         storageEl.innerHTML = `
         <div class="cl-storage-bar-container">
           <div class="cl-storage-label">
-            <span>📊 ${fileCount} / ${fileLimit} files</span>
-            <span>${usedMB} MB / ${limitMB} MB used</span>
+            <span>📊 ${fileCount} file${fileCount === 1 ? '' : 's'}</span>
+            <span>${usedMB} MB / ${limitLabel} used</span>
           </div>
           <div class="cl-storage-bar">
             <div class="cl-storage-fill" style="width:${pct}%;${pct > 80 ? 'background:var(--danger)' : ''}"></div>

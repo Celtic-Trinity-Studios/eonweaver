@@ -812,6 +812,8 @@ if ($action === 'intake_roster') {
             $cn = array_map(function($c) { return "{$c['name']} ({$c['hit_die']})"; }, $customClassesIntake);
             $customClassRef = "\n- HOMEBREW CLASSES AVAILABLE (may also use these): " . implode(', ', $cn);
         }
+        require_once $baseDir . '/groundwork_lib.php';
+        $customClassRef .= gwApprovedHomebrewLine($userId, $campIdIntake);
     } catch (Exception $e) {
         // No user DB yet — fine
     }

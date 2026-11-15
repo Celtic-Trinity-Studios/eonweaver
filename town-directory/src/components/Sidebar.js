@@ -66,9 +66,13 @@ const NAV_GROUPS = [
     id: 'table',
     label: 'Table & players',
     items: [
-      { route: 'player-portal', icon: '🔶', label: 'Player Portal', hint: 'Player-facing portal and sharing for your campaign.' },
+      { route: 'player-portal', icon: '🔶', label: 'Player Portal', hint: 'Invite players with their own accounts, and manage read-only share links.' },
+      { route: 'my-tables', icon: '🪑', label: 'My tables', hint: 'Campaigns you joined from your own account.' },
+      { route: 'sessions', icon: '🗓️', label: 'Sessions', hint: 'Plan sessions, write recaps, keep a prep timeline, roll tables, and store workshop drafts.' },
       { route: 'party', icon: '🛡️', label: 'Party', hint: 'Mark PCs and view a cross-town party roster and overview.' },
       { route: 'encounters', icon: '⚔️', label: 'Encounters', hint: 'Build encounters from SRD monsters, CR totals, and initiative tracking.' },
+      { route: 'battlemaps', icon: '🗺️', label: 'Battlemaps', hint: 'Grid, room sketch, notes, and fog rectangles for a tactical map.' },
+      { route: 'create-character', icon: '🧙', label: 'New character', hint: 'Guided PC create on the party town, with homebrew you mark for players.' },
       { route: 'vtt-export', icon: '📦', label: 'VTT Export', hint: 'Export towns and characters toward virtual tabletop tools.' },
     ],
   },
@@ -145,6 +149,47 @@ function bindNavGroupToggles(container) {
       const nowCollapsed = group.classList.contains('is-collapsed');
       btn.setAttribute('aria-expanded', nowCollapsed ? 'false' : 'true');
     });
+  });
+}
+
+/**
+ * Sidebar for an account that is seated at someone else's table and has no campaign of their own.
+ */
+export function renderPlayerSidebar(container) {
+  const state = getState();
+  const activeRoute = getCurrentActive();
+  const items = [
+    { route: 'my-tables', icon: '🪑', label: 'My tables', hint: 'The campaigns you joined with this account.' },
+    { route: 'create-character', icon: '🧙', label: 'New character', hint: 'Create a character on the party town.' },
+    { route: 'help', icon: '❓', label: 'Help & Guide', hint: 'How Eon Weaver is organized.' },
+  ];
+  container.innerHTML = `
+    <div class="sidebar">
+      <div class="sidebar-brand">
+        <div class="sidebar-title">Eon Weaver</div>
+        <p class="sidebar-subtitle">Your seat</p>
+      </div>
+      <nav class="sidebar-nav" aria-label="Player navigation">
+        ${items.map((item) => `
+          <button type="button" class="nav-item${activeRoute === item.route ? ' active' : ''}" data-route="${escapeAttr(item.route)}" data-tip="${escapeAttr(item.hint)}">
+            <span class="nav-icon">${item.icon}</span>
+            <span class="nav-label">${escapeAttr(item.label)}</span>
+          </button>
+        `).join('')}
+      </nav>
+      <div class="sidebar-footer">
+        <div class="sidebar-user">${state.user ? `👤 ${escapeAttr(state.user.username)}` : ''}</div>
+        <button type="button" class="btn-secondary btn-sm" id="player-start-campaign" data-tip="Make your own campaign as a DM">📜 Create a campaign</button>
+        <button type="button" class="sidebar-bug-report" id="sidebar-bug-report-btn" data-tip="Send a bug report to the team">🐛 Report Bug</button>
+        <button type="button" class="sidebar-logout" id="sidebar-logout-btn" data-tip="Sign out of Eon Weaver">🚪 Sign Out</button>
+      </div>
+    </div>
+  `;
+  container.querySelectorAll('.nav-item[data-route]').forEach((btn) => {
+    btn.addEventListener('click', () => navigate(btn.dataset.route));
+  });
+  container.querySelector('#sidebar-bug-report-btn')?.addEventListener('click', () => {
+    openBugReportModal();
   });
 }
 

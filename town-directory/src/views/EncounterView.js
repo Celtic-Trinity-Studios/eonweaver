@@ -135,6 +135,7 @@ function renderEncounterDetail(container, encId) {
         <button class="btn-secondary btn-sm" id="enc-back-btn">← Back</button>
         <h1 id="enc-detail-title">Loading...</h1>
         <div class="view-header-actions">
+          <button class="btn-secondary btn-sm" id="enc-table-btn" title="Place tokens and export to Foundry">🗺️ Table</button>
           <button class="btn-secondary btn-sm" id="enc-mode-setup" title="Setup Mode">⚙️ Setup</button>
           <button class="btn-primary btn-sm" id="enc-mode-combat" title="Start Combat">▶️ Combat</button>
         </div>
@@ -536,6 +537,7 @@ async function refreshEncounter(container) {
 
 function bindDetailEvents(container, encId) {
     container.querySelector('#enc-back-btn').addEventListener('click', () => navigate('encounters'));
+    container.querySelector('#enc-table-btn').addEventListener('click', () => navigate(`encounter-table/${encId}`));
 
     // Town picker + search
     container.querySelector('#enc-pick-town').addEventListener('change', () => loadPickerList(container));

@@ -36,8 +36,6 @@ function formatSubscriptionCatalogHtml(catalog, currentTierId) {
     }
     return `${Math.round(n / (1024 * 1024))} MB`;
   };
-  const fmtFileMb = (b) => `${Math.round((Number(b) || 0) / (1024 * 1024))} MB`;
-  const qty = (n) => ((Number(n) || 0) >= 999 ? '∞' : String(n));
   const priceCell = (usd) => {
     const p = Number(usd) || 0;
     if (p <= 0) return 'Free';
@@ -56,12 +54,9 @@ function formatSubscriptionCatalogHtml(catalog, currentTierId) {
     return `<tr class="tier-catalog-row${cur}">
       <td class="tier-catalog-tier"><span class="tier-badge tier-${t.id}">${t.label || t.id}</span></td>
       <td>${priceCell(t.price_usd_month)}</td>
-      <td>${qty(t.max_campaigns)}</td>
-      <td>${qty(t.max_towns_per_campaign)}</td>
-      <td>${fmtFileMb(t.content_max_file_bytes)}</td>
       <td>${fmtStorage(t.content_max_storage_bytes)}</td>
-      <td title="Platform-wallet AI, calendar month. Free: no monthly cap—starter EC wallet only.">${
-        t.id === 'free' && cap <= 0 ? aiStr : `~${aiStr} EC`
+      <td title="Monthly credit grant added to the wallet. AI stops only when the wallet is empty.">${
+        cap <= 0 ? 'Wallet only' : `~${aiStr} EC`
       }</td>
     </tr>`;
   }).join('');
@@ -76,18 +71,15 @@ function formatSubscriptionCatalogHtml(catalog, currentTierId) {
   return `
     <details class="tier-catalog-details">
       <summary class="tier-catalog-summary">Compare subscription plans</summary>
-      <p class="tier-catalog-note">Prices match the retail tiers in <code>Price_Analysis.md</code>. When Stripe is configured on the server, use <strong>💎 Plans</strong> for self-serve checkout; otherwise tiers are set manually by admin. Paid tiers get a monthly <strong>Eon Credits (EC)</strong> cap on the platform AI wallet; <strong>Free</strong> has no monthly cap—only the starter EC wallet.</p>
+      <p class="tier-catalog-note">Prices match the retail tiers in <code>Price_Analysis.md</code>. When Stripe is configured on the server, use <strong>💎 Plans</strong> for self-serve checkout; otherwise tiers are set manually by admin. Towns, campaigns, rosters, and file count are not capped. The plan quota that remains is library storage. AI calls spend your <strong>Eon Credits</strong> wallet and stop when it is empty. Paid plans add a monthly grant; unused credits stay if you change plans.</p>
       <div class="tier-catalog-scroll">
         <table class="tier-catalog-table">
           <thead>
             <tr>
               <th>Tier</th>
               <th>Price</th>
-              <th>Campaigns</th>
-              <th>Towns / campaign</th>
-              <th>Max file</th>
-              <th>Content library</th>
-              <th>AI cap / mo</th>
+              <th>Library storage</th>
+              <th>Monthly grant</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -708,7 +700,6 @@ async function loadCampaigns(container) {
     const res = await apiGetCampaigns();
     const campaigns = res.campaigns || [];
     const tier = res.tier || 'free';
-    const maxCamps = res.max_campaigns || 1;
     const tierCatalogHtml = formatSubscriptionCatalogHtml(res.tier_catalog, tier);
     const state = getState();
     const activeCampaignId = state.currentCampaign?.id;
@@ -718,7 +709,7 @@ async function loadCampaigns(container) {
     panel.innerHTML = `
       <div class="campaign-tier-info">
         <span class="tier-badge tier-${tier}">${tierLabels[tier] || tier}</span>
-        <span class="tier-limit">${campaigns.length} / ${maxCamps >= 999 ? '∞' : maxCamps} campaigns</span>
+        <span class="tier-limit">${campaigns.length} campaign${campaigns.length === 1 ? '' : 's'}</span>
       </div>
       <div class="campaign-list" id="campaign-list">
         ${campaigns.map(c => `
@@ -742,11 +733,7 @@ async function loadCampaigns(container) {
           </div>
         `).join('')}
       </div>
-      ${campaigns.length < maxCamps || maxCamps >= 999 ? `
-        <button class="btn-primary btn-sm" id="campaign-create-btn" style="margin-top:0.75rem;">+ New Campaign</button>
-      ` : `
-        <div class="muted" style="margin-top:0.5rem;">Subscribe to create unlimited campaigns and towns.</div>
-      `}
+      <button class="btn-primary btn-sm" id="campaign-create-btn" style="margin-top:0.75rem;">+ New Campaign</button>
       ${tierCatalogHtml}
     `;
 
@@ -950,20 +937,20 @@ async function loadUsageMeter(container) {
     // Color based on percentage
     let barColor, statusClass, statusText;
     if (percentage >= 90) {
-      barColor = '#ef4444'; statusClass = 'usage-critical'; statusText = 'Almost at limit';
+      barColor = '#eab308'; statusClass = 'usage-moderate'; statusText = 'Monthly grant used';
     } else if (percentage >= 70) {
-      barColor = '#f59e0b'; statusClass = 'usage-warning'; statusText = 'Getting close';
+      barColor = '#eab308'; statusClass = 'usage-moderate'; statusText = 'Most of this month’s grant used';
     } else if (percentage >= 40) {
-      barColor = '#eab308'; statusClass = 'usage-moderate'; statusText = 'Moderate usage';
+      barColor = '#eab308'; statusClass = 'usage-moderate'; statusText = 'Part of this month’s grant used';
     } else {
-      barColor = '#22c55e'; statusClass = 'usage-good'; statusText = 'Plenty remaining';
+      barColor = '#22c55e'; statusClass = 'usage-good'; statusText = 'Monthly grant barely used';
     }
 
     const tierUpgrade = {
-      free: 'Upgrade for a monthly EC allowance on the platform wallet and higher caps.',
-      apprentice: 'Upgrade to Adventurer or Guild Master for more monthly AI allowance.',
-      adventurer: 'Upgrade to Guild Master for a higher monthly AI allowance.',
-      guild_master: 'Upgrade to World Builder for the highest monthly AI allowance.',
+      free: 'A paid plan adds a monthly credit grant. Credits you already have keep working on Free.',
+      apprentice: 'Higher plans add a larger monthly credit grant.',
+      adventurer: 'Guild Master and World Builder add a larger monthly credit grant.',
+      guild_master: 'World Builder adds the largest monthly credit grant.',
       world_builder: '',
     };
 
@@ -971,10 +958,10 @@ async function loadUsageMeter(container) {
       const freeNote =
         tier === 'free'
           ? `<p class="usage-note" style="margin:0.75rem 0;color:var(--muted);font-size:0.9rem;line-height:1.45">
-          <strong>Free tier:</strong> you get a <strong>~1.5 EC</strong> starter grant after email verification. There is <strong>no monthly platform AI cap</strong>—each call draws from your EC wallet until it is empty. EC top-ups are planned, or upgrade on <strong>💎 Plans</strong> for more runway.
+          AI calls run while your wallet has credits, on any plan. This plan does not add a monthly grant. A <strong>~1.5 EC</strong> starter arrives after email verification. Credits saved on a paid plan still spend here.
         </p>`
           : `<p class="usage-note" style="margin:0.75rem 0;color:var(--muted);font-size:0.9rem;line-height:1.45">
-          This plan has no monthly raw-token ceiling configured—platform AI is limited by your EC wallet only.
+          This plan does not add a monthly grant. AI calls run while your wallet has credits.
         </p>`;
       panel.innerHTML = `
       <div class="usage-meter-card">
@@ -1005,7 +992,7 @@ async function loadUsageMeter(container) {
           <div class="usage-bar-labels">
             <span class="usage-bar-used">${formatTokens(tokens_used)} used</span>
             <span class="usage-bar-pct" style="color: ${barColor}">${percentage}%</span>
-            <span class="usage-bar-limit">${formatTokens(token_limit)} limit</span>
+            <span class="usage-bar-limit">${formatTokens(token_limit)} grant</span>
           </div>
         </div>
         <div class="usage-meter-details">
@@ -1013,6 +1000,9 @@ async function loadUsageMeter(container) {
           <span class="usage-detail-item">📦 ${formatTokens(tokens_used)} tokens</span>
           <span class="usage-detail-item usage-status ${statusClass}">${statusText}</span>
         </div>
+        <p class="usage-note" style="margin:0.75rem 0;color:var(--muted);font-size:0.9rem;line-height:1.45">
+          This bar tracks the monthly grant. AI calls keep running while your wallet has credits, including credits saved before a plan change.
+        </p>
         ${tierUpgrade[tier] ? `<div class="usage-upgrade-hint">${tierUpgrade[tier]}</div>` : ''}
       </div>
     `;

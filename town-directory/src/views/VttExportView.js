@@ -6,7 +6,7 @@ export default function VttExportView(container) {
     <div class="view-simulation">
       <header class="view-header">
         <h1>🔶 VTT Export Framework</h1>
-        <p class="view-subtitle">Generate JSON payloads compatible with future VTT adapters.</p>
+        <p class="view-subtitle">Campaign-wide JSON for adapters. For a grid of live characters and a Foundry scene of the people on the map, open an encounter and choose Table.</p>
       </header>
       <div class="dash-card" style="padding:1rem;">
         <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:0.5rem;">

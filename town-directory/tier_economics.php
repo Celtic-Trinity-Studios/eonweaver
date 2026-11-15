@@ -2,6 +2,7 @@
 /**
  * Tier economics — monthly platform AI ceilings (raw OpenRouter tokens / calendar month).
  *
+ * These figures size the monthly wallet grant. They do not block AI while credit_balance remains.
  * EC wallet model: usage is tracked in user_token_usage and deducted from credit_balance.
  * Retail list prices live in tier_limits.php (`price_usd_month`; paid anchors $5 / $10 / $20 / $40 USD/mo
  * as of 2026 — tune there). Default caps are derived so
@@ -124,6 +125,10 @@ function ew_monthly_tokens_used_sum(int $userId): int
     }
 }
 
+/**
+ * True when this month's logged usage is at least the tier's monthly grant.
+ * Informational only. AI calls are not blocked by this; an empty wallet is the gate.
+ */
 function ew_monthly_platform_cap_exceeded(int $userId, string $tier): bool
 {
     $cap = ew_monthly_raw_cap_for_tier($tier);
@@ -155,17 +160,19 @@ function ew_tier_subscription_wallet_seed_delta_raw(string $fromTier, string $to
 
 /**
  * If platform-wallet AI should be blocked, return a user-facing reason; otherwise null.
+ * The only gate is an empty wallet. Tier and monthly grant size do not block a leftover balance,
+ * including after a drop to Free.
+ *
+ * @param string $tier Unused. Kept so existing callers stay valid.
  */
 function ew_platform_wallet_blocked(int $userId, string $tier): ?string
 {
+    unset($tier);
     try {
         $rows = query('SELECT credit_balance FROM users WHERE id = ?', [$userId], 0);
         $balance = $rows ? (int) ($rows[0]['credit_balance'] ?? 0) : 0;
         if ($balance <= 0) {
-            return 'No Eon Credits left on your platform wallet. Top up credits or upgrade your plan on 💎 Plans.';
-        }
-        if (ew_monthly_platform_cap_exceeded($userId, $tier)) {
-            return 'Monthly AI usage limit reached for your subscription tier. Try again next calendar month, upgrade, or add more Eon Credits if your plan allows.';
+            return 'No Eon Credits left. AI calls stop until you add credits on Plans. Towns, rosters, and other manual edits stay available.';
         }
         return null;
     } catch (Throwable $e) {

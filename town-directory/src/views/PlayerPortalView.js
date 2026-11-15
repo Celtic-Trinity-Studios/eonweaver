@@ -6,16 +6,53 @@ import {
   apiPlayerPortalTokenScopeUpdate,
   apiPlayerPortalTokens,
 } from '../api/playerPortal.js';
+import {
+  apiCampaignSeatInvite,
+  apiCampaignSeatRevoke,
+  apiCampaignSeatRole,
+  apiCampaignSeats,
+} from '../api/campaignSeats.js';
+import { appHref } from '../router.js';
 import { showToast } from '../components/Toast.js';
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[c]));
+}
+
+function roleLabel(role) {
+  return role === 'co_dm' ? 'Co-DM' : 'Player';
+}
 
 export default function PlayerPortalView(container) {
   container.innerHTML = `
     <div class="view-simulation">
       <header class="view-header">
-        <h1>🔶 Player Portal (Read-Only Framework)</h1>
-        <p class="view-subtitle">Preview what a player-facing read-only portal can expose.</p>
+        <h1>🔶 Player Portal</h1>
+        <p class="view-subtitle">Invite players onto this campaign with their own accounts, or share a read-only link.</p>
       </header>
       <div class="dash-card" style="padding:1rem;">
+        <h3 style="margin:0 0 0.35rem;">Table seats</h3>
+        <p class="muted" style="margin:0 0 0.75rem;">A player signs in on their account, opens the invite, and sees this campaign from My tables. They do not get your DM tools. A co-DM can invite other players. Editing the world stays on your account. Invites expire in 30 days.</p>
+        <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:flex-end;margin-bottom:0.5rem;">
+          <div class="sim-field" style="min-width:220px;flex:1;">
+            <label>Email (optional)</label>
+            <input id="seat-email" class="form-input" type="email" placeholder="player@example.com">
+          </div>
+          <div class="sim-field" style="min-width:140px;">
+            <label>Role</label>
+            <select id="seat-role" class="form-select">
+              <option value="player">Player</option>
+              <option value="co_dm">Co-DM</option>
+            </select>
+          </div>
+          <button class="btn-primary" id="seat-invite">Create invite</button>
+        </div>
+        <div id="seat-invite-result" class="muted" style="margin-bottom:0.5rem;"></div>
+        <div id="seat-list" class="muted">Loading seats…</div>
+      </div>
+      <div class="dash-card" style="padding:1rem;margin-top:1rem;">
         <div id="player-portal-content" class="muted">Loading…</div>
       </div>
       <div class="dash-card" style="padding:1rem;margin-top:1rem;">
@@ -49,10 +86,105 @@ export default function PlayerPortalView(container) {
   `;
 
   const target = container.querySelector('#player-portal-content');
+  const seatListEl = container.querySelector('#seat-list');
+  const seatResultEl = container.querySelector('#seat-invite-result');
   const tokenListEl = container.querySelector('#ppt-list');
   const lastTokenEl = container.querySelector('#ppt-last-token');
   const previewOut = container.querySelector('#ppt-preview-output');
   let availableTowns = [];
+
+  function joinUrl(joinPath) {
+    const path = appHref(joinPath);
+    return window.location.origin + path;
+  }
+
+  async function refreshSeats() {
+    const res = await apiCampaignSeats();
+    const seats = res.seats || [];
+    const isOwner = res.caller_role === 'dm';
+    if (!isOwner) {
+      const roleSelect = container.querySelector('#seat-role');
+      if (roleSelect) {
+        roleSelect.value = 'player';
+        roleSelect.disabled = true;
+      }
+    }
+    seatListEl.innerHTML = seats.length
+      ? seats.map((s) => {
+          const who = s.username
+            ? esc(s.username)
+            : (s.invite_email ? esc(s.invite_email) : 'Open link');
+          const roleControl = isOwner
+            ? `<select class="form-select seat-role" data-seat-id="${s.id}">
+                <option value="player"${s.role === 'player' ? ' selected' : ''}>Player</option>
+                <option value="co_dm"${s.role === 'co_dm' ? ' selected' : ''}>Co-DM</option>
+              </select>`
+            : `<span class="muted">${esc(roleLabel(s.role))}</span>`;
+          return `
+            <div class="seat-row">
+              <span>
+                <strong>${who}</strong>
+                <span class="muted">${s.status === 'invited' ? 'invited' : 'seated'}${s.expires_at && s.status === 'invited' ? ` · expires ${esc(s.expires_at)}` : ''}</span>
+              </span>
+              <span style="display:flex;gap:0.35rem;align-items:center;flex-wrap:wrap;">
+                ${roleControl}
+                <button class="btn-secondary btn-sm seat-revoke" data-seat-id="${s.id}">Revoke</button>
+              </span>
+            </div>
+          `;
+        }).join('')
+      : '<div class="muted">No one is invited yet. Create a link and send it to your players.</div>';
+
+    seatListEl.querySelectorAll('.seat-revoke').forEach((btn) => {
+      btn.addEventListener('click', async () => {
+        const seatId = parseInt(btn.dataset.seatId || '0', 10);
+        if (!seatId) return;
+        try {
+          await apiCampaignSeatRevoke(seatId);
+          showToast('Seat revoked.', 'success');
+          await refreshSeats();
+        } catch (err) {
+          showToast(err.message, 'error');
+        }
+      });
+    });
+    seatListEl.querySelectorAll('.seat-role').forEach((sel) => {
+      sel.addEventListener('change', async () => {
+        const seatId = parseInt(sel.dataset.seatId || '0', 10);
+        try {
+          await apiCampaignSeatRole(seatId, sel.value);
+          showToast('Role updated.', 'success');
+        } catch (err) {
+          showToast(err.message, 'error');
+          await refreshSeats();
+        }
+      });
+    });
+  }
+
+  container.querySelector('#seat-invite').addEventListener('click', async () => {
+    try {
+      const email = container.querySelector('#seat-email').value.trim();
+      const role = container.querySelector('#seat-role').value || 'player';
+      const created = await apiCampaignSeatInvite({ role, email });
+      const url = joinUrl(created.join_path || ('join/' + created.token));
+      seatResultEl.innerHTML = `
+        <div><strong>Invite link</strong> <span class="muted">(shown once — copy it now)</span></div>
+        <input class="form-input" readonly value="${esc(url)}" id="seat-link-field">
+        <p class="muted">${esc(created.mail_note || 'Copy this link to your player.')}</p>
+      `;
+      try {
+        await navigator.clipboard.writeText(url);
+        showToast('Invite created. Link copied.', 'success');
+      } catch {
+        showToast('Invite created. Copy the link below.', 'success');
+      }
+      container.querySelector('#seat-email').value = '';
+      await refreshSeats();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  });
 
   async function refreshTokens() {
     const res = await apiPlayerPortalTokens();
@@ -188,10 +320,18 @@ export default function PlayerPortalView(container) {
         </div>
       `;
       await refreshTokens();
+      try {
+        await refreshSeats();
+      } catch (seatErr) {
+        seatListEl.textContent = seatErr.message;
+      }
     })
     .catch((err) => {
       target.textContent = err.message;
       tokenListEl.textContent = err.message;
+      refreshSeats().catch((seatErr) => {
+        seatListEl.textContent = seatErr.message;
+      });
     });
 }
 

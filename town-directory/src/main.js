@@ -1,7 +1,8 @@
-import { initRouter, registerRoute, navigate, resetRegisteredRoutes } from './router.js';
-import { renderSidebar } from './components/Sidebar.js';
+import { initRouter, registerRoute, navigate, resetRegisteredRoutes, getCurrentRoute, appHref } from './router.js';
+import { renderSidebar, renderPlayerSidebar } from './components/Sidebar.js';
 import { getState, setState, resetState, subscribe } from './stores/appState.js';
 import { apiGetCurrentUser, apiLogin, apiRegister, apiLogout, apiResendVerification } from './api/auth.js';
+import { apiShareRead } from './api/groundwork.js';
 import { apiGetCalendar, calendarToString } from './api/settings.js';
 import { setCurrentEdition } from './api/srd.js';
 import { apiCreateCampaign } from './api/campaigns.js';
@@ -29,9 +30,14 @@ import ScribeView from './views/ScribeView.js';
 import AdminDashboardView from './views/AdminDashboardView.js';
 import MacroSimulationView from './views/MacroSimulationView.js';
 import PlayerPortalView from './views/PlayerPortalView.js';
+import MyTablesView from './views/MyTablesView.js';
+import JoinTableView from './views/JoinTableView.js';
 import VttExportView from './views/VttExportView.js';
 import IntegrationsView from './views/IntegrationsView.js';
 import WikiView from './views/WikiView.js';
+import CampaignHubView from './views/CampaignHubView.js';
+import BattlemapsView from './views/BattlemapsView.js';
+import PlayerCreateView from './views/PlayerCreateView.js';
 import SubscriptionView from './views/SubscriptionView.js';
 
 // Styles
@@ -53,11 +59,93 @@ import './styles/mobile-framework.css';
 let routesRegistered = false;
 let authEventsBound = false;
 let landingEventsBound = false;
+let shellMode = null;
+const JOIN_KEY = 'ew_pending_join_token';
+
+function shareTokenFromPath() {
+    const base = (import.meta.env?.BASE_URL || '/').replace(/\/$/, '');
+    let relative = window.location.pathname.replace(new RegExp('^' + base.replace(/\//g, '\\/')), '');
+    relative = relative.replace(/^\/+|\/+$/g, '');
+    const match = relative.match(/^share\/([a-f0-9]{32})$/i);
+    return match ? match[1] : '';
+}
+
+function escShare(s) {
+    return String(s ?? '').replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+
+function ShareReadView(container, params) {
+    const token = params?.id || shareTokenFromPath();
+    container.innerHTML = '<div class="dash-card">Loading shared page…</div>';
+    apiShareRead(token).then((res) => {
+        container.innerHTML = `<article class="dash-card"><h1>${escShare(res.title)}</h1><pre style="white-space:pre-wrap;font-family:inherit;">${escShare(res.body)}</pre></article>`;
+    }).catch((err) => {
+        container.textContent = err.message;
+    });
+}
+
+function showSharedOnLanding(token) {
+    const auth = document.getElementById('auth-screen');
+    const landing = document.getElementById('landing-screen');
+    const host = (auth && auth.style.display !== 'none') ? auth : (landing || document.body);
+    const card = document.createElement('article');
+    card.className = 'dash-card';
+    card.style.margin = '1rem auto';
+    card.style.maxWidth = '42rem';
+    card.textContent = 'Loading shared page…';
+    host.prepend(card);
+    apiShareRead(token).then((res) => {
+        card.innerHTML = `<h1>${escShare(res.title)}</h1><pre style="white-space:pre-wrap;font-family:inherit;">${escShare(res.body)}</pre>`;
+    }).catch((err) => {
+        card.textContent = err.message;
+    });
+}
+
+function joinTokenFromPath() {
+    const base = (import.meta.env?.BASE_URL || '/').replace(/\/$/, '');
+    let relative = window.location.pathname.replace(new RegExp('^' + base.replace(/\//g, '\\/')), '');
+    relative = relative.replace(/^\/+|\/+$/g, '');
+    const match = relative.match(/^join\/([a-f0-9]{32,128})$/i);
+    return match ? match[1] : '';
+}
+
+function rememberJoinToken() {
+    const fromPath = joinTokenFromPath();
+    if (fromPath) sessionStorage.setItem(JOIN_KEY, fromPath);
+    return fromPath || sessionStorage.getItem(JOIN_KEY) || '';
+}
+
+function syncAuthJoinNote() {
+    const note = document.getElementById('auth-join-note');
+    if (!note) return;
+    const token = sessionStorage.getItem(JOIN_KEY);
+    if (token) {
+        note.style.display = '';
+        note.textContent = 'You have a table invite. Sign in or create an account to take your seat. If the DM sent it to an email address, use that address.';
+    } else {
+        note.style.display = 'none';
+        note.textContent = '';
+    }
+}
+
+async function signOut() {
+    await apiLogout();
+    const toolbar = document.getElementById('dm-toolbar-root');
+    if (toolbar) toolbar.style.display = 'none';
+    resetRegisteredRoutes();
+    routesRegistered = false;
+    shellMode = null;
+    resetState();
+    showLanding();
+}
 
 /* ── App Bootstrap ──────────────────────────────────────── */
 import { pingVisit } from './utils/visitMetrics.js';
 
-document.addEventListener('DOMContentLoaded', async () => {
+    document.addEventListener('DOMContentLoaded', async () => {
+    document.addEventListener('ew-refresh-shell', () => showApp());
+    rememberJoinToken();
+
     // Intercept all internal link clicks to use the router
     interceptInternalLinks();
 
@@ -91,11 +179,19 @@ document.addEventListener('DOMContentLoaded', async () => {
             } else {
                 showApp();
             }
+        } else if (rememberJoinToken()) {
+            showAuth('login');
         } else {
             showLanding();
         }
     } catch {
-        showLanding();
+        if (rememberJoinToken()) showAuth('login');
+        else showLanding();
+    }
+
+    const shared = shareTokenFromPath();
+    if (shared && !getState().user) {
+        showSharedOnLanding(shared);
     }
 
     if (verifyMsg && !getState().user) {
@@ -183,6 +279,7 @@ function showAuth(mode = 'login') {
         if (loginForm) loginForm.style.display = '';
     }
     if (errorEl) errorEl.style.display = 'none';
+    syncAuthJoinNote();
     bindAuthEvents();
 }
 
@@ -195,24 +292,72 @@ function showApp() {
     if (app) app.style.display = '';
 
     const state = getState();
+    const joined = state.user?.joined_tables || [];
+    const pending = state.user?.pending_table_invites || [];
+    const inviteToken = joinTokenFromPath() || sessionStorage.getItem(JOIN_KEY) || '';
+    if (!state.currentCampaign && (joined.length || pending.length || inviteToken)) {
+        showPlayerShell();
+        return;
+    }
+    showDmShell();
+}
+
+function showPlayerShell() {
+    const toolbar = document.getElementById('dm-toolbar-root');
+    if (toolbar) toolbar.style.display = 'none';
+    if (shellMode !== 'player') {
+        resetRegisteredRoutes();
+        routesRegistered = false;
+        shellMode = 'player';
+    }
+    const sidebar = document.getElementById('sidebar-container');
+    renderPlayerSidebar(sidebar);
+    sidebar.querySelector('#sidebar-logout-btn')?.addEventListener('click', () => signOut());
+    sidebar.querySelector('#player-start-campaign')?.addEventListener('click', () => showNoCampaignScreen());
+
+    if (!routesRegistered) {
+        registerRoute('my-tables', MyTablesView);
+        registerRoute('join', JoinTableView);
+        registerRoute('create-character', PlayerCreateView);
+        registerRoute('share', ShareReadView);
+        registerRoute('help', HelpView);
+        routesRegistered = true;
+    }
+
+    const path = getCurrentRoute().path;
+    const urlToken = joinTokenFromPath();
+    const stored = sessionStorage.getItem(JOIN_KEY) || '';
+    const onSeatRoute = path === 'my-tables' || path === 'help' || path === 'join' || path === 'create-character' || path === 'share';
+    if (path === 'join' && !urlToken && stored) {
+        window.history.replaceState({}, '', appHref('join/' + stored));
+    } else if (!onSeatRoute) {
+        window.history.replaceState({}, '', appHref(stored ? ('join/' + stored) : 'my-tables'));
+    }
+    initRouter();
+}
+
+function showDmShell() {
+    const toolbar = document.getElementById('dm-toolbar-root');
+    if (toolbar) toolbar.style.display = '';
+
+    const state = getState();
 
     // Render sidebar (it adapts to no-campaign state)
     renderSidebar(document.getElementById('sidebar-container'));
     mountDmToolbar();
 
-    // Bind logout
-    document.getElementById('sidebar-logout-btn')?.addEventListener('click', async () => {
-        await apiLogout();
-        resetRegisteredRoutes();
-        routesRegistered = false;
-        resetState();
-        showLanding();
-    });
+    document.getElementById('sidebar-logout-btn')?.addEventListener('click', () => signOut());
 
     // If no campaign exists, show the onboarding screen
     if (!state.currentCampaign) {
         showNoCampaignScreen();
         return;
+    }
+
+    if (shellMode !== 'dm') {
+        resetRegisteredRoutes();
+        routesRegistered = false;
+        shellMode = 'dm';
     }
 
     // Load calendar
@@ -245,9 +390,15 @@ function showApp() {
         registerRoute('scribe', ScribeView);
         registerRoute('macro-sim', MacroSimulationView);
         registerRoute('player-portal', PlayerPortalView);
+        registerRoute('my-tables', MyTablesView);
+        registerRoute('join', JoinTableView);
         registerRoute('vtt-export', VttExportView);
         registerRoute('integrations', IntegrationsView);
         registerRoute('wiki', WikiView);
+        registerRoute('sessions', CampaignHubView);
+        registerRoute('battlemaps', BattlemapsView);
+        registerRoute('create-character', PlayerCreateView);
+        registerRoute('share', ShareReadView);
         registerRoute('help', HelpView);
         registerRoute('subscription', SubscriptionView);
         routesRegistered = true;
@@ -315,11 +466,7 @@ function showAdminApp() {
 
     // Logout
     sidebarEl.querySelector('#sidebar-logout-btn')?.addEventListener('click', async () => {
-        await apiLogout();
-        resetRegisteredRoutes();
-        routesRegistered = false;
-        resetState();
-        showLanding();
+        await signOut();
     });
 
     // Admin sidebar nav → triggers tab switching inside AdminDashboardView
@@ -354,7 +501,7 @@ function showNoCampaignScreen() {
       <div class="onboarding-card">
         <div class="onboarding-icon">📜</div>
         <h1 class="onboarding-title">Welcome to Eon Weaver</h1>
-        <p class="onboarding-subtitle">Create your first campaign to get started. Your campaign is the container for all your towns, characters, encounters, and world data.</p>
+        <p class="onboarding-subtitle">Create your first campaign to get started. Your campaign is the container for all your towns, characters, encounters, and world data. If a DM invited you, open their link and sign in — you do not need a campaign of your own to take a seat.</p>
 
         <div class="onboarding-form">
           <div class="form-group">
@@ -406,6 +553,7 @@ function showNoCampaignScreen() {
             const res = await apiCreateCampaign(name, edition, desc);
             setState({ currentCampaign: res.campaign });
             setCurrentEdition(edition);
+            window.history.replaceState({}, '', appHref('dashboard'));
             // Reload user to get updated data
             const meRes = await apiGetCurrentUser();
             if (meRes.user) setState({ user: meRes.user });

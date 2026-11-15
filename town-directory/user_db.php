@@ -144,6 +144,9 @@ function initUserContentDB(PDO $pdo): void
         folder          TEXT DEFAULT 'content',
         uploaded_at     TEXT DEFAULT (datetime('now'))
     )");
+    try {
+        $pdo->exec("ALTER TABLE user_files ADD COLUMN folder TEXT DEFAULT 'content'");
+    } catch (Throwable $e) { /* column exists */ }
 }
 
 /**

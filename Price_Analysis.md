@@ -17,7 +17,7 @@ All OpenRouter chat traffic uses models chosen in **`config.php`** (see **`town-
 
 Chunked town simulation (`simulate.php`): **story** uses the smart model; **population**, **character_build**, **social**, and **stats** use the cheap model, each with **`max_tokens` 2048** (plus other code paths with different ceilings for planner, intake, legacy branches—see repo for exact call sites).
 
-**BYOK:** If the user sets their own OpenRouter key in Settings, the platform does **not** deduct from `credit_balance` and monthly EC caps do not apply to that usage.
+All player-facing AI uses the **platform OpenRouter key** in `config.php` and debits the user's **EC wallet**.
 
 **Pricing $/M:** OpenRouter’s per-model input/output rates change; use [OpenRouter model pages](https://openrouter.ai/models) for current $/M before updating internal cost spreadsheets. The sections below use **order-of-magnitude** examples, not a guaranteed quote.
 
@@ -31,27 +31,27 @@ Chunked town simulation (`simulate.php`): **story** uses the smart model; **popu
 - **Displayed EC** = `credit_balance ÷ TOKENS_PER_CREDIT` with **`TOKENS_PER_CREDIT = 200_000`** (`town-directory/src/constants/credits.js`, optional PHP `TOKENS_PER_CREDIT` in `config.php`).
 - **Wallet deductions** for AI features use **fixed raw-token prices** from `pricing.php` (exact debit per action); OpenRouter `usage` is still logged for analytics. Display uses `formatWalletTc` / `TOKENS_PER_CREDIT` without per-call bucket rounding.
 
-### Monthly platform ceiling (per tier)
+### Monthly credit grant (per tier)
 
-Usage is summed in **`user_token_usage`** by calendar month (`year_month`). On the **platform wallet**, **`ew_monthly_raw_cap_for_tier()`** is the monthly raw-token ceiling when that value is **greater than zero**; **zero** means no monthly ceiling (wallet-only—**Free** defaults to **0**). Override in MySQL **`site_settings`** as **`token_limit_{tier}`** (non-negative integer).
+Usage is still summed in **`user_token_usage`** by calendar month (`year_month`) for the usage bar. **`ew_monthly_raw_cap_for_tier()`** is the monthly raw-token **grant** seeded into `credit_balance` on subscribe, upgrade, and renewal. It does **not** stop AI calls. Calls run while `credit_balance` is above zero, including a balance saved on a higher plan after a drop to Free. **Zero** means no monthly grant (wallet-only—**Free** defaults to **0**). Override the grant size in MySQL **`site_settings`** as **`token_limit_{tier}`** (non-negative integer).
 
-**Default caps (no DB override)** come from **`tier_economics.php`**: **Apprentice** uses list price × **`EW_MONTHLY_CAP_ARPU_FRACTION`** (default **0.45**) ÷ **`EW_EC_MAINTAINER_COST_USD`** (default **0.15**) × **`TOKENS_PER_CREDIT`** (default **200_000**). **Adventurer / Guild Master / World Builder** use fixed monthly EC allowances (**40 / 85 / 150** EC) × TC. **Free** has **no** monthly raw cap (**0**); platform AI uses the **starter ~1.5 EC** wallet only until empty or BYOK.
+**Default grants (no DB override)** come from **`tier_economics.php`**: **Apprentice** uses list price × **`EW_MONTHLY_CAP_ARPU_FRACTION`** (default **0.45**) ÷ **`EW_EC_MAINTAINER_COST_USD`** (default **0.15**) × **`TOKENS_PER_CREDIT`** (default **200_000**). **Adventurer / Guild Master / World Builder** use fixed monthly EC grants (**40 / 85 / 150** EC) × TC. **Free** has **no** monthly grant (**0**); platform AI uses whatever is already in the wallet, including the **starter ~1.5 EC**.
 
-| Tier id | Default monthly raw-token cap | ≈ EC/mo (÷ 200,000) | Implied max variable @ $0.15/EC |
-|---------|-------------------------------|---------------------|----------------------------------|
-| `free` | 0 (no monthly cap) | — | wallet-only @ ~1.5 EC starter |
+| Tier id | Default monthly raw-token grant | ≈ EC/mo (÷ 200,000) | Implied max variable @ $0.15/EC |
+|---------|----------------------------------|---------------------|----------------------------------|
+| `free` | 0 (no monthly grant) | — | wallet-only @ ~1.5 EC starter |
 | `apprentice` | 3,000,000 | 15.0 | ~$2.25 (= 45% of $5 list) |
-| `adventurer` | 8,000,000 | 40 | ~$6.00 (fixed cap) |
-| `guild_master` | 17,000,000 | 85 | ~$12.75 (fixed cap) |
-| `world_builder` | 30,000,000 | 150 | ~$22.50 (fixed cap) |
+| `adventurer` | 8,000,000 | 40 | ~$6.00 (fixed grant) |
+| `guild_master` | 17,000,000 | 85 | ~$12.75 (fixed grant) |
+| `world_builder` | 30,000,000 | 150 | ~$22.50 (fixed grant) |
 
 Retail top-up anchors (e.g. **US$0.22 per 1.5 EC**) are a separate consumer story—**maintainer** economics for caps should follow **your** measured $/EC and desired ARPU fraction, then re-run or adjust **`site_settings`** on existing hosts if you already seeded old limits.
 
 ### Gating rules
 
-- **Empty wallet** (`credit_balance <= 0`) → platform-wallet AI blocked (unless BYOK).
-- **Over monthly cap** → blocked until next calendar month, upgrade, top-up (if you allow), or BYOK.
-- **Free tier:** large **town / world AI simulation** is not included (`tier_policy.php` → `ew_require_non_free_for_major_ai_simulation`). Free demo towns are capped at **`FREE_TIER_MAX_RESIDENTS`** (default **15** in `tier_policy.php`).
+- **Empty wallet** (`credit_balance <= 0`) → platform AI blocked. Manual towns, campaigns, rosters, and edits stay available.
+- **Monthly grant** does not block. A balance saved on a higher plan still spends after a move to Free.
+- **Towns, campaigns, and roster size** are not capped by tier.
 
 ---
 
@@ -59,13 +59,13 @@ Retail top-up anchors (e.g. **US$0.22 per 1.5 EC**) are a separate consumer stor
 
 Non-AI limits come from **`ew_tier_default_limits_by_id()`** in `tier_limits.php`. Monthly AI caps are in §2.
 
-| Tier | Price (USD/mo) | Max campaigns | Max towns / campaign | Content library caps (files / storage) |
-|------|----------------|---------------|------------------------|------------------------------------------|
-| Free | $0 | 1 | 3 | 10 files, 20 MB total (per row defaults) |
-| Apprentice | $5 | 2 | 4 | 25 files, 50 MB |
-| Adventurer | $10 | 3 | 5 | 50 files, 100 MB |
-| Guild Master | $20 | 10 | 10 | 200 files, 500 MB |
-| World Builder | $40 | 999 | 999 | 9999 files, 2 GB |
+| Tier | Price (USD/mo) | Campaigns, towns, roster, file count | Library storage |
+|------|----------------|------------------------------------------|-----------------|
+| Free | $0 | Not capped | 20 MB |
+| Apprentice | $5 | Not capped | 50 MB |
+| Adventurer | $10 | Not capped | 100 MB |
+| Guild Master | $20 | Not capped | 500 MB |
+| World Builder | $40 | Not capped | 2 GB |
 
 The Settings UI and the **Plans** app route (`/subscription` when logged in with a campaign) load the same catalog from the API (`subscription_catalog` or `campaigns` → `ew_tier_public_catalog()` plus monthly raw cap → ≈ EC) and list **per-tier includes** from `ew_tier_included_feature_bullets()` as `tier_catalog[].includes`. **Billing integration** for Stripe (or similar) is not assumed wired; tiers are still set manually / by admin in production unless you add checkout.
 
@@ -73,22 +73,21 @@ The Settings UI and the **Plans** app route (`/subscription` when logged in with
 
 **Every tier**
 
-- Campaign / town / content **limits** from the table above (enforced in `tier_limits.php` + upload paths).
+- Campaigns, towns, roster size, and content-library **file count** are not capped. Library **storage** from the table above is enforced on upload. A single file can use whatever storage is left.
 - **SRD** rules reference (edition follows the active campaign).
 - **Towns:** roster, relationships, buildings, town history, **in-game calendar**, campaign rules & lore.
 - **Wiki, Scribe, homebrew**, world map, trade routes, calendar tooling, and **exports** where enabled in the deployed build.
-- **Platform AI:** draws **Eon Credits** from `credit_balance` (stored as raw tokens) and counts toward a **calendar-month raw-token ceiling** per tier (§2), unless the account uses **BYOK** (own OpenRouter key in Settings), which skips the platform wallet and that ceiling.
+- **Platform AI:** draws **Eon Credits** from `credit_balance` (stored as raw tokens) and stops when that balance is empty. The monthly figure in §2 is a **grant**, not a ceiling.
 
 **Free ($0)**
 
-- Same core app surfaces as above within the **smallest** quotas.
-- **No** AI **town** or **multi-town world simulation** on the free demo tier (`tier_policy.php`); users may still use other AI features that respect the **EC wallet** (no monthly cap on Free) or attach **BYOK**.
-- **Resident cap** per town: `FREE_TIER_MAX_RESIDENTS` (default **15**).
+- Same manual play as paid plans (towns, campaigns, rosters, and AI features that the wallet can pay for).
+- Starter **~1.5 EC** after email verification. No monthly grant. A balance saved on a paid plan still spends.
 
 **Apprentice ($5), Adventurer ($10), Guild Master ($20), World Builder ($40)**
 
-- Everything in **Every tier**, with **higher** campaign, town, library, and monthly AI ceilings per row.
-- **AI town and multi-town world simulation** on the platform wallet (still subject to **EC balance + monthly cap**, or unconstrained on your side with **BYOK**).
+- Everything in **Every tier**, plus a larger content library and a monthly credit grant (§2).
+- **AI town and multi-town world simulation** spend the same wallet as other AI calls.
 
 ---
 
@@ -113,7 +112,7 @@ Use this only for **rough** margin math; reconcile against **OpenRouter usage lo
 | AI Game Master | ✅ throttled | ~$15/mo | — | higher tiers | ✅ |
 | Foundry VTT | purchase | — | — | — | ❌ core |
 
-**Positioning:** $5–12/mo is the hobbyist band; continuous **living town** simulation plus roster tooling is still relatively rare—price against value and your **EC + cap** safety rail, not only raw API fractions.
+**Positioning:** $5–12/mo is the hobbyist band; continuous **living town** simulation plus roster tooling is still relatively rare—price against value and your **EC + cap** safety rail, not only raw API fractions. Feature-surface gaps vs WorldSmith-style campaign managers (sessions, invites, battlemaps, etc.) are listed in `town-directory/CAMPAIGN_MANAGER_ROADMAP.md`, not priced here.
 
 ---
 
@@ -149,7 +148,6 @@ Backer tiers (names, pledge levels, “X months of Guild Master”) can still fo
 │  Wallet: raw tokens in DB; UI EC = raw ÷ 200,000                │
 │  Deductions: rounded up to 0.01 EC buckets                      │
 │  Monthly limit: per-tier raw cap (+ site_settings overrides)   │
-│  BYOK: user key → no platform wallet charge or monthly cap      │
 │  Free: demo population cap; major AI sim not on free tier       │
 │  Tiers: free, apprentice, adventurer, guild_master, world_builder│
 │  Code refs: tier_limits.php, tier_economics.php, helpers.php    │

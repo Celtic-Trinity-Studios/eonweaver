@@ -13,6 +13,7 @@ const HELP_ROUTE_META = {
   'world-simulate': { icon: '🌍', label: 'World Simulate' },
   'macro-sim': { icon: '🟣', label: 'Macro Dynamics' },
   'world-map': { icon: '🗺️', label: 'World Map' },
+  'campaign-maps': { icon: '📌', label: 'Handout Maps' },
   calendar: { icon: '📅', label: 'Calendar' },
   wiki: { icon: '🔵', label: 'Lore Codex' },
   scribe: { icon: '✍️', label: 'AI Scribe' },
@@ -40,6 +41,7 @@ const SECTION_OPEN_ROUTES = {
   'character-import': ['town'],
   'world-simulate': ['world-simulate', 'simulation', 'macro-sim'],
   'world-map': ['world-map', 'world-simulate'],
+  'campaign-maps': ['campaign-maps', 'world-map', 'wiki'],
   'town-history': ['town'],
   'character-sheet': ['town'],
   'level-up': ['town'],
@@ -58,7 +60,7 @@ const SECTION_OPEN_ROUTES = {
   'monthly-simulation': ['simulation', 'world-simulate'],
   'town-stats': ['townstats', 'town'],
   'wiki-lore': ['wiki', 'scribe'],
-  'player-portal': ['player-portal'],
+  'player-portal': ['player-portal', 'my-tables'],
   'vtt-export': ['vtt-export'],
   integrations: ['integrations'],
   'subscription-plans': ['subscription', 'settings'],
@@ -490,6 +492,22 @@ export default function HelpView(container) {
       `
     },
     {
+      id: 'campaign-maps',
+      icon: '📌',
+      title: 'Handout Maps',
+      content: `
+        <p>Upload any map image — a continent, a city, or a dungeon — and drop markers on it. Click a marker to open a sidebar with its name, notes, and a link to a <strong>lore page</strong>, <strong>town</strong>, <strong>NPC</strong>, or <strong>encounter</strong>. This is separate from the strategic <strong>World Map</strong>, which is for town pins and travel.</p>
+        <div class="help-feature">
+          <strong>📤 Image</strong>
+          <p>Create a map, then upload a PNG, JPEG, WebP, or GIF (max 10MB). Drag the image to pan and use the scroll wheel or zoom buttons to zoom.</p>
+        </div>
+        <div class="help-feature">
+          <strong>📍 Markers</strong>
+          <p>Click <strong>Place marker</strong>, then click the image. Name the marker, add notes, and optionally link it. Click a marker later to reopen the sidebar. Drag a marker to move it. <strong>Open link</strong> jumps to the lore page, town roster, character sheet, or encounter.</p>
+        </div>
+      `
+    },
+    {
       id: 'town-history',
       icon: '📜',
       title: 'Town History',
@@ -695,6 +713,10 @@ export default function HelpView(container) {
           <strong>🎯 Initiative Tracker</strong>
           <p>Roll initiative, track turn order, manage HP/damage, and apply conditions during combat. Click the ▶️ button to start the encounter.</p>
         </div>
+        <div class="help-feature">
+          <strong>🗺️ Table</strong>
+          <p>Open <strong>Table</strong> on an encounter to place the roster on a grid. Tokens show the live character sheet, including Deceased from simulation. Saving HP or status writes back to that character and to the encounter tracker. <strong>Download Foundry scene</strong> exports only the people on the grid, with positions and each character’s Eon Weaver id. Foundry does not import that file by itself.</p>
+        </div>
       `
     },
     {
@@ -805,7 +827,7 @@ export default function HelpView(container) {
         </div>
         <div class="help-feature">
           <strong>🗺️ vs World Map</strong>
-          <p>The Content Library is general-purpose storage. The <strong>World Map</strong> page is for the interactive campaign map that pins towns and drives travel math.</p>
+          <p>The Content Library is general-purpose storage. The <strong>World Map</strong> page pins towns and drives travel math. <strong>Handout Maps</strong> is a separate sheet: upload any image, drop markers, and open a sidebar for the linked lore page, town, NPC, or encounter.</p>
         </div>
       `
     },
@@ -962,11 +984,43 @@ export default function HelpView(container) {
       `
     },
     {
+      id: 'sessions',
+      icon: '🗓️',
+      title: 'Sessions',
+      content: `
+        <p><strong>Sessions</strong> in the sidebar is the campaign hub. It stores the plan for a night at the table and the recap afterward on the same record.</p>
+        <div class="help-feature">
+          <strong>🗓️ Session</strong>
+          <p>Title, real-world date, in-game date, goals, and a checklist (<code>[ ]</code> / <code>[x]</code> one item per line). Town and encounter ids are optional links. Mark <strong>Player visible</strong> to show the title, goals, and recap on <strong>My tables</strong>. Prep notes stay with the DM.</p>
+        </div>
+        <div class="help-feature">
+          <strong>📜 Recap</strong>
+          <p>After you play, set status to <strong>ran</strong> and write the recap, XP, loot, and NPC outcomes. A later step can file that recap into the lore codex. That ingest is not connected yet.</p>
+        </div>
+        <div class="help-feature">
+          <strong>🧵 Prep timeline</strong>
+          <p>Arcs, deadlines, and foreshadowing. This is separate from town history, which still comes from simulation.</p>
+        </div>
+        <div class="help-feature">
+          <strong>🎲 Roll tables</strong>
+          <p>Weighted rows. Save the table, then roll. The server picks a row using the weights.</p>
+        </div>
+        <div class="help-feature">
+          <strong>✍️ Workshop drafts</strong>
+          <p>Outlines, puzzles, deities, feats, spells, familiars, mounts, shops, and organizations can be written and saved here. These tools do not call the AI yet. Canon marks a draft you want to keep.</p>
+        </div>
+      `
+    },
+    {
       id: 'player-portal',
       icon: '🔶',
       title: 'Player Portal',
       content: `
         <p>A <strong>player-facing</strong> surface for shared campaign content (read-focused views). DM-only actions stay in the main sidebar; use this when you want players to follow hooks without opening the full DM shell.</p>
+        <div class="help-feature">
+          <strong>Seats on their own accounts</strong>
+          <p>From Player Portal, create an invite link (and optional email). The player signs in or registers, accepts, and opens the campaign under <strong>My tables</strong>. That view is read-only: towns, living characters, recent history, and lore pages marked player-visible. Roles are Player and Co-DM. A co-DM can invite more players. Revoke a seat to remove access. The campaign world stays on the owner's account. Anonymous share tokens are still there if you do not want players to sign in.</p>
+        </div>
       `
     },
     {
@@ -974,7 +1028,7 @@ export default function HelpView(container) {
       icon: '📦',
       title: 'VTT Export',
       content: `
-        <p>Export party or encounter data to structured formats for virtual tabletop tools. Pick targets from your campaign, download JSON or bundled exports, and import into your VTT workflow.</p>
+        <p>The campaign export on this page is a JSON snapshot for adapters. For a grid of live characters and a Foundry scene of the people on the map, open an encounter and choose <strong>Table</strong>.</p>
       `
     },
     {
@@ -990,10 +1044,10 @@ export default function HelpView(container) {
       icon: '💎',
       title: 'Plans & credits',
       content: `
-        <p>Open <strong>💎 Plans</strong> for tier catalog, monthly <strong>Eon Credits</strong> allowances, and Stripe checkout when billing is enabled on the server.</p>
+        <p>Open <strong>💎 Plans</strong> for the tier catalog, monthly credit grants, and Stripe checkout when billing is enabled on the server.</p>
         <div class="help-feature">
           <strong>Credits</strong>
-          <p>The sidebar shows balance (🪙) and usage. AI-heavy flows (scribe, simulation, some imports) consume credits; procedural roster intake does not.</p>
+          <p>The sidebar shows balance (🪙). AI calls spend that wallet and stop when it is empty. Towns, campaigns, and rosters are not capped by plan. Credits saved on a higher plan still spend after you move to Free. Paid plans add a monthly grant on renewal; that grant is not a ceiling.</p>
         </div>
       `
     },
@@ -1051,8 +1105,8 @@ export default function HelpView(container) {
   const HELP_GROUPS = [
     { id: 'g-start', label: 'Getting started', sectionIds: ['getting-started', 'dashboard', 'tips'] },
     { id: 'g-towns', label: 'Towns & characters', sectionIds: ['town-roster', 'town-settings', 'town-stats', 'ai-intake', 'character-import', 'character-sheet', 'level-up', 'social-system', 'buildings', 'pdf-export'] },
-    { id: 'g-world', label: 'World & simulation', sectionIds: ['macro-dynamics', 'monthly-simulation', 'world-simulate', 'world-map', 'town-history', 'calendar'] },
-    { id: 'g-table', label: 'Table & sessions', sectionIds: ['party', 'player-portal', 'encounters', 'ai-scribe', 'vtt-export'] },
+    { id: 'g-world', label: 'World & simulation', sectionIds: ['macro-dynamics', 'monthly-simulation', 'world-simulate', 'world-map', 'campaign-maps', 'town-history', 'calendar'] },
+    { id: 'g-table', label: 'Table & sessions', sectionIds: ['sessions', 'party', 'player-portal', 'encounters', 'ai-scribe', 'vtt-export'] },
     { id: 'g-library', label: 'Library & rules', sectionIds: ['content-library', 'wiki-lore', 'srd-browser', 'homebrew'] },
     { id: 'g-connect', label: 'Integrations', sectionIds: ['integrations'] },
     { id: 'g-account', label: 'Campaign & settings', sectionIds: ['campaigns', 'settings', 'subscription-plans'] },
@@ -1073,10 +1127,11 @@ export default function HelpView(container) {
     'calendar': 'Custom months and weekdays; advances with world simulation.',
     'ai-scribe': 'Lore, quests, dungeons — uses campaign context; may use EC.',
     'wiki-lore': 'Lore pages with [[cross-links]]; AI Scribe auto-ingests.',
+    'sessions': 'Session planner, recap, prep timeline, roll tables, and workshop drafts.',
     'player-portal': 'Player-facing read views for your table.',
     'vtt-export': 'Export structures for virtual tabletop tools.',
     'integrations': 'Discord webhooks and external hooks.',
-    'subscription-plans': 'Tiers, monthly AI credit allowances.',
+    'subscription-plans': 'Tiers and the Eon Credits wallet. AI stops when the wallet is empty.',
     'tips': 'Shortcuts, refresh, checklist, bug reports.',
     'character-import': 'Import characters from JSON or other sources.',
     'level-up': 'Level-up wizard and progression on the sheet.',
@@ -1084,9 +1139,11 @@ export default function HelpView(container) {
     'buildings': 'Structures built through simulation and town stats.',
     'homebrew': 'Custom races, classes, feats, spells, and monsters.',
     'content-library': 'Maps, handouts, PDFs, and campaign assets.',
+    'campaign-maps': 'Upload a map image, drop markers, and open linked lore, towns, NPCs, or encounters.',
+    'world-map': 'Town pins, scale, and travel distances for simulation.',
     'campaigns': 'Switch campaigns and edition from Settings.',
     'pdf-export': 'Download a character sheet PDF from the roster.',
-    'encounters': 'SRD monsters, CR totals, initiative tracking.',
+    'encounters': 'Roster, initiative, a live token grid, and a Foundry scene download.',
     'party': 'PC roster and cross-town party overview.',
   };
 
