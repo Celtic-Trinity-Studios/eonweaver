@@ -3,7 +3,8 @@
  * Shows demographics, buildings (from DB), role distribution, and other town data.
  */
 import { getState, setState } from '../stores/appState.js';
-import { navigate, appHref } from '../router.js';
+import { appHref } from '../router.js';
+import { townToolbarBarHtml, bindTownToolbar } from '../components/TownToolbar.js';
 import { apiGetCharacters, normalizeCharacter } from '../api/characters.js';
 import { apiGetTowns, apiGetHistory } from '../api/towns.js';
 
@@ -39,18 +40,14 @@ export default function TownStatsView(container, params) {
 
     container.innerHTML = `
     <div class="view-town-stats">
-      <header class="view-header">
-        <h1>Town Statistics</h1>
-        <div class="view-header-right">
-          <button class="btn-secondary btn-sm" id="stats-back-btn">Back to Town</button>
-        </div>
-      </header>
+      <div class="town-toolbar">
+        ${townToolbarBarHtml({ current: 'stats' })}
+      </div>
+      <h1 class="stats-page-title">Town Statistics</h1>
       <div class="stats-loading">Loading town data...</div>
     </div>`;
 
-    container.querySelector('#stats-back-btn').addEventListener('click', () => {
-        navigate('town/' + townId);
-    });
+    bindTownToolbar(container, townId);
 
     loadStats(container, townId);
 }

@@ -2,7 +2,8 @@
  * Eon Weaver — Relationship Network (full-page town graph)
  */
 import { getState } from '../stores/appState.js';
-import { navigate, appHref } from '../router.js';
+import { appHref } from '../router.js';
+import { townToolbarBarHtml, bindTownToolbar } from '../components/TownToolbar.js';
 import { apiGetTowns } from '../api/towns.js';
 import { apiGetCharacters, normalizeCharacter } from '../api/characters.js';
 import { apiGetSocialData } from '../api/social.js';
@@ -20,14 +21,13 @@ export default function RelationshipNetworkView(container, params) {
 
   container.innerHTML = `
     <div class="view-relationship-network">
+      <div class="town-toolbar">
+        ${townToolbarBarHtml({ current: 'network' })}
+      </div>
       <header class="view-header">
         <div class="view-header-left">
           <h1>Relationship Network</h1>
           <p class="view-subtitle" id="rn-town-label">Loading…</p>
-        </div>
-        <div class="view-header-right">
-          <button type="button" class="btn-secondary btn-sm" id="rn-social-btn">🏘️ Town Social</button>
-          <button type="button" class="btn-secondary btn-sm" id="rn-back-btn">Back to Town</button>
         </div>
       </header>
       <div class="rn-body" id="rn-body">
@@ -36,13 +36,7 @@ export default function RelationshipNetworkView(container, params) {
     </div>
   `;
 
-  container.querySelector('#rn-back-btn')?.addEventListener('click', () => {
-    navigate('town/' + townId);
-  });
-  container.querySelector('#rn-social-btn')?.addEventListener('click', async () => {
-    const { openTownSocialPanel } = await import('../components/TownSocialPanel.js');
-    openTownSocialPanel(townId);
-  });
+  bindTownToolbar(container, townId);
 
   loadNetwork(container, townId, (destroy) => {
     destroyGraph = destroy;

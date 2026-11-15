@@ -31,6 +31,63 @@
     padding-bottom: 1rem;
 }
 
+.app-content:has(> .view-town) {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.view-town {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+}
+
+.view-town .town-filters {
+    flex-shrink: 0;
+}
+
+.view-town .split-layout {
+    flex: 1;
+    max-height: none;
+}
+
+.town-toolbar {
+    flex-shrink: 0;
+    position: sticky;
+    top: 0;
+    z-index: 8;
+    background: var(--bg-primary);
+}
+
+.town-toolbar-bar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: .5rem;
+    min-width: 0;
+    flex: 1;
+}
+
+.town-toolbar-actions {
+    display: flex;
+    flex: 1;
+    min-width: 0;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: .4rem;
+}
+
+.town-toolbar-bar .detail-mode-tabs {
+    flex: 0 0 auto;
+}
+
+.town-toolbar-actions .is-current {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
 /* sidebar*/
 .sidebar {
     width: var(--sidebar-width);

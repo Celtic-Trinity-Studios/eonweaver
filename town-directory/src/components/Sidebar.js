@@ -36,9 +36,7 @@ const NAV_GROUPS = [
     id: 'settlement',
     label: 'Settlement',
     items: [
-      { route: 'town', icon: '🏰', label: 'Town Roster', hint: 'Living roster, character sheets, AI intake, town settings, and history.' },
-      { route: 'townstats', icon: '📈', label: 'Town Stats', hint: 'Demographics, buildings, and aggregates for the active town (pick a town from the Dashboard first).' },
-      { route: 'relationships', icon: '🕸️', label: 'Relationships', hint: 'Full-page NPC relationship network for the active town.' },
+      { route: 'town', icon: '🏰', label: 'Town Roster', hint: 'Living roster, character sheets, map, stats, and the rest of the town tools.' },
       { route: 'simulation', icon: '⏩', label: 'Monthly Simulation', hint: 'Single-town AI month(s): plan, preview changes, apply — uses the town you last opened.' },
     ],
   },
@@ -116,7 +114,7 @@ function dashboardNavHtml(activeRoute) {
 
 function navGroupsHtml(activeRoute) {
   return NAV_GROUPS.map((group) => {
-    const hasActive = group.items.some((i) => i.route === activeRoute);
+    const hasActive = group.items.some((i) => i.route === activeRoute || (i.route === 'town' && (activeRoute === 'townstats' || activeRoute === 'relationships')));
     const collapsedClass = hasActive ? '' : ' is-collapsed';
     const expanded = hasActive ? 'true' : 'false';
     return `
@@ -127,7 +125,7 @@ function navGroupsHtml(activeRoute) {
         </button>
         <div class="nav-group-items" id="nav-group-${group.id}" role="group">
           ${group.items.map((item) => `
-            <button type="button" class="nav-item nav-item--nested${activeRoute === item.route ? ' active' : ''}" data-route="${escapeAttr(item.route)}" data-tip="${escapeAttr(item.hint)}">
+            <button type="button" class="nav-item nav-item--nested${activeRoute === item.route || (item.route === 'town' && (activeRoute === 'townstats' || activeRoute === 'relationships')) ? ' active' : ''}" data-route="${escapeAttr(item.route)}" data-tip="${escapeAttr(item.hint)}">
               <span class="nav-icon">${item.icon}</span>
               <span class="nav-label">${escapeAttr(item.label)}</span>
             </button>

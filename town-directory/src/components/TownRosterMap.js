@@ -1314,6 +1314,11 @@ export function mountTownRosterMap(root) {
     show(btn.dataset.detailTab);
   });
 
+  if (sessionStorage.getItem('ew-town-map') === '1') {
+    sessionStorage.removeItem('ew-town-map');
+    show('map');
+  }
+
   root.querySelector('#list-body')?.addEventListener('dragstart', (e) => {
     const row = e.target.closest('.char-row');
     if (!row || !e.dataTransfer) return;

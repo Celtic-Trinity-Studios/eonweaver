@@ -2900,6 +2900,12 @@
     margin: 0 auto;
 }
 
+.stats-page-title {
+    font-size: 1.5rem;
+    color: var(--text-heading);
+    margin: .75rem 0 1rem;
+}
+
 .stats-loading {
     text-align: center;
     padding: 3rem;
