@@ -418,7 +418,7 @@ SPROMPT;
                     }
                     $respText = preg_replace('/^\s*`+\w*\s*/i', '', $respText);
                     $respText = preg_replace('/\s*`+\s*$/', '', $respText);
-                    $respText = trim($respText);
+                    $respText = trim(ew_strip_whisper_tic(is_string($respText) ? $respText : ''));
 
                     // Parse with control-char sanitization
                     $parsed = json_decode($respText, true);

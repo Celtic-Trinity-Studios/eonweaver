@@ -403,6 +403,9 @@ OUTPUT (VALID JSON ONLY, no markdown):
 
     $d2 = json_decode($resp2, true);
     $t2 = $d2['choices'][0]['message']['content'] ?? '';
+    if (is_string($t2)) {
+        $t2 = ew_strip_whisper_tic($t2);
+    }
     if (!empty($d2['usage'])) {
         ew_track_intake_flesh_billing($userId, 1, [$d2['usage']]);
     }
@@ -577,6 +580,9 @@ OUTPUT: Valid JSON array ONLY, exactly {$n} objects. No markdown or commentary."
 
     $d2 = json_decode($resp2, true);
     $t2 = $d2['choices'][0]['message']['content'] ?? '';
+    if (is_string($t2)) {
+        $t2 = ew_strip_whisper_tic($t2);
+    }
 
     $parsedArr = ew_intake_decode_json_character_array($t2);
 
@@ -627,6 +633,9 @@ OUTPUT: Valid JSON array ONLY, exactly {$n} objects. No markdown or commentary."
                 $usageForBatch[] = $dR['usage'];
             }
             $tR = $dR['choices'][0]['message']['content'] ?? '';
+            if (is_string($tR)) {
+                $tR = ew_strip_whisper_tic($tR);
+            }
             $parsedArr = ew_intake_decode_json_character_array($tR);
         }
 
@@ -1138,9 +1147,9 @@ For each character provide ONLY: name, race, class, gender, age, role, alignment
     $data = json_decode($response, true);
     $finishReason = $data["choices"][0]["finish_reason"] ?? "";
     $respText = $data["choices"][0]["message"]["content"] ?? "";
-    $respText = preg_replace('/^\s*`+\w*\s*/i', '', $respText);
+    $respText = preg_replace('/^\s*`+\w*\s*/i', '', is_string($respText) ? $respText : '');
     $respText = preg_replace('/\s*`+\s*$/', '', $respText);
-    $respText = trim($respText);
+    $respText = trim(ew_strip_whisper_tic($respText ?? ''));
 
     $roster = json_decode($respText, true);
     if (json_last_error() !== JSON_ERROR_NONE) {
@@ -2000,9 +2009,9 @@ Town: \"{$townName}\"
 
     $data = json_decode($response, true);
     $respText = $data["choices"][0]["message"]["content"] ?? "";
-    $respText = preg_replace('/^\s*`+\w*\s*/i', '', $respText);
+    $respText = preg_replace('/^\s*`+\w*\s*/i', '', is_string($respText) ? $respText : '');
     $respText = preg_replace('/\s*`+\s*$/', '', $respText);
-    $respText = trim($respText);
+    $respText = trim(ew_strip_whisper_tic($respText ?? ''));
 
     $parsed = json_decode($respText, true);
     if (json_last_error() !== JSON_ERROR_NONE) {

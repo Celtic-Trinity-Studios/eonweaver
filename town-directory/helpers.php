@@ -95,6 +95,54 @@ function ew_openrouter_reasoning_config(string $model, string $profile): ?array
 }
 
 /**
+ * Appended to every chat call. Gemini otherwise reaches for whisper in every paragraph.
+ */
+function ew_prose_voice_rule(): string
+{
+    return 'VOICE RULE: Concrete speech and action. Banned in every sentence, including metaphors and JSON strings: whisper, whispered, whispering, whispers, murmur, murmured, murmuring, hush, hushed. People say, ask, call, or shout. Wind, stone, shadows, and silence do not speak.';
+}
+
+/**
+ * Replace the quiet-voice tic if the model writes it anyway.
+ * Whole words only, so a surname like Moonwhisper is left alone.
+ */
+function ew_strip_whisper_tic(string $text): string
+{
+    if ($text === '' || !preg_match('/whisper|murmur|\bhush/i', $text)) {
+        return $text;
+    }
+    $map = [
+        '/\bwhispers of\b/i' => 'talk of',
+        '/\bwhisper of\b/i' => 'hint of',
+        '/\bwhispering\b/i' => 'speaking',
+        '/\bwhispered\b/i' => 'said',
+        '/\bwhispers\b/i' => 'says',
+        '/\bwhisper\b/i' => 'voice',
+        '/\bmurmuring\b/i' => 'talking',
+        '/\bmurmured\b/i' => 'said',
+        '/\bmurmurs\b/i' => 'says',
+        '/\bmurmur\b/i' => 'voice',
+        '/\bhushed\b/i' => 'quiet',
+        '/\bhush\b/i' => 'quiet',
+    ];
+    foreach ($map as $re => $rep) {
+        $text = preg_replace_callback($re, static function (array $m) use ($rep): string {
+            $src = $m[0];
+            if (preg_match('/^[A-Z]{2,}/', $src)) {
+                return strtoupper($rep);
+            }
+            if (preg_match('/^[A-Z]/', $src)) {
+                return ucfirst($rep);
+            }
+
+            return $rep;
+        }, $text) ?? $text;
+    }
+
+    return $text;
+}
+
+/**
  * Attach per-task reasoning (and, for prose, nucleus sampling) to a chat body.
  *
  * @param array<string,mixed> $body
@@ -109,6 +157,21 @@ function ew_openrouter_apply_profile(array $body, string $profile): array
     }
     if ($profile === 'creative' && !array_key_exists('top_p', $body)) {
         $body['top_p'] = 0.95;
+    }
+    if (isset($body['messages']) && is_array($body['messages'])) {
+        $rule = "\n\n" . ew_prose_voice_rule();
+        for ($i = count($body['messages']) - 1; $i >= 0; $i--) {
+            if (!is_array($body['messages'][$i]) || ($body['messages'][$i]['role'] ?? '') !== 'user') {
+                continue;
+            }
+            if (!is_string($body['messages'][$i]['content'] ?? null)) {
+                continue;
+            }
+            if (!str_contains($body['messages'][$i]['content'], 'VOICE RULE:')) {
+                $body['messages'][$i]['content'] .= $rule;
+            }
+            break;
+        }
     }
 
     return $body;

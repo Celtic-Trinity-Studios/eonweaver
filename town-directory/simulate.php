@@ -58,6 +58,7 @@ function simRespond(array $data): void
 
 /* ── Robust JSON decode with multi-stage sanitization ── */
 function robustJsonDecode(string $text): ?array {
+    $text = ew_strip_whisper_tic($text);
     // Strip markdown code fences
     $text = preg_replace('/^\s*`+\w*\s*/i', '', $text);
     $text = preg_replace('/\s*`+\s*$/', '', $text);
@@ -609,12 +610,15 @@ PROMPT;
                 }
                 $orResp = json_decode($resp, true);
                 $portraitOrUsage = $orResp['usage'] ?? null;
-                $promptText = trim($orResp['choices'][0]['message']['content'] ?? '');
+                $promptText = trim(ew_strip_whisper_tic((string) ($orResp['choices'][0]['message']['content'] ?? '')));
                 if (is_array($orResp)) {
                     ew_openrouter_log_chat_completion('portrait_prompt', $portraitReqPayload, $orResp, []);
                 }
             }
 
+            if (is_string($promptText)) {
+                $promptText = ew_strip_whisper_tic($promptText);
+            }
             if (!$promptText) {
                 throw new Exception('LLM returned an empty prompt.');
             }

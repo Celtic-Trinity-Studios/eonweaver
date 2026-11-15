@@ -94,7 +94,7 @@ if ($action === 'scribe_generate') {
         $generatedText = '';
     }
     $generatedText = preg_replace('/<think>.*?<\/think>\s*/s', '', $generatedText) ?? $generatedText;
-    $generatedText = trim($generatedText);
+    $generatedText = trim(ew_strip_whisper_tic($generatedText));
 
     $ingest = null;
     $autoIngest = !isset($input['auto_ingest_lore']) || !empty($input['auto_ingest_lore']);
@@ -514,7 +514,7 @@ function buildGeneratorPrompt($type, $params, $context, $userId = 0, $campId = 0
         $prompt .= "TASK: Generate a rich, descriptive piece of Lore about: \"{$topic}\"\n";
         $prompt .= "LORE TYPE: {$ltype}\n";
         if ($custom) $prompt .= "SPECIAL INSTRUCTIONS: {$custom}\n";
-        $prompt .= "\nFORMATTING: Use Markdown. Start with a catchy title (# Title), provide 2-4 paragraphs of evocative text. Include a 'Hooks / Rumors' bulleted list at the end.";
+        $prompt .= "\nFORMATTING: Use Markdown. Start with a catchy title (# Title), provide 2-4 paragraphs of concrete text about what people do and what is physically there. Include a 'Hooks / Rumors' bulleted list at the end.";
     } 
     elseif ($type === 'quest') {
         $qtype = $params['type'] ?? 'fetch';
@@ -567,7 +567,7 @@ function buildGeneratorPrompt($type, $params, $context, $userId = 0, $campId = 0
         if ($custom !== '') {
             $prompt .= "USER CONSTRAINTS (binding — monster types, factions, tone, forbidden creatures, or special requirements): {$custom}\n";
         }
-        $prompt .= "\nFORMATTING: Use Markdown. Start with intro paragraphs (no heading required). Then each keyed room or area MUST start with its own line '## Room Title' or '## Area N: Name'. Describe sensory details, monsters, traps, or treasure in that section.";
+        $prompt .= "\nFORMATTING: Use Markdown. Start with intro paragraphs (no heading required). Then each keyed room or area MUST start with its own line '## Room Title' or '## Area N: Name'. Describe what is in the room: objects, creatures, exits, traps, and treasure.";
         $prompt .= "\nAfter the rooms, add a section '## NPCs' with bullet lines like '- **Name** — role or one-line note' for each notable creature or person so they can be imported into the roster.";
     }
     elseif ($type === 'item') {
@@ -576,7 +576,7 @@ function buildGeneratorPrompt($type, $params, $context, $userId = 0, $campId = 0
         $theme = $params['theme'] ?? '';
         $prompt .= "TASK: Design a Magic Item.\n";
         $prompt .= "ITEM TYPE: {$itype}\nPOWER LEVEL: {$power}\nTHEME: {$theme}\n";
-        $prompt .= "\nFORMATTING: Use Markdown. Provide the item name as a # Header, followed by its basic stats (Aura, Caster Level, Slot), an evocative physical description, its mechanical effects/abilities in bullet points, and a short paragraph of its history/lore in the world.";
+        $prompt .= "\nFORMATTING: Use Markdown. Provide the item name as a # Header, followed by its basic stats (Aura, Caster Level, Slot), a physical description, its mechanical effects/abilities in bullet points, and a short paragraph of its history in the world.";
     }
     elseif ($type === 'trap') {
         $ttype = $params['type'] ?? 'mechanical';

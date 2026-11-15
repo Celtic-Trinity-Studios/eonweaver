@@ -133,6 +133,9 @@ PLAN;
             }
 
             $planText = $respData['choices'][0]['message']['content'] ?? '';
+            if (is_string($planText)) {
+                $planText = ew_strip_whisper_tic($planText);
+            }
 
             if (is_array($respData)) {
                 ew_openrouter_log_chat_completion('sim_planning', $planReqPayload, $respData, ['town_id' => $townId, 'months' => $months]);
