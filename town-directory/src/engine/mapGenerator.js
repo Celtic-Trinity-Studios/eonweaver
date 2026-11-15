@@ -180,7 +180,7 @@ function matchedBlurb(places) {
   if (!places.buildingCount && places.peopleCount) {
     return 'This town has no buildings yet, so each person has a place of their own.';
   }
-  return 'Each room is one of this town’s buildings. The names inside are the people who belong there.';
+  return 'Each room is one of this town’s buildings. People stand in the room that names them.';
 }
 
 function planTownPlaces(buildings, people) {
@@ -203,6 +203,7 @@ function planTownPlaces(buildings, people) {
   const taken = new Set();
   const blocks = [];
   let buildingCount = 0;
+  const textHome = textHomes(roster, Array.isArray(buildings) ? buildings : []);
   for (const building of Array.isArray(buildings) ? buildings : []) {
     const name = String(building?.name || '').trim();
     if (!name) continue;
@@ -219,9 +220,19 @@ function planTownPlaces(buildings, people) {
       taken.add(n);
       peopleHere.push({ id: n, name: String(known?.name || fallbackName || 'Someone').trim() || 'Someone' });
     };
-    for (const resident of building.residents || []) addPerson(resident?.id, resident?.name);
+    const buildingId = Number(building.id);
+    for (const resident of building.residents || []) {
+      const id = Number(resident?.id);
+      if (textHome.has(id) && textHome.get(id) !== buildingId) continue;
+      addPerson(resident?.id, resident?.name);
+    }
     for (const person of roster) {
-      if (Number(person?.building_id) === Number(building.id)) addPerson(person.id, person.name);
+      const id = Number(person?.id);
+      if (textHome.has(id)) {
+        if (textHome.get(id) === buildingId) addPerson(id, person.name);
+        continue;
+      }
+      if (Number(person?.building_id) === buildingId) addPerson(id, person.name);
     }
     if (building.owner_id) addPerson(building.owner_id, building.owner_name);
     const rooms = (Array.isArray(building.rooms) ? building.rooms : [])
@@ -264,10 +275,79 @@ function isDead(person) {
   return status === 'deceased' || status === 'dead';
 }
 
+function areaNumber(name) {
+  const text = String(name || '');
+  const m = text.match(/\b(?:area|room)\s*(\d+)\b/i) || text.match(/^\s*(\d+)\s*[.:)\-]/);
+  return m ? Number(m[1]) : null;
+}
+
+function escapeName(name) {
+  return String(name || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function hasWholeName(text, name) {
+  const n = String(name || '').trim();
+  if (n.length < 2) return false;
+  return new RegExp(`\\b${escapeName(n)}\\b`, 'i').test(String(text || ''));
+}
+
+/** Full name in a room description outranks the building the roster happened to store. */
+function mentionScore(text, name) {
+  const n = String(name || '').replace(/\s+/g, ' ').trim();
+  if (!hasWholeName(text, n)) return 0;
+  return 6;
+}
+
+function textHomes(roster, buildings) {
+  const names = [];
+  for (const person of roster) {
+    const name = String(person?.name || '').trim();
+    if (name.length >= 2 && !isDead(person)) names.push(name);
+  }
+  const homes = new Map();
+  for (const person of roster) {
+    const id = Number(person?.id);
+    const name = String(person?.name || '').trim();
+    if (!id || name.length < 2 || isDead(person)) continue;
+    let bestId = 0;
+    let bestScore = 0;
+    let bestCrowd = Infinity;
+    for (const building of buildings) {
+      const desc = building?.description || '';
+      const score = mentionScore(desc, name);
+      if (!score) continue;
+      const total = score + (areaNumber(building?.name) != null ? 1 : 0);
+      const crowd = names.reduce((n, who) => n + (hasWholeName(desc, who) ? 1 : 0), 0);
+      if (total > bestScore || (total === bestScore && crowd < bestCrowd)) {
+        bestScore = total;
+        bestCrowd = crowd;
+        bestId = Number(building.id);
+      }
+    }
+    if (bestScore >= 6) homes.set(id, bestId);
+  }
+  return homes;
+}
+
+function orderKeyedBlocks(blocks) {
+  return blocks
+    .map((block, index) => ({ block, index, n: areaNumber(block.name) }))
+    .sort((a, b) => {
+      if (a.n != null && b.n != null && a.n !== b.n) return a.n - b.n;
+      if (a.n != null && b.n == null) return -1;
+      if (a.n == null && b.n != null) return 1;
+      return a.index - b.index;
+    })
+    .map((row) => row.block);
+}
+
 function generateMatched(rng, kind, size, places) {
-  const blocks = shuffle(places.blocks, rng).map((block) => shapeBlock(block, size));
+  const keyed = kind !== 'building';
+  const ordered = keyed ? orderKeyedBlocks(places.blocks) : shuffle(places.blocks, rng);
+  const blocks = ordered.map((block) => shapeBlock(block, size));
+  if (keyed) return finishMatched(kind, spinePlace(blocks), rng);
   const cols = Math.max(1, Math.ceil(Math.sqrt(blocks.length)));
-  const gap = kind === 'building' ? 3 : 2;
+  const gap = 3;
   let x = 2;
   let y = 2;
   let rowH = 0;
@@ -303,6 +383,11 @@ function generateMatched(rng, kind, size, places) {
   }
   const width = Math.max(8, maxX + 1);
   const height = Math.max(8, maxY + 2);
+  return finishMatched(kind, { shells, rooms, width, height }, rng);
+}
+
+function finishMatched(kind, placed, rng) {
+  const { shells, rooms, width, height } = placed;
   const tiles = new Uint8Array(width * height);
   const facing = new Uint8Array(width * height);
   if (kind === 'building') tiles.fill(MAP_TILE.YARD);
@@ -314,7 +399,7 @@ function generateMatched(rng, kind, size, places) {
   if (kind === 'building') {
     for (const room of rooms) punchOutside(tiles, width, height, rooms, room);
   } else {
-    connectRooms(tiles, width, height, rooms, rng);
+    connectInOrder(tiles, width, height, rooms, rng);
     linkComponents(tiles, width, height);
   }
   placeDoors(tiles, facing, width, height, rooms);
@@ -324,6 +409,58 @@ function generateMatched(rng, kind, size, places) {
   }
   const pins = rooms.flatMap((room) => pinsForRoom(room, width, height));
   return { tiles, facing, rooms, pins, width, height };
+}
+
+/** Keyed rooms walk in order: along a row, then back, joined by a short corridor. */
+function spinePlace(blocks) {
+  const maxRow = 42;
+  const gap = 2;
+  let x = 2;
+  let y = 2;
+  let dir = 1;
+  let rowH = 0;
+  const shells = [];
+  const rooms = [];
+  for (const block of blocks) {
+    let placeX = dir > 0 ? x : x - block.w;
+    if (dir > 0 && placeX + block.w > maxRow) {
+      y += rowH + gap;
+      dir = -1;
+      placeX = Math.max(2, x - gap - block.w);
+      rowH = 0;
+    } else if (dir < 0 && placeX < 2) {
+      y += rowH + gap;
+      dir = 1;
+      placeX = 2;
+      rowH = 0;
+    }
+    shells.push({ x: placeX, y, w: block.w, h: block.h });
+    for (const room of block.rooms) {
+      rooms.push({
+        x: placeX + room.x,
+        y: y + room.y,
+        w: room.w,
+        h: room.h,
+        n: rooms.length + 1,
+        label: room.label,
+        people: room.people,
+      });
+    }
+    rowH = Math.max(rowH, block.h);
+    x = dir > 0 ? placeX + block.w + gap : placeX;
+  }
+  const maxX = shells.reduce((m, s) => Math.max(m, s.x + s.w), 8);
+  const maxY = shells.reduce((m, s) => Math.max(m, s.y + s.h), 8);
+  return { shells, rooms, width: maxX + 2, height: maxY + 2 };
+}
+
+function connectInOrder(tiles, w, h, rooms, rng) {
+  for (let i = 0; i < rooms.length - 1; i++) {
+    let carved = false;
+    for (let attempt = 0; attempt < 24 && !carved; attempt++) {
+      carved = carveLink(tiles, w, h, rooms, rooms[i], rooms[i + 1], rng);
+    }
+  }
 }
 
 function shapeBlock(block, size) {
@@ -361,9 +498,18 @@ function shapeBlock(block, size) {
 
 function roomSpan(peopleCount, size, crowded) {
   const bonus = crowded ? 0 : size === 'large' ? 2 : size === 'small' ? 0 : 1;
+  const count = Math.max(0, peopleCount);
+  const cols = Math.max(1, Math.ceil(Math.sqrt(Math.max(count, 1))));
+  const rows = Math.max(1, Math.ceil(Math.max(count, 1) / cols));
+  if (!count) {
+    return {
+      w: Math.max(6, Math.min(12, 6 + bonus)),
+      h: Math.max(5, Math.min(8, 4 + bonus)),
+    };
+  }
   return {
-    w: Math.max(7, Math.min(13, 6 + bonus + Math.min(3, Math.ceil(peopleCount / 3)))),
-    h: Math.max(5, Math.min(9, 4 + bonus + Math.min(2, peopleCount))),
+    w: Math.max(7, Math.min(16, 3 + cols * 3 + bonus)),
+    h: Math.max(6, Math.min(12, 3 + rows * 2 + bonus)),
   };
 }
 
@@ -388,10 +534,10 @@ function pinsForRoom(room, width, height) {
   const people = room.people || [];
   const count = people.length;
   if (!count) return [];
-  const x0 = room.x + 0.8;
-  const x1 = room.x + room.w - 0.8;
-  const y0 = room.y + Math.min(room.h - 1.4, 2.4);
-  const y1 = room.y + room.h - 0.8;
+  const x0 = room.x + 1.2;
+  const x1 = room.x + room.w - 1.2;
+  const y0 = room.y + Math.min(room.h - 1.6, 2.2);
+  const y1 = room.y + room.h - 1.1;
   const cols = Math.ceil(Math.sqrt(count));
   const rows = Math.ceil(count / cols);
   return people.map((person, index) => {

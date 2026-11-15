@@ -11,6 +11,7 @@ import { apiCreateTown, apiGetTowns } from '../api/towns.js';
 import {
     parseDungeonForRoster,
     keyedRoomName,
+    roomIndexForPerson,
     intakeLookupTokens,
     normalizeCreatureCharForSave
 } from '../utils/scribeRosterImport.js';
@@ -620,6 +621,7 @@ export default function ScribeView(container) {
                             body: `${overview.trim()}\n\n${rooms[0].body || ''}`.trim()
                         };
                     }
+                    const roomBuildingIds = [];
                     for (let i = 0; i < rooms.length; i++) {
                         const r = rooms[i];
                         const rb = await apiSaveBuilding(townId, {
@@ -633,9 +635,11 @@ export default function ScribeView(container) {
                             build_progress: 0,
                             build_time: 1
                         });
+                        roomBuildingIds.push(rb.id);
                         roomBuildingCount++;
                         if (!primaryBuildingId) primaryBuildingId = rb.id;
                     }
+                    parsedDungeon.roomBuildingIds = roomBuildingIds;
                 } else {
                     const saved = await apiSaveBuilding(townId, {
                         id: 0,
@@ -672,6 +676,9 @@ export default function ScribeView(container) {
             if (npcs.length) {
                 const displaySafe = (nm) => nm.replace(/\*\*/g, '').trim();
                 for (const n of npcs) {
+                    const roomIdx = roomIndexForPerson(n, parsedDungeon.rooms || []);
+                    const homeId = roomIdx >= 0 ? parsedDungeon.roomBuildingIds?.[roomIdx] : null;
+                    const buildingId = homeId || primaryBuildingId;
                     const instructions = `Dungeon import — “${buildingName}”. ${n.blurb || ''}`.slice(0, 600);
                     const storyName = displaySafe(n.name).slice(0, 80);
                     let applied = false;
@@ -689,7 +696,7 @@ export default function ScribeView(container) {
                             const rawChar = res.characters?.[0];
                             if (!rawChar) continue;
                             const payload = normalizeCreatureCharForSave(rawChar, {
-                                building_id: primaryBuildingId,
+                                building_id: buildingId,
                                 role: 'NPC',
                                 blurb: n.blurb,
                                 historyLead: `Imported from AI Scribe — dungeon “${buildingName}” (SRD creature matched from “${token}”).`
@@ -719,7 +726,7 @@ export default function ScribeView(container) {
                                 title: '',
                                 role: 'NPC',
                                 history: history.slice(0, 8000),
-                                building_id: primaryBuildingId
+                                building_id: buildingId
                             });
                             npcCount++;
                         } catch (err) {

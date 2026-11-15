@@ -39,6 +39,43 @@ export function keyedRoomName(title, siteTitle) {
     return (name || 'Room').slice(0, 255);
 }
 
+function escapePersonName(name) {
+    return String(name || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function textHasName(text, name) {
+    const n = String(name || '').trim();
+    if (n.length < 2) return false;
+    return new RegExp(`\\b${escapePersonName(n)}\\b`, 'i').test(String(text || ''));
+}
+
+/**
+ * Index of the keyed room this person is standing in.
+ * A room whose text uses their name, or a bullet that cites that room's heading, wins.
+ * -1 when the writeup never places them.
+ */
+export function roomIndexForPerson(npc, rooms) {
+    const name = String(npc?.name || '').replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
+    const blurb = String(npc?.blurb || '');
+    if (!name || !rooms?.length) return -1;
+    let best = -1;
+    let bestScore = 0;
+    rooms.forEach((room, i) => {
+        const title = String(room?.title || '').trim();
+        const body = String(room?.body || '');
+        let score = 0;
+        if (textHasName(body, name)) score += 6;
+        if (title && blurb.toLowerCase().includes(title.toLowerCase())) score += 5;
+        const area = title.match(/\b(?:area|room)\s*(\d+)\b/i);
+        if (area && new RegExp(`\\b(?:area|room)\\s*${area[1]}\\b`, 'i').test(blurb)) score += 3;
+        if (score > bestScore) {
+            bestScore = score;
+            best = i;
+        }
+    });
+    return bestScore > 0 ? best : -1;
+}
+
 /**
  * True for "Edmund Brightwater" or "Pell". False for "Orcs", "The Mire", "Speaking Cave".
  */

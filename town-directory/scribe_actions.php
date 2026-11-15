@@ -628,7 +628,8 @@ function buildGeneratorPrompt($type, $params, $context, $userId = 0, $campId = 0
         $prompt .= "Make the floor plan match the DUNGEON ROLL. Each keyed area must be a different situation, not the same room renumbered.\n";
         $head = scribeDungeonHeadcount((string) $size);
         $prompt .= "OCCUPANTS: These are minor people who work or squat here, not new kingdoms or signature villains. Name every one of them.\n";
-        $prompt .= "NPC ROSTER (binding): The ## NPCs section is exactly {$head} bullets and nothing else. Each bullet is one person, in this shape: `- **Given Surname** — Species Class Level, the job they are doing right now.` Species is an exact SRD or Homebrew name such as Orc, Goblin, or Human. Most are 1st-level Commoners or Warriors. At most one is in charge, and that person is only a level or two above the others. A bullet whose name is a species, a plural, or a shared job (Orcs, Guards, Laborers) is invalid.\n";
+        $prompt .= "Each person is physically in exactly one keyed room. Write their full name in that room's text and in no other room. Do not station the whole roster in the entrance.\n";
+        $prompt .= "NPC ROSTER (binding): The ## NPCs section is exactly {$head} bullets and nothing else. Each bullet is one person, in this shape: `- **Given Surname** — Species Class Level, the job they are doing right now, in Area N: Exact Room Title.` The room title is that person's ## heading, copied exactly. Species is an exact SRD or Homebrew name such as Orc, Goblin, or Human. Most are 1st-level Commoners or Warriors. At most one is in charge, and that person is only a level or two above the others. A bullet whose name is a species, a plural, or a shared job (Orcs, Guards, Laborers) is invalid.\n";
         if ($custom !== '') {
             $prompt .= "USER CONSTRAINTS (binding — monster types, factions, tone, forbidden creatures, or special requirements): {$custom}\n";
         }
