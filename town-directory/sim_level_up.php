@@ -147,8 +147,8 @@
             }
 
             $aiContent = $decoded['choices'][0]['message']['content'] ?? '';
-            $aiContent = preg_replace('/^\s*`+\w*\s*/i', '', trim(is_string($aiContent) ? $aiContent : ''));
-            $aiContent = trim(ew_strip_whisper_tic(preg_replace('/\s*`+\s*$/', '', $aiContent) ?? ''));
+            $aiContent = preg_replace('/^\s*`+\w*\s*/i', '', trim($aiContent));
+            $aiContent = preg_replace('/\s*`+\s*$/', '', $aiContent);
 
             $updated = json_decode($aiContent, true);
             if (!$updated)

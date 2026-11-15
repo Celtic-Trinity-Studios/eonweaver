@@ -95,51 +95,11 @@ function ew_openrouter_reasoning_config(string $model, string $profile): ?array
 }
 
 /**
- * Appended to every chat call. Gemini otherwise reaches for whisper in every paragraph.
+ * Appended to every chat call. Gemini otherwise names places "Whispering X" or, if that word is blocked, "Speaking X".
  */
 function ew_prose_voice_rule(): string
 {
-    return 'VOICE RULE: Concrete speech and action. Banned in every sentence, including metaphors and JSON strings: whisper, whispered, whispering, whispers, murmur, murmured, murmuring, hush, hushed. People say, ask, call, or shout. Wind, stone, shadows, and silence do not speak.';
-}
-
-/**
- * Replace the quiet-voice tic if the model writes it anyway.
- * Whole words only, so a surname like Moonwhisper is left alone.
- */
-function ew_strip_whisper_tic(string $text): string
-{
-    if ($text === '' || !preg_match('/whisper|murmur|\bhush/i', $text)) {
-        return $text;
-    }
-    $map = [
-        '/\bwhispers of\b/i' => 'talk of',
-        '/\bwhisper of\b/i' => 'hint of',
-        '/\bwhispering\b/i' => 'speaking',
-        '/\bwhispered\b/i' => 'said',
-        '/\bwhispers\b/i' => 'says',
-        '/\bwhisper\b/i' => 'voice',
-        '/\bmurmuring\b/i' => 'talking',
-        '/\bmurmured\b/i' => 'said',
-        '/\bmurmurs\b/i' => 'says',
-        '/\bmurmur\b/i' => 'voice',
-        '/\bhushed\b/i' => 'quiet',
-        '/\bhush\b/i' => 'quiet',
-    ];
-    foreach ($map as $re => $rep) {
-        $text = preg_replace_callback($re, static function (array $m) use ($rep): string {
-            $src = $m[0];
-            if (preg_match('/^[A-Z]{2,}/', $src)) {
-                return strtoupper($rep);
-            }
-            if (preg_match('/^[A-Z]/', $src)) {
-                return ucfirst($rep);
-            }
-
-            return $rep;
-        }, $text) ?? $text;
-    }
-
-    return $text;
+    return 'VOICE RULE: Write what is physically there and what people do. Do not use whisper, murmur, or hush, and do not swap those for speaking, voice, talking, or quiet. Never name a place, room, or creature after a verb of speech or a mood. No Speaking Cave, no Whispering Woods. Do not write that a place radiates unease, dread, or a cloying scent. If a cave matters, say what it is made of, what grows there, and who uses it.';
 }
 
 /**

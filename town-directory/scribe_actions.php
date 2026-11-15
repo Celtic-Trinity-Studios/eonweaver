@@ -94,7 +94,7 @@ if ($action === 'scribe_generate') {
         $generatedText = '';
     }
     $generatedText = preg_replace('/<think>.*?<\/think>\s*/s', '', $generatedText) ?? $generatedText;
-    $generatedText = trim(ew_strip_whisper_tic($generatedText));
+    $generatedText = trim($generatedText);
 
     $ingest = null;
     $autoIngest = !isset($input['auto_ingest_lore']) || !empty($input['auto_ingest_lore']);
