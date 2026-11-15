@@ -373,12 +373,12 @@ OUTPUT (VALID JSON ONLY, no markdown):
 {\"name\":\"{$sn}\",\"race\":\"{$sr}\",\"class\":\"{$sc}\",\"gender\":\"{$sg}\",\"age\":{$sa},\"status\":\"Alive\",\"alignment\":\"{$sal}\",\"role\":\"{$srl}\",\"skills_feats\":\"Skill1, Skill2, Skill3\",\"feats\":\"Feat1, Feat2\",\"reason\":\"...\"}";
     }
 
-    $reqPayloadArr = [
+    $reqPayloadArr = ew_openrouter_apply_profile([
         'model' => $model,
         'messages' => [['role' => 'user', 'content' => $fleshPrompt]],
         'temperature' => 0.9,
         'max_tokens' => 1024,
-    ];
+    ], 'extract');
     $payload = json_encode($reqPayloadArr);
     $ch2 = curl_init($openRouterUrl);
     curl_setopt_array($ch2, [
@@ -525,12 +525,12 @@ OUTPUT: Valid JSON array ONLY, exactly {$n} objects. No markdown or commentary."
 
     $maxTok = min(8192, max(2048, (int) (600 * $n + 900)));
 
-    $reqPayloadArr = [
+    $reqPayloadArr = ew_openrouter_apply_profile([
         'model' => $model,
         'messages' => [['role' => 'user', 'content' => $batchPrompt]],
         'temperature' => 0.85,
         'max_tokens' => $maxTok,
-    ];
+    ], 'extract');
     $payload = json_encode($reqPayloadArr);
     $ch2 = curl_init($openRouterUrl);
     curl_setopt_array($ch2, [
@@ -595,12 +595,12 @@ OUTPUT: Valid JSON array ONLY, exactly {$n} objects. No markdown or commentary."
             $usageForBatch[] = $d2['usage'];
         }
 
-        $retryPayloadArr = [
+        $retryPayloadArr = ew_openrouter_apply_profile([
             'model' => $model,
             'messages' => [['role' => 'user', 'content' => $batchPrompt . "\n\nREMINDER: Output ONLY a JSON array of exactly {$n} objects. No markdown. Index order must match the stub list."]],
             'temperature' => 0.35,
             'max_tokens' => $maxTok,
-        ];
+        ], 'extract');
         $payloadRetry = json_encode($retryPayloadArr);
         $chR = curl_init($openRouterUrl);
         curl_setopt_array($chR, [
@@ -1106,12 +1106,12 @@ For each character provide ONLY: name, race, class, gender, age, role, alignment
     $openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
     $model = defined("OPENROUTER_MODEL_CHEAP") ? OPENROUTER_MODEL_CHEAP : (defined("OPENROUTER_MODEL") ? OPENROUTER_MODEL : "google/gemini-2.5-flash");
 
-    $rosterReqPayload = [
+    $rosterReqPayload = ew_openrouter_apply_profile([
         "model" => $model,
         "messages" => [["role" => "user", "content" => $rosterPrompt]],
         "temperature" => 0.95,
         "max_tokens" => 32768
-    ];
+    ], 'extract');
     $payload = json_encode($rosterReqPayload);
     $ch = curl_init($openRouterUrl);
     curl_setopt_array($ch, [
@@ -1969,12 +1969,12 @@ Town: \"{$townName}\"
     $openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
     $model = defined("OPENROUTER_MODEL") ? OPENROUTER_MODEL : "google/gemini-2.5-flash";
 
-    $customReqPayload = [
+    $customReqPayload = ew_openrouter_apply_profile([
         "model" => $model,
         "messages" => [["role" => "user", "content" => $customPrompt]],
         "temperature" => 0.9,
         "max_tokens" => 2048
-    ];
+    ], 'extract');
     $payload = json_encode($customReqPayload);
     $ch = curl_init($openRouterUrl);
     curl_setopt_array($ch, [

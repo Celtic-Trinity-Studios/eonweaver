@@ -49,10 +49,11 @@ define('FREE_SIGNUP_CREDIT_GRANT_RAW', 300000);
 //   define('EW_EC_MAINTAINER_COST_USD', 0.15);        // ~your blended $/displayed EC (telemetry: ~$0.80/M raw @ 200k/EC ≈ 0.16)
 //   define('EW_MONTHLY_CAP_ARPU_FRACTION', 0.45);     // full-cap imputed burn ≤ this × list USD/mo; 0.45 → ~55% ARPU for fees/hosting/margin
 // Tighter margin: lower this (e.g. 0.40) or raise maintainer. More headroom for users: raise to 0.50–0.55 (watch margin).
-// Subscription monthly raw-token ceilings — defaults from tier_economics.php; override per tier
-// in MySQL site_settings as token_limit_{tier} (0 = no monthly cap, wallet-only). Free defaults to 0.
+// Monthly raw-token figures are wallet grants, not a hard stop. Defaults live in tier_economics.php.
+// Override per tier in MySQL site_settings as token_limit_{tier} (0 = no monthly grant). Free defaults to 0.
+// AI calls run while credit_balance is above zero, including after a drop to Free.
 // Legacy retail anchor for top-ups: US$0.22 / 1.5 EC.
-// Max NPCs/residents per town on Free tier (manual adds + imports enforce server-side).
+// FREE_TIER_MAX_RESIDENTS is unused. Roster size is not tier-gated.
 define('FREE_TIER_MAX_RESIDENTS', 15);
 
 // ── Stripe subscriptions (optional — self-serve Plans checkout) ──
@@ -112,6 +113,12 @@ define('OPENROUTER_KEY_WEATHER',         'sk-or-v1-your-key-here');
 define('OPENROUTER_MODEL', 'google/gemini-2.5-flash');
 define('OPENROUTER_MODEL_SMART', 'google/gemini-2.5-flash');
 define('OPENROUTER_MODEL_CHEAP', 'google/gemini-2.5-flash-lite');
+// Chat calls set OpenRouter `reasoning` from the model id (see ew_openrouter_apply_profile).
+// Creative and JSON calls turn Gemini 2.5 thinking off so temperature can vary and max_tokens
+// is not spent on a hidden trace. Narrative calls on full Flash keep a small budget.
+// Gemini 3/4 think by default and often reject effort "none"; the helper uses the lowest
+// effort that model allows (none, minimal, or low). Flash-Lite stays the cheap path:
+// google/gemini-3.5-flash-lite is several times the price and cannot disable thinking.
 
 // Optional: set false in config.php to disable append-only JSONL at private_data/llm_training.jsonl (site-specific training export from intake).
 // define('EW_LLM_TRAINING_LOG', false);

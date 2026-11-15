@@ -377,12 +377,13 @@ Give this character a vivid backstory in the "reason" field:
 {"changes":{"new_characters":[{"name":"Full Name","race":"Human","class":"Commoner 1","gender":"M","age":25,"alignment":"NG","role":"Farmer","skills_feats":"Craft (farming), Profession (farmer)","feats":"Skill Focus (Craft)","spells":"","reason":"Fled the war in the eastern provinces, seeking a quiet life. Former soldier who lost his family. Dreams of owning a plot of land."}]}}
 SPROMPT;
 
-                    $payload = ew_json_encode_openrouter_body([
+                    $arrivalPayload = ew_openrouter_apply_profile([
                         "model" => $model,
                         "messages" => [["role" => "user", "content" => $singlePrompt]],
                         "temperature" => 0.9,
                         "max_tokens" => 2048
-                    ]);
+                    ], 'extract');
+                    $payload = ew_json_encode_openrouter_body($arrivalPayload);
                     $ch = curl_init($openRouterUrl);
                     curl_setopt_array($ch, [
                         CURLOPT_POST => true,
@@ -1012,12 +1013,12 @@ PROMPT;
                         : 18000;
                     $maxTok = min(65536, max(28672, $mmBase + $mmPer * max(0, $months - 1)));
                 }
-                $reqPayloadArr = [
+                $reqPayloadArr = ew_openrouter_apply_profile([
                     "model" => $model,
                     "messages" => [["role" => "user", "content" => $prompt]],
                     "temperature" => 0.8,
                     "max_tokens" => $maxTok
-                ];
+                ], 'narrative');
                 $payload = ew_json_encode_openrouter_body($reqPayloadArr);
                 $ch = curl_init($openRouterUrl);
                 curl_setopt_array($ch, [

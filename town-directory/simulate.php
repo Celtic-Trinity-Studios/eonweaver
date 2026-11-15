@@ -481,12 +481,12 @@ Respond ONLY with valid JSON:
             }
             if ($chunkText === null) {
                 $openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
-                $chunkReqPayload = [
+                $chunkReqPayload = ew_openrouter_apply_profile([
                     'model' => ($category === 'story' && defined('OPENROUTER_MODEL_SMART')) ? OPENROUTER_MODEL_SMART : (defined('OPENROUTER_MODEL_CHEAP') ? OPENROUTER_MODEL_CHEAP : 'google/gemini-2.5-flash'),
                     'messages' => [['role' => 'user', 'content' => $prompt]],
                     'temperature' => 0.8,
                     'max_tokens' => 2048
-                ];
+                ], $category === 'story' ? 'narrative' : 'extract');
                 $payload = json_encode($chunkReqPayload);
                 $ch = curl_init($openRouterUrl);
                 curl_setopt_array($ch, [
@@ -578,12 +578,12 @@ PROMPT;
             if ($promptText === null) {
                 $openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
                 $model = defined('OPENROUTER_MODEL_CHEAP') ? OPENROUTER_MODEL_CHEAP : (defined('OPENROUTER_MODEL') ? OPENROUTER_MODEL : 'google/gemini-2.5-flash');
-                $portraitReqPayload = [
+                $portraitReqPayload = ew_openrouter_apply_profile([
                     'model' => $model,
                     'messages' => [['role' => 'user', 'content' => $prompt]],
                     'temperature' => 0.9,
                     'max_tokens' => 512
-                ];
+                ], 'creative');
                 $payload = json_encode($portraitReqPayload);
                 $ch = curl_init($openRouterUrl);
                 curl_setopt_array($ch, [
@@ -978,12 +978,12 @@ WPROMPT;
 
             $openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
             $model = defined("OPENROUTER_MODEL_CHEAP") ? OPENROUTER_MODEL_CHEAP : (defined("OPENROUTER_MODEL") ? OPENROUTER_MODEL : "google/gemini-2.5-flash");
-            $weatherReqPayload = [
+            $weatherReqPayload = ew_openrouter_apply_profile([
                 "model" => $model,
                 "messages" => [["role" => "user", "content" => $weatherPrompt]],
                 "temperature" => 0.8,
                 "max_tokens" => 8192,
-            ];
+            ], 'extract');
             $payload = json_encode($weatherReqPayload);
             $ch = curl_init($openRouterUrl);
             curl_setopt_array($ch, [
@@ -1188,12 +1188,12 @@ REPROMPT;
 
             $openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
             $model = defined('OPENROUTER_MODEL_CHEAP') ? OPENROUTER_MODEL_CHEAP : 'google/gemini-2.5-flash';
-            $encounterReqPayload = [
+            $encounterReqPayload = ew_openrouter_apply_profile([
                 'model' => $model,
                 'messages' => [['role' => 'user', 'content' => $rePrompt]],
                 'temperature' => 0.9,
                 'max_tokens' => 2048
-            ];
+            ], 'creative');
             $payload = json_encode($encounterReqPayload);
             $ch = curl_init($openRouterUrl);
             curl_setopt_array($ch, [
@@ -1303,12 +1303,12 @@ LPROMPT;
 
             $openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
             $model = defined('OPENROUTER_MODEL_CHEAP') ? OPENROUTER_MODEL_CHEAP : 'google/gemini-2.5-flash';
-            $lootReqPayload = [
+            $lootReqPayload = ew_openrouter_apply_profile([
                 'model' => $model,
                 'messages' => [['role' => 'user', 'content' => $lootPrompt]],
                 'temperature' => 0.9,
                 'max_tokens' => 1024
-            ];
+            ], 'creative');
             $payload = json_encode($lootReqPayload);
             $ch = curl_init($openRouterUrl);
             curl_setopt_array($ch, [
@@ -1430,12 +1430,12 @@ SPROMPT;
 
             $openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
             $model = defined('OPENROUTER_MODEL_CHEAP') ? OPENROUTER_MODEL_CHEAP : 'google/gemini-2.5-flash';
-            $shopReqPayload = [
+            $shopReqPayload = ew_openrouter_apply_profile([
                 'model' => $model,
                 'messages' => [['role' => 'user', 'content' => $shopPrompt]],
                 'temperature' => 0.9,
                 'max_tokens' => 1536
-            ];
+            ], 'creative');
             $payload = json_encode($shopReqPayload);
             $ch = curl_init($openRouterUrl);
             curl_setopt_array($ch, [

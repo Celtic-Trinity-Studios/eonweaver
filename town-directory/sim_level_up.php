@@ -115,16 +115,17 @@
 
             // Call OpenRouter
             $openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
-            $levelReqPayload = [
+            $levelReqPayload = ew_openrouter_apply_profile([
                 'model' => defined('OPENROUTER_MODEL_SMART') ? OPENROUTER_MODEL_SMART : (defined('OPENROUTER_MODEL') ? OPENROUTER_MODEL : 'google/gemini-2.5-flash'),
                 'messages' => [['role' => 'user', 'content' => $prompt]],
                 'temperature' => 0.5,
-            ];
+                'max_tokens' => 8192,
+            ], 'extract');
             $ch = curl_init($openRouterUrl);
             curl_setopt_array($ch, [
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_POST => true,
-                CURLOPT_POSTFIELDS => json_encode($levelReqPayload),
+                CURLOPT_POSTFIELDS => ew_json_encode_openrouter_body($levelReqPayload),
                 CURLOPT_HTTPHEADER => array_merge([
                     'Content-Type: application/json',
                     'Authorization: Bearer ' . $apiKey,

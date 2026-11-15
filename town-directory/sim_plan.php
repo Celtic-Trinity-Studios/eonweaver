@@ -98,12 +98,12 @@ PLAN;
             // Quick AI call with low token limit
             $openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
             $model = defined("OPENROUTER_MODEL_CHEAP") ? OPENROUTER_MODEL_CHEAP : (defined("OPENROUTER_MODEL") ? OPENROUTER_MODEL : "google/gemini-2.5-flash-lite");
-            $planReqPayload = [
+            $planReqPayload = ew_openrouter_apply_profile([
                 "model" => $model,
                 "messages" => [["role" => "user", "content" => $planPrompt]],
                 "temperature" => 0.8,
                 "max_tokens" => 4096
-            ];
+            ], 'plan');
             $payload = ew_json_encode_openrouter_body($planReqPayload);
 
             $ch = curl_init($openRouterUrl);

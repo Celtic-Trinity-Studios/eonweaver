@@ -48,6 +48,73 @@ function ew_json_encode_openrouter_body(array $data): string
 }
 
 /**
+ * Reasoning settings for the configured model.
+ *
+ * Gemini 2.5 Flash thinks unless the request sets a thinking budget of 0, and that
+ * thinking is billed as output and counted against max_tokens. With it left on, a
+ * repeated creative prompt collapses to one answer and a tight max_tokens can come
+ * back empty. Gemini 3 and 4 think by default (usually medium) and reject "none"
+ * on most ids, so this picks the lowest effort that model actually accepts.
+ *
+ * Profiles:
+ * - creative / extract: thinking off, or the model's lowest effort when thinking is mandatory
+ * - narrative / plan: a small budget on full Flash; still off on Flash-Lite
+ *
+ * @return array{effort?:string,max_tokens?:int,exclude:bool}|null
+ */
+function ew_openrouter_reasoning_config(string $model, string $profile): ?array
+{
+    $id = strtolower(trim($model));
+    $id = (string) preg_replace('/:.*$/', '', $id);
+    if (!str_contains($id, 'gemini-')) {
+        return null;
+    }
+
+    $lite = str_contains($id, 'flash-lite');
+    $off = $lite || $profile === 'creative' || $profile === 'extract';
+
+    if (str_contains($id, 'gemini-2.5')) {
+        if (str_contains($id, 'gemini-2.5-pro')) {
+            $budget = $off ? 128 : 768;
+        } else {
+            $budget = $off ? 0 : 512;
+        }
+
+        return ['max_tokens' => $budget, 'exclude' => true];
+    }
+
+    $floor = 'low';
+    if (preg_match('/gemini-3\.1-flash-lite|gemini-3-flash/', $id)) {
+        $floor = 'none';
+    } elseif (preg_match('/gemini-3\.(5|6)/', $id)) {
+        $floor = 'minimal';
+    }
+    $effort = $off ? $floor : 'low';
+
+    return ['effort' => $effort, 'exclude' => true];
+}
+
+/**
+ * Attach per-task reasoning (and, for prose, nucleus sampling) to a chat body.
+ *
+ * @param array<string,mixed> $body
+ * @param string $profile creative|extract|narrative|plan
+ * @return array<string,mixed>
+ */
+function ew_openrouter_apply_profile(array $body, string $profile): array
+{
+    $reasoning = ew_openrouter_reasoning_config((string) ($body['model'] ?? ''), $profile);
+    if ($reasoning !== null) {
+        $body['reasoning'] = $reasoning;
+    }
+    if ($profile === 'creative' && !array_key_exists('top_p', $body)) {
+        $body['top_p'] = 0.95;
+    }
+
+    return $body;
+}
+
+/**
  * Determine effective item type from stored type + name keywords.
  * Handles cases where SRD lookup failed and item_type is 'gear'.
  */
@@ -523,17 +590,10 @@ function resolveApiKey(string $featureKey, int $userId, bool $requireCredits = t
     $LAST_RESOLVED_FEATURE_KEY = str_replace('OPENROUTER_KEY_', '', $featureKey);
 
     if ($requireCredits) {
-        $rows = query('SELECT credit_balance, subscription_tier FROM users WHERE id = ?', [$userId], 0);
+        $rows = query('SELECT credit_balance FROM users WHERE id = ?', [$userId], 0);
         $balance = $rows ? (int) ($rows[0]['credit_balance'] ?? 0) : 0;
         if ($balance <= 0) {
-            throw new Exception('Insufficient Eon Credits — your wallet is empty. Top up credits or upgrade your plan on 💎 Plans.');
-        }
-        $subTier = trim((string) ($rows[0]['subscription_tier'] ?? 'free'));
-        if ($subTier === '') {
-            $subTier = 'free';
-        }
-        if (ew_monthly_platform_cap_exceeded($userId, $subTier)) {
-            throw new Exception('Monthly AI usage limit reached for your subscription tier. Try again next calendar month or upgrade on 💎 Plans.');
+            throw new Exception('Insufficient Eon Credits — your wallet is empty. Top up on Plans to run more AI. Manual play is not affected.');
         }
     }
 

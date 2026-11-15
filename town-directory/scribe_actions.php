@@ -36,18 +36,22 @@ if ($action === 'scribe_generate') {
     $openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
     $model = defined("OPENROUTER_MODEL") ? OPENROUTER_MODEL : "google/gemini-2.5-flash";
 
-    $temp = 0.8;
-    if ($generatorType === 'quest' && !scribeAllowsInventedGeography($params)) {
-        $temp = 0.55;
+    $temp = 1.05;
+    $maxTokens = 4096;
+    if ($generatorType === 'dungeon' || $generatorType === 'lore') {
+        $temp = 1.15;
+        $maxTokens = 8192;
+    } elseif ($generatorType === 'quest' && !scribeAllowsInventedGeography($params)) {
+        $temp = 0.75;
     }
 
-    $scribeReqPayload = [
+    $scribeReqPayload = ew_openrouter_apply_profile([
         "model" => $model,
         "messages" => [["role" => "user", "content" => $prompt]],
         "temperature" => $temp,
-        "max_tokens" => 4096
-    ];
-    $payload = json_encode($scribeReqPayload);
+        "max_tokens" => $maxTokens,
+    ], 'creative');
+    $payload = ew_json_encode_openrouter_body($scribeReqPayload);
     
     $ch = curl_init($openRouterUrl);
     curl_setopt_array($ch, [
@@ -86,6 +90,10 @@ if ($action === 'scribe_generate') {
     );
     
     $generatedText = $data["choices"][0]["message"]["content"] ?? "";
+    if (!is_string($generatedText)) {
+        $generatedText = '';
+    }
+    $generatedText = preg_replace('/<think>.*?<\/think>\s*/s', '', $generatedText) ?? $generatedText;
     $generatedText = trim($generatedText);
 
     $ingest = null;
@@ -377,6 +385,107 @@ function scribeDungeonMonsterNamingBlock(int $userId, int $campId, string $dndEd
     return $block;
 }
 
+function scribePickOne(array $options): string
+{
+    if ($options === []) {
+        return '';
+    }
+
+    return $options[random_int(0, count($options) - 1)];
+}
+
+/**
+ * Recent library titles so a second click cannot reprint the last commission.
+ */
+function scribeRecentAvoidBlock(int $userId, int $campId, string $type): string
+{
+    if ($userId <= 0) {
+        return '';
+    }
+    try {
+        $rows = query(
+            'SELECT title FROM scribe_library WHERE user_id = ? AND generator_type = ? AND (campaign_id <=> ?) ORDER BY updated_at DESC LIMIT 8',
+            [$userId, $type, $campId > 0 ? $campId : null],
+            0
+        );
+    } catch (Exception $e) {
+        return '';
+    }
+    $titles = [];
+    foreach ($rows ?: [] as $row) {
+        $title = trim((string) ($row['title'] ?? ''));
+        if ($title !== '' && strcasecmp($title, 'Untitled') !== 0 && strcasecmp($title, 'Untitled lore') !== 0) {
+            $titles[] = $title;
+        }
+    }
+    if ($titles === []) {
+        return '';
+    }
+
+    return "ALREADY WRITTEN FOR THIS CAMPAIGN (do not reuse these titles, premises, proper names, or room sequences):\n- "
+        . implode("\n- ", $titles) . "\n\n";
+}
+
+/**
+ * A fresh roll on every request. Gemini otherwise mode-collapses an identical canon prompt
+ * into one dungeon, especially while thinking is enabled.
+ */
+function scribeFreshCommissionBlock(string $type): string
+{
+    $nonce = bin2hex(random_bytes(4));
+    $block = "FRESH COMMISSION {$nonce}: This is a new piece, not a revision. Honor every name the user typed. Vary the anecdote, the imagery, and the sequence of beats so a second click does not reprint the last answer.\n";
+    if ($type !== 'dungeon') {
+        return $block . "\n";
+    }
+
+    $layout = scribePickOne([
+        'a vertical shaft with side galleries at different depths',
+        'a dry upper floor over a flooded lower level',
+        'a ring of rooms around one central hazard',
+        'a linear descent that doubles back through a collapsed wing',
+        'a sprawling work-site with a single finished ceremonial room',
+        'stacked eras: an occupied top, a ruined middle, and an older sealed bottom',
+        'two parallel paths that meet only at the end',
+        'a small finished complex with most of the danger in the approaches and the doors',
+    ]);
+    $pressure = scribePickOne([
+        'rising water or a tide that changes which rooms are usable',
+        'unstable stone and a collapse that has already cut the site in two',
+        'residual magic that misbehaves in one wing only',
+        'spores, smoke, or bad air that forces a route',
+        'clockwork or ritual machinery that resets a hazard',
+        'extreme heat or cold in the lowest rooms',
+        'darkness that is magical in one area and ordinary everywhere else',
+        'a siege or cave-in still in progress when the party arrives',
+    ]);
+    $motive = scribePickOne([
+        'the occupants are guarding a prisoner or a secret, not a hoard',
+        'two factions share the site and are already at odds',
+        'this was a workplace or shrine and is now a nest',
+        'looters arrived first and are trapped inside with the original occupants',
+        'someone is building or repairing the place, not merely camping in it',
+        'the occupants are trying to leave and have trapped the way out',
+        'the site is a waystation: most rooms are stores, pens, or barracks, with one real secret',
+        'a single powerful creature is using weaker ones as labor',
+    ]);
+    $setpiece = scribePickOne([
+        'a machine, gate, or font the occupants are using',
+        'a vertical feature (well, chimney, pit, or lift) that connects two keyed areas',
+        'a room whose treasure is a problem, not a reward',
+        'a breach into an older, different ruin',
+        'a living quarters that shows who is really in charge',
+        'an unfinished project that explains the theme',
+    ]);
+
+    $block .= "DUNGEON ROLL (binding for this commission — do not fall back to a generic stacked crypt with a boss in the last room):\n";
+    $block .= "- Layout: {$layout}\n";
+    $block .= "- Environmental pressure: {$pressure}\n";
+    $block .= "- Why it is occupied: {$motive}\n";
+    $block .= "- Set piece: {$setpiece}\n\n";
+
+    return $block;
+}
+
 /**
  * Maps generator inputs to specific AI instructional prompts.
  */
@@ -395,6 +504,8 @@ function buildGeneratorPrompt($type, $params, $context, $userId = 0, $campId = 0
         $prompt .= "CREATIVE MODE: The user opted in to invented places or said so in the hook — you may add original locations or factions, but still reuse NPCs and themes from CONTEXT where they fit.\n";
     }
     $prompt .= "\n";
+    $prompt .= scribeFreshCommissionBlock((string) $type);
+    $prompt .= scribeRecentAvoidBlock((int) $userId, (int) $campId, (string) $type);
 
     if ($type === 'lore') {
         $topic = $params['topic'] ?? 'Unknown Topic';
@@ -421,7 +532,25 @@ function buildGeneratorPrompt($type, $params, $context, $userId = 0, $campId = 0
     }
     elseif ($type === 'dungeon') {
         $prompt .= scribeDungeonMonsterNamingBlock((int) $userId, (int) $campId, $dndEdition);
-        $theme = $params['theme'] ?? 'Ancient Ruins';
+        $theme = trim((string) ($params['theme'] ?? ''));
+        $themeRolled = false;
+        if ($theme === '') {
+            $themeRolled = true;
+            $theme = scribePickOne([
+                'Flooded shrine',
+                'Collapsed mine',
+                'Buried menagerie',
+                'Smuggler cistern',
+                'Plague hospital',
+                'Siege tunnel',
+                'Root-choked barrow',
+                'Glass foundry under a settlement',
+                'Observatory cellar',
+                'Half-built fortress',
+                'Ossuary workshop',
+                'Sunken customs house',
+            ]);
+        }
         $size = $params['size'] ?? 'medium';
         $level = $params['level'] ?? 'Any Level';
         $custom = trim($params['custom'] ?? '');
@@ -429,7 +558,12 @@ function buildGeneratorPrompt($type, $params, $context, $userId = 0, $campId = 0
         if (!$invent) {
             $prompt .= "Place the site near or beneath a KNOWN settlement or landmark from CONTEXT; describe travel from there. No new continents.\n";
         }
-        $prompt .= "THEME: {$theme}\nSIZE: {$size}\nLEVEL RANGE: {$level}\n";
+        $prompt .= "THEME: {$theme}\n";
+        if ($themeRolled) {
+            $prompt .= "The user left the theme blank. The theme above was rolled for THIS request. Do not substitute a generic ancient ruin.\n";
+        }
+        $prompt .= "SIZE: {$size}\nLEVEL RANGE: {$level}\n";
+        $prompt .= "Make the floor plan match the DUNGEON ROLL. Each keyed area must be a different situation, not the same room renumbered.\n";
         if ($custom !== '') {
             $prompt .= "USER CONSTRAINTS (binding — monster types, factions, tone, forbidden creatures, or special requirements): {$custom}\n";
         }
