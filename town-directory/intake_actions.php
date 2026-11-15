@@ -1967,7 +1967,7 @@ Town: \"{$townName}\"
 {\"name\":\"Character Name\",\"race\":\"Race\",\"class\":\"ClassName Level\",\"gender\":\"M\",\"age\":30,\"status\":\"Alive\",\"alignment\":\"NG\",\"role\":\"Role in town\",\"str\":14,\"dex\":12,\"con\":13,\"int_\":10,\"wis\":11,\"cha\":10,\"hp\":22,\"ac\":\"16\",\"init\":\"+1\",\"spd\":\"30\",\"saves\":\"Fort +4, Ref +1, Will +1\",\"skills_feats\":\"Climb +5, Intimidate +3\",\"feats\":\"Power Attack, Cleave\",\"gear\":\"longsword, chain shirt, shield\",\"languages\":\"Common, Dwarven\",\"history\":\"A brief backstory...\"}";
 
     $openRouterUrl = "https://openrouter.ai/api/v1/chat/completions";
-    $model = defined("OPENROUTER_MODEL") ? OPENROUTER_MODEL : "google/gemini-2.5-flash";
+    $model = defined("OPENROUTER_MODEL_CHEAP") ? OPENROUTER_MODEL_CHEAP : (defined("OPENROUTER_MODEL") ? OPENROUTER_MODEL : "google/gemini-2.5-flash-lite");
 
     $customReqPayload = ew_openrouter_apply_profile([
         "model" => $model,

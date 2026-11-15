@@ -119,7 +119,7 @@
                 'model' => defined('OPENROUTER_MODEL_SMART') ? OPENROUTER_MODEL_SMART : (defined('OPENROUTER_MODEL') ? OPENROUTER_MODEL : 'google/gemini-2.5-flash'),
                 'messages' => [['role' => 'user', 'content' => $prompt]],
                 'temperature' => 0.5,
-                'max_tokens' => 8192,
+                'max_tokens' => 4096,
             ], 'extract');
             $ch = curl_init($openRouterUrl);
             curl_setopt_array($ch, [

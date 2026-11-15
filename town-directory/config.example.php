@@ -113,12 +113,14 @@ define('OPENROUTER_KEY_WEATHER',         'sk-or-v1-your-key-here');
 define('OPENROUTER_MODEL', 'google/gemini-2.5-flash');
 define('OPENROUTER_MODEL_SMART', 'google/gemini-2.5-flash');
 define('OPENROUTER_MODEL_CHEAP', 'google/gemini-2.5-flash-lite');
+// Flash-Lite ($0.10 / $0.40 per 1M) is the volume model: sim run, world, single-town,
+// intake, planning, weather, loot, encounters, shops, portraits.
+// Full Flash ($0.30 / $2.50 per 1M) is only Scribe prose, story chunks, and AI level-up
+// (rules math is written straight onto the character). Newer Gemini Flash ids cost more
+// and cannot turn thinking off.
 // Chat calls set OpenRouter `reasoning` from the model id (see ew_openrouter_apply_profile).
 // Creative and JSON calls turn Gemini 2.5 thinking off so temperature can vary and max_tokens
 // is not spent on a hidden trace. Narrative calls on full Flash keep a small budget.
-// Gemini 3/4 think by default and often reject effort "none"; the helper uses the lowest
-// effort that model allows (none, minimal, or low). Flash-Lite stays the cheap path:
-// google/gemini-3.5-flash-lite is several times the price and cannot disable thinking.
 
 // Optional: set false in config.php to disable append-only JSONL at private_data/llm_training.jsonl (site-specific training export from intake).
 // define('EW_LLM_TRAINING_LOG', false);

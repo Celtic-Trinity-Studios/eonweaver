@@ -103,7 +103,7 @@
             if ($simText === null) {
                 $openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
                 $reqPayloadArr = ew_openrouter_apply_profile([
-                    'model' => defined('OPENROUTER_MODEL_SMART') ? OPENROUTER_MODEL_SMART : (defined('OPENROUTER_MODEL') ? OPENROUTER_MODEL : 'google/gemini-2.5-flash'),
+                    'model' => defined('OPENROUTER_MODEL_CHEAP') ? OPENROUTER_MODEL_CHEAP : (defined('OPENROUTER_MODEL') ? OPENROUTER_MODEL : 'google/gemini-2.5-flash-lite'),
                     'messages' => [['role' => 'user', 'content' => $prompt]],
                     'temperature' => 0.8,
                     'max_tokens' => 8192
