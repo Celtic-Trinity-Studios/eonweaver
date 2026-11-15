@@ -338,6 +338,11 @@
     gap: .75rem;
 }
 
+.view-town .view-header-right {
+    flex-wrap: wrap;
+    gap: .4rem;
+}
+
 
 /* dashboard*/
 .dashboard-grid {

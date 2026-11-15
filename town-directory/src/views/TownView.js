@@ -67,6 +67,10 @@ function Fi(e,t){const mapGen=++townMapGen;stopTownMap();stopTownMap=()=>{};cons
           <span id="town-macro-food-badge" class="muted" style="font-size:0.78rem;align-self:center;margin-left:0.35rem;display:none;white-space:nowrap;" title="Macro granary index — see Macro Dynamics & Town Settings → Food Supply"></span>
         </div>
         <div class="view-header-right">
+          <div class="detail-mode-tabs" id="detail-mode-tabs">
+            <button type="button" class="detail-mode-tab active" data-detail-tab="character">Character</button>
+            <button type="button" class="detail-mode-tab" data-detail-tab="map">Map</button>
+          </div>
           <button class="btn-secondary btn-sm" id="town-stats-btn">Stats</button>
           <button class="btn-secondary btn-sm" id="town-settings-btn">Settings</button>
           <button class="btn-secondary btn-sm" id="town-buildings-btn" style="border-color:rgba(184,115,51,0.3);color:var(--accent,#B87333)">🏘️ Buildings</button>
@@ -95,10 +99,6 @@ function Fi(e,t){const mapGen=++townMapGen;stopTownMap();stopTownMap=()=>{};cons
           </div>
         </aside>
         <section class="detail-panel-inline detail-panel-tabbed" id="detail-panel">
-          <div class="detail-mode-tabs" id="detail-mode-tabs">
-            <button type="button" class="detail-mode-tab active" data-detail-tab="character">Character</button>
-            <button type="button" class="detail-mode-tab" data-detail-tab="map">Map</button>
-          </div>
           <div id="detail-area" class="detail-pane">
             <div class="detail-empty">Select a character</div>
           </div>

@@ -5316,6 +5316,27 @@
     flex-shrink: 0;
 }
 
+.view-header-right .detail-mode-tabs {
+    border: none;
+    background: none;
+    gap: .4rem;
+}
+
+.view-header-right .detail-mode-tab {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: .35rem .65rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm, 6px);
+    background: var(--bg-secondary);
+    letter-spacing: 0;
+}
+
+.view-header-right .detail-mode-tab.active {
+    border-color: var(--accent);
+    background: rgba(255, 255, 255, .06);
+}
+
 .detail-mode-tab {
     flex: 1;
     padding: .55rem .75rem;
