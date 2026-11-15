@@ -25,6 +25,21 @@ const PLACE_NAME_WORDS = new Set([
 ]);
 
 /**
+ * Building name for one keyed room. The site title is not repeated in front of it.
+ * "The North Cut" stays "The North Cut". "Root-choked Gullet — The Water" becomes "The Water"
+ * when the site title is "Root-choked Gullet".
+ */
+export function keyedRoomName(title, siteTitle) {
+    let name = String(title || '').replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
+    const site = String(siteTitle || '').replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
+    if (site && name.toLowerCase().startsWith(site.toLowerCase())) {
+        const rest = name.slice(site.length).replace(/^[\s:—–\-|,]+/, '').trim();
+        if (rest) name = rest;
+    }
+    return (name || 'Room').slice(0, 255);
+}
+
+/**
  * True for "Edmund Brightwater" or "Pell". False for "Orcs", "The Mire", "Speaking Cave".
  */
 export function isRosterPersonName(name) {

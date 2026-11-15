@@ -10,6 +10,7 @@ import { apiSaveCharacter } from '../api/characters.js';
 import { apiCreateTown, apiGetTowns } from '../api/towns.js';
 import {
     parseDungeonForRoster,
+    keyedRoomName,
     intakeLookupTokens,
     normalizeCreatureCharForSave
 } from '../utils/scribeRosterImport.js';
@@ -596,10 +597,13 @@ export default function ScribeView(container) {
                 const { overview, rooms } = parsedDungeon;
                 if (rooms.length) {
                     let sortOrder = 0;
-                    if (overview.trim()) {
+                    const roomNames = rooms.map((r) => keyedRoomName(r.title, buildingName));
+                    const overviewName = newTownName.trim().slice(0, 255);
+                    const overviewClashes = roomNames.some((n) => n.toLowerCase() === overviewName.toLowerCase());
+                    if (overview.trim() && overviewName && !overviewClashes) {
                         const ov = await apiSaveBuilding(townId, {
                             id: 0,
-                            name: buildingName.slice(0, 255),
+                            name: overviewName,
                             building_type: 'dungeon',
                             status: 'completed',
                             description: overview.slice(0, 12000),
@@ -610,12 +614,17 @@ export default function ScribeView(container) {
                         });
                         primaryBuildingId = ov.id;
                         savedOverviewBuilding = true;
+                    } else if (overview.trim()) {
+                        rooms[0] = {
+                            ...rooms[0],
+                            body: `${overview.trim()}\n\n${rooms[0].body || ''}`.trim()
+                        };
                     }
                     for (let i = 0; i < rooms.length; i++) {
                         const r = rooms[i];
                         const rb = await apiSaveBuilding(townId, {
                             id: 0,
-                            name: `${buildingName} — ${r.title}`.slice(0, 255),
+                            name: roomNames[i],
                             building_type: 'dungeon',
                             status: 'completed',
                             description: (r.body || '').slice(0, 12000),
