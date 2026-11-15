@@ -42,6 +42,25 @@ function isLiving(c) {
   return s.toLowerCase() !== 'deceased';
 }
 
+function defaultNeighborhoodCenter(edgeList, linked, preferredId) {
+  const wanted = Number(preferredId);
+  if (linked.has(wanted)) return wanted;
+  const degree = new Map();
+  for (const id of linked) degree.set(id, 0);
+  for (const e of edgeList) {
+    degree.set(e.source, (degree.get(e.source) || 0) + 1);
+    degree.set(e.target, (degree.get(e.target) || 0) + 1);
+  }
+  let best = null;
+  let bestDegree = Infinity;
+  for (const [id, count] of degree) {
+    if (count < 1 || count >= bestDegree) continue;
+    bestDegree = count;
+    best = id;
+  }
+  return best;
+}
+
 function initials(name) {
   const parts = String(name || '?').trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return '?';
@@ -69,6 +88,8 @@ export function mountRelationshipGraph(host, opts = {}) {
   const egoIdRaw = opts.egoId != null ? Number(opts.egoId) : null;
   const egoId = Number.isFinite(egoIdRaw) ? egoIdRaw : null;
   const egoMode = egoId != null;
+  // Town page: the person, their direct ties, and those people's other ties. Not the whole town.
+  const neighborhoodDepth = egoMode ? 0 : (variant === 'page' ? 2 : 0);
 
   const charById = new Map();
   for (const c of characters) {
@@ -166,7 +187,7 @@ export function mountRelationshipGraph(host, opts = {}) {
   const variantClass = variant === 'page' ? ' rel-graph--page' : variant === 'sheet' ? ' rel-graph--sheet' : '';
   const canvasAria = egoMode
     ? 'Personal relationship graph — only connections for this character'
-    : 'Relationship graph — click a person to focus their connections';
+    : 'Relationship graph — this person, the people they know, and the people those contacts know';
 
   host.innerHTML = `
     <div class="rel-graph${variantClass}">
@@ -175,6 +196,7 @@ export function mountRelationshipGraph(host, opts = {}) {
           <span class="rel-graph-filter-icon" aria-hidden="true">☰</span> Filters
         </button>
         <button type="button" class="rel-graph-filter-btn" id="rg-clear-focus" hidden title="Show all relationships">Clear focus</button>
+        ${neighborhoodDepth ? '<span class="rel-graph-scope">Immediate and once removed</span>' : ''}
         <div class="rel-graph-legend" id="rg-legend"></div>
       </div>
       <div class="rel-graph-filters" id="rg-filters" hidden></div>
@@ -219,14 +241,24 @@ export function mountRelationshipGraph(host, opts = {}) {
   renderLegend();
 
   function setFocus(id) {
+    if (neighborhoodDepth > 0 && (id == null || !linkedIds.has(id))) return;
     focusId = id;
+    cooled = 0;
+    const center = nodeById.get(focusId);
+    if (center) {
+      center.x = 0;
+      center.y = 0;
+      center.vx = 0;
+      center.vy = 0;
+    }
     if (clearFocusBtn) {
-      if (focusId == null) clearFocusBtn.setAttribute('hidden', '');
+      if (neighborhoodDepth > 0 || focusId == null) clearFocusBtn.setAttribute('hidden', '');
       else clearFocusBtn.removeAttribute('hidden');
     }
   }
 
   clearFocusBtn?.addEventListener('click', () => setFocus(null));
+  if (neighborhoodDepth > 0) setFocus(focusId);
 
   filterBtn.addEventListener('click', () => {
     const open = filtersEl.hasAttribute('hidden');
@@ -254,8 +286,8 @@ export function mountRelationshipGraph(host, opts = {}) {
   let panning = false;
   let panStart = null;
   let hoverEdge = null;
-  /** @type {number|null} focused character id — dim everyone else except direct neighbors */
-  let focusId = egoMode ? egoId : null;
+  /** @type {number|null} focused character id. On the town page this is the center of a 2-step neighborhood. */
+  let focusId = egoMode ? egoId : (neighborhoodDepth ? defaultNeighborhoodCenter(edges, linkedIds, opts.initialFocusId) : null);
   let pointerDownAt = null;
   let didDrag = false;
   let raf = 0;
@@ -275,6 +307,38 @@ export function mountRelationshipGraph(host, opts = {}) {
 
   function visibleEdges() {
     return simEdges.filter((e) => enabledTypes.has(e.type));
+  }
+
+  /** People within `depth` steps of center, using only the edges that pass the type filter. */
+  function neighborhoodIds(edgeList, centerId, depth) {
+    const keep = new Set([centerId]);
+    let frontier = [centerId];
+    const adj = new Map();
+    for (const e of edgeList) {
+      if (!adj.has(e.source)) adj.set(e.source, []);
+      if (!adj.has(e.target)) adj.set(e.target, []);
+      adj.get(e.source).push(e.target);
+      adj.get(e.target).push(e.source);
+    }
+    for (let step = 0; step < depth; step++) {
+      const next = [];
+      for (const id of frontier) {
+        for (const other of adj.get(id) || []) {
+          if (keep.has(other)) continue;
+          keep.add(other);
+          next.push(other);
+        }
+      }
+      frontier = next;
+    }
+    return keep;
+  }
+
+  function shownEdges() {
+    const vis = visibleEdges();
+    if (!neighborhoodDepth || focusId == null) return vis;
+    const keep = neighborhoodIds(vis, focusId, neighborhoodDepth);
+    return vis.filter((e) => keep.has(e.source) && keep.has(e.target));
   }
 
   function visibleNodeIds(visEdges) {
@@ -304,7 +368,7 @@ export function mountRelationshipGraph(host, opts = {}) {
   }
 
   function tick() {
-    const vis = visibleEdges();
+    const vis = shownEdges();
     const visIds = visibleNodeIds(vis);
     const active = nodes.filter((n) => visIds.has(n.id));
     if (!active.length) return;
@@ -371,7 +435,7 @@ export function mountRelationshipGraph(host, opts = {}) {
 
   function hitNode(sx, sy) {
     const w = screenToWorld(sx, sy);
-    const vis = visibleEdges();
+    const vis = shownEdges();
     const visIds = visibleNodeIds(vis);
     let best = null;
     let bestD = NODE_R + 4;
@@ -385,7 +449,7 @@ export function mountRelationshipGraph(host, opts = {}) {
 
   function hitEdge(sx, sy) {
     const w = screenToWorld(sx, sy);
-    const vis = visibleEdges();
+    const vis = shownEdges();
     let best = null;
     let bestD = 8 / scale;
     for (const e of vis) {
@@ -427,9 +491,9 @@ export function mountRelationshipGraph(host, opts = {}) {
     ctx.translate(width / 2 + panX, height / 2 + panY);
     ctx.scale(scale, scale);
 
-    const vis = visibleEdges();
+    const vis = shownEdges();
     const visIds = visibleNodeIds(vis);
-    const bright = focusBrightIds(vis);
+    const bright = neighborhoodDepth > 0 ? null : focusBrightIds(vis);
 
     for (const e of vis) {
       const a = e.sourceNode;
@@ -499,7 +563,7 @@ export function mountRelationshipGraph(host, opts = {}) {
   }
 
   function fitView() {
-    const vis = visibleEdges();
+    const vis = shownEdges();
     const visIds = visibleNodeIds(vis);
     const active = nodes.filter((n) => visIds.has(n.id));
     if (!active.length) return;
@@ -597,8 +661,9 @@ export function mountRelationshipGraph(host, opts = {}) {
       const { x, y } = canvasPos(ev);
       const n = hitNode(x, y);
       if (startedOnNode && n) {
-        setFocus(focusId === n.id ? null : n.id);
-      } else if (startedOnEmpty && !n) {
+        if (neighborhoodDepth > 0) setFocus(n.id);
+        else setFocus(focusId === n.id ? null : n.id);
+      } else if (startedOnEmpty && !n && !neighborhoodDepth) {
         setFocus(null);
       }
     }

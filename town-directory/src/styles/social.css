@@ -630,6 +630,12 @@
     min-width: 0;
 }
 
+.rel-graph-scope {
+    font-size: .72rem;
+    color: var(--text-muted, #9a94a8);
+    white-space: nowrap;
+}
+
 .rel-graph-legend-item,
 .rel-graph-filter-item {
     display: inline-flex;
