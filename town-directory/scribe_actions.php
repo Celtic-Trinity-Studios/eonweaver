@@ -336,8 +336,8 @@ function scribeDungeonMonsterNamingBlock(int $userId, int $campId, string $dndEd
     $block = "=== CREATURE & ENCOUNTER RULES (MANDATORY FOR ROSTER IMPORT) ===\n";
     $block .= "This dungeon may be imported into the game. EVERY creature species you mention MUST already exist as either (1) a monster in the SRD bestiary for this edition, OR (2) an entry in the user's Homebrew → Monsters list below.\n";
     $block .= "Use EXACT names as they appear in those sources (e.g. \"Goblin\", \"Owlbear\", \"Orc\", \"Zombie\"). Do not invent new creature species or use vague labels like \"shadow beast\" unless that exact name appears in Homebrew below.\n";
-    $block .= "Named NPCs may have fantasy given names; still tag them with an allowed creature type (e.g. \"**Snarl** — orc berserker\").\n";
-    $block .= "In encounters, use clear quantities plus the official name (e.g. \"3 goblins\", \"1 owlbear\") so imports match the database.\n\n";
+    $block .= "Named people use a personal name plus an exact species (e.g. \"**Snarl Kem** — Orc Warrior 1\").\n";
+    $block .= "Room text may say how many of a species are in that room. The ## NPCs list does not. Every person there is their own bullet. A bullet named \"Orcs\", \"Guards\", or \"Laborers\" is invalid.\n\n";
 
     try {
         $sampleRows = srdQuery($dndEdition, 'SELECT name FROM monsters ORDER BY RAND() LIMIT 120', []);
@@ -394,6 +394,16 @@ function scribePickOne(array $options): string
     return $options[random_int(0, count($options) - 1)];
 }
 
+/** How many separate people a dungeon of this size actually has on site. */
+function scribeDungeonHeadcount(string $size): int
+{
+    return match ($size) {
+        'small' => random_int(4, 7),
+        'large' => random_int(12, 18),
+        default => random_int(7, 12),
+    };
+}
+
 /**
  * Recent library titles so a second click cannot reprint the last commission.
  */
@@ -433,7 +443,56 @@ function scribeRecentAvoidBlock(int $userId, int $campId, string $type): string
 function scribeFreshCommissionBlock(string $type): string
 {
     $nonce = bin2hex(random_bytes(4));
-    $block = "FRESH COMMISSION {$nonce}: This is a new piece, not a revision. Honor every name the user typed. Vary the anecdote, the imagery, and the sequence of beats so a second click does not reprint the last answer.\n";
+    $block = "FRESH COMMISSION {$nonce}: This is a new piece, not a revision. Honor every name the user typed. A second click must change the people, the job they are doing, and the order of events.\n";
+    if ($type === 'lore') {
+        $angle = scribePickOne([
+            'a debt between two households and the object pledged for it',
+            'a tool, boat, or animal that went missing this season and who had it last',
+            'a burial, inheritance, or boundary marker people are fighting over',
+            'a mill, ferry, well, or road and the person who controls it',
+            'a local rule people are dodging, and the one official enforcing it',
+            'a building or harvest that failed and the person being blamed',
+            'a new arrival who took someone\'s work, bed, or stall',
+            'a hunt, catch, or mine shift that came back short',
+        ]);
+        $block .= "LORE ROLL (binding for this click): Center the piece on {$angle}. Do not retell the last legend with new adjectives.\n\n";
+        return $block;
+    }
+    if ($type === 'quest') {
+        $hook = scribePickOne([
+            'the patron is wrong about one concrete fact',
+            'someone else already has the objective and is using it',
+            'the trip is short; the trouble is the people at the destination',
+            'two locals want opposite outcomes from the same job',
+            'the pay is a favor, a key, a bed, or a waived debt, not a coin pile',
+            'there is a deadline of a few days, tied to weather, a shift change, or a shipment',
+        ]);
+        $block .= "QUEST ROLL (binding for this click): {$hook}. Name each person involved on their own line. Do not reprint the last hook.\n\n";
+        return $block;
+    }
+    if ($type === 'item') {
+        $job = scribePickOne([
+            'fishing', 'masonry', 'childbirth', 'bookkeeping', 'mining', 'cooking', 'herding', 'ferry work', 'brewing', 'surgery',
+        ]);
+        $drawback = scribePickOne([
+            'it is heavy', 'it is loud', 'it needs fuel', 'it stains what it touches', 'it only works when wet', 'it only works in the dark', 'it numbs the hand that holds it',
+        ]);
+        $block .= "ITEM ROLL (binding for this click): Made for {$job}. The power is narrow. Drawback: {$drawback}. The last owner was a specific worker. Do not reprint the last item.\n\n";
+        return $block;
+    }
+    if ($type === 'trap') {
+        $built = scribePickOne([
+            'the people who work here, out of the site\'s own materials',
+            'a poacher protecting a cache',
+            'a mason who left it unfinished',
+            'livestock keepers protecting a pen',
+        ]);
+        $protects = scribePickOne([
+            'a food store', 'a door someone sleeps behind', 'a tool crib', 'a prisoner', 'a water source', 'a single strongbox',
+        ]);
+        $block .= "TRAP ROLL (binding for this click): Built by {$built}. It protects {$protects}. Include a tell a local would notice. Do not reprint the last trap.\n\n";
+        return $block;
+    }
     if ($type !== 'dungeon') {
         return $block . "\n";
     }
@@ -500,6 +559,7 @@ function buildGeneratorPrompt($type, $params, $context, $userId = 0, $campId = 0
         $prompt .= "STRICT MODE: Do NOT invent major new regions, kingdoms, continent-scale politics, villainous organizations, or signature NPCs that never appear in the CONTEXT. ";
         $prompt .= "If you need a minor site (a cellar, alley, barn, stretch of road, minor cave) you may add it only if it fits next to a named settlement or feature already in CONTEXT — label it clearly as local and small-scale.\n";
         $prompt .= "If the CONTEXT is thin, stay vague about unknown geography instead of fabricating a big world.\n";
+        $prompt .= "People who exist only inside this piece are minor locals. Give each one a personal name. Do not treat a species or a job as a single character.\n";
     } else {
         $prompt .= "CREATIVE MODE: The user opted in to invented places or said so in the hook — you may add original locations or factions, but still reuse NPCs and themes from CONTEXT where they fit.\n";
     }
@@ -515,6 +575,7 @@ function buildGeneratorPrompt($type, $params, $context, $userId = 0, $campId = 0
         $prompt .= "LORE TYPE: {$ltype}\n";
         if ($custom) $prompt .= "SPECIAL INSTRUCTIONS: {$custom}\n";
         $prompt .= "\nFORMATTING: Use Markdown. Start with a catchy title (# Title), provide 2-4 paragraphs of concrete text about what people do and what is physically there. Include a 'Hooks / Rumors' bulleted list at the end.";
+        $prompt .= "\nIf people matter, end with ## NPCs: two to five bullets, one person each, `- **Given Surname** — species, what they are doing`. No bullet named for a group.";
     } 
     elseif ($type === 'quest') {
         $qtype = $params['type'] ?? 'fetch';
@@ -528,7 +589,8 @@ function buildGeneratorPrompt($type, $params, $context, $userId = 0, $campId = 0
             $prompt .= "- Do NOT name-drop new realms, continents, imperial capitals, or famous villains absent from CONTEXT.\n";
             $prompt .= "- Rumors should sound like gossip that locals in listed settlements could plausibly say.\n";
         }
-        $prompt .= "\nFORMATTING: Use Markdown. Include sections for:\n# [Quest Title]\n## The Hook\n## Key Objectives\n## Expected Encounters\n## Complications / Twists\n## Rewards";
+        $prompt .= "\nFORMATTING: Use Markdown. Include sections for:\n# [Quest Title]\n## The Hook\n## Key Objectives\n## Expected Encounters\n## Complications / Twists\n## Rewards\n## NPCs";
+        $prompt .= "\n## NPCs is one bullet per person involved (`- **Given Surname** — species class level, their stake`). A patron, a rival, and a worker are three bullets. \"The guards\" is not a bullet.";
     }
     elseif ($type === 'dungeon') {
         $prompt .= scribeDungeonMonsterNamingBlock((int) $userId, (int) $campId, $dndEdition);
@@ -564,11 +626,14 @@ function buildGeneratorPrompt($type, $params, $context, $userId = 0, $campId = 0
         }
         $prompt .= "SIZE: {$size}\nLEVEL RANGE: {$level}\n";
         $prompt .= "Make the floor plan match the DUNGEON ROLL. Each keyed area must be a different situation, not the same room renumbered.\n";
+        $head = scribeDungeonHeadcount((string) $size);
+        $prompt .= "OCCUPANTS: These are minor people who work or squat here, not new kingdoms or signature villains. Name every one of them.\n";
+        $prompt .= "NPC ROSTER (binding): The ## NPCs section is exactly {$head} bullets and nothing else. Each bullet is one person, in this shape: `- **Given Surname** — Species Class Level, the job they are doing right now.` Species is an exact SRD or Homebrew name such as Orc, Goblin, or Human. Most are 1st-level Commoners or Warriors. At most one is in charge, and that person is only a level or two above the others. A bullet whose name is a species, a plural, or a shared job (Orcs, Guards, Laborers) is invalid.\n";
         if ($custom !== '') {
             $prompt .= "USER CONSTRAINTS (binding — monster types, factions, tone, forbidden creatures, or special requirements): {$custom}\n";
         }
-        $prompt .= "\nFORMATTING: Use Markdown. Start with intro paragraphs (no heading required). Then each keyed room or area MUST start with its own line '## Room Title' or '## Area N: Name'. Describe what is in the room: objects, creatures, exits, traps, and treasure.";
-        $prompt .= "\nAfter the rooms, add a section '## NPCs' with bullet lines like '- **Name** — role or one-line note' for each notable creature or person so they can be imported into the roster.";
+        $prompt .= "\nFORMATTING: Use Markdown. Start with intro paragraphs (no heading required). Then each keyed room or area MUST start with its own line '## Room Title' or '## Area N: Name'. Describe what is in the room: objects, the named people who are there, exits, traps, and treasure.";
+        $prompt .= "\nAfter the rooms, add '## NPCs' using the NPC ROSTER count and shape above, one person per bullet, so each can be imported into the roster.";
     }
     elseif ($type === 'item') {
         $itype = $params['type'] ?? 'wondrous';
